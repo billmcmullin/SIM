@@ -4,7 +4,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.model.review.MapBatchResult.Builder;
+import com.sim.chatserver.model.review.MapBatchResultBuilder;
 
 import jakarta.json.JsonObject;
 
@@ -28,7 +28,7 @@ public class MapBatchResultTest
     public void testBuilder() throws Throwable
     {
         // When
-        Builder result = MapBatchResult.builder();
+        MapBatchResultBuilder result = MapBatchResult.builder();
 
     }
 

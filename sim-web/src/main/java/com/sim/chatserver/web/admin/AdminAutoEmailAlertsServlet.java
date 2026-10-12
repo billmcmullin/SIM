@@ -4,7 +4,8 @@ import com.sim.chatserver.email.DbEmailConfigProvider;
 import com.sim.chatserver.service.widget.WidgetAvailabilityChecker;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermsStore;
-import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConfig;
+import com.sim.chatserver.util.CommonLiteralConstants;
+import com.sim.chatserver.web.admin.AutoEmailAlertConfig;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
@@ -95,7 +96,7 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
         }
 
         if (!isValidJsonRequest(req)) {
-            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, com.sim.chatserver.util.CommonLiteralConstants.MSG_INVALID_JSON_PAYLOAD);
             return;
         }
 
@@ -103,7 +104,7 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
         try {
             String requestBody = readRequestBody(req);
             if (requestBody == null) {
-                writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
+                writeError(resp, HttpServletResponse.SC_BAD_REQUEST, com.sim.chatserver.util.CommonLiteralConstants.MSG_INVALID_JSON_PAYLOAD);
                 return;
             }
             try (JsonReader reader = Json.createReader(new StringReader(requestBody))) {
@@ -111,7 +112,7 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
             }
         } catch (JsonException | ClassCastException e) {
             log.log(Level.FINE, "Invalid automatic alert payload.", e);
-            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, com.sim.chatserver.util.CommonLiteralConstants.MSG_INVALID_JSON_PAYLOAD);
             return;
         }
 
@@ -121,8 +122,8 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
                 AutoEmailAlertScheduler.TestEmailResult result = scheduler().sendHealthTestEmail(incoming);
                 int status = result.sent() ? HttpServletResponse.SC_OK : HttpServletResponse.SC_BAD_REQUEST;
                 JsonObject body = Json.createObjectBuilder()
-                        .add("status", result.sent() ? "ok" : "error")
-                        .add("message", safe(result.message()))
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, result.sent() ? "ok" : com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, safe(result.message()))
                         .build();
                 writeJson(resp, status, body);
                 return;
@@ -194,12 +195,12 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
     private JsonObject toResponseJson(AutoEmailAlertConfig cfg) {
         if (cfg == null) {
             return Json.createObjectBuilder()
-                    .add("status", "ok")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
                     .build();
         }
 
         JsonObjectBuilder json = Json.createObjectBuilder()
-                .add("status", "ok")
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
                 .add("healthEnabled", cfg.isHealthEnabled())
                 .add("healthCheckIntervalMinutes", secondsToMinutes(cfg.getHealthCheckIntervalSeconds()))
                 .add("healthOfflineDelayMinutes", secondsToMinutes(cfg.getHealthOfflineDelaySeconds()))
@@ -228,20 +229,20 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
                 .add("termLastAlertAt", formatInstant(cfg.getTermLastAlertAt()))
 
                 .add("updatedBy", safe(cfg.getUpdatedBy()))
-                .add("updatedAt", formatInstant(cfg.getUpdatedAt()));
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_UPDATED_AT, formatInstant(cfg.getUpdatedAt()));
 
         return json.build();
     }
 
     private boolean isAdmin(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+            writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED);
             return false;
         }
-        String role = session.getAttribute("role") == null ? "" : String.valueOf(session.getAttribute("role"));
-        if (!"ADMIN".equalsIgnoreCase(role)) {
-            writeError(resp, HttpServletResponse.SC_FORBIDDEN, "Admin role required.");
+        String role = session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.ROLE) == null ? "" : String.valueOf(session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.ROLE));
+        if (!com.sim.chatserver.util.CommonLiteralConstants.ROLE_ADMIN.equalsIgnoreCase(role)) {
+            writeError(resp, HttpServletResponse.SC_FORBIDDEN, com.sim.chatserver.util.CommonLiteralConstants.MSG_ADMIN_ROLE_REQUIRED);
             return false;
         }
         return true;
@@ -249,10 +250,10 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
 
     private String currentUser(HttpServletRequest req) {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            return "UNKNOWN";
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+            return CommonLiteralConstants.VALUE_UNKNOWN_UPPER;
         }
-        return String.valueOf(session.getAttribute("user"));
+        return String.valueOf(session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER));
     }
 
     private boolean isValidJsonRequest(HttpServletRequest req) {
@@ -292,17 +293,9 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
         if (normalizedInput == null || normalizedInput.isEmpty()) {
             return "";
         }
-        StringBuilder safe = new StringBuilder(normalizedInput.length());
-        for (int i = 0; i < normalizedInput.length(); i++) {
-            char ch = normalizedInput.charAt(i);
-            if (Character.isISOControl(ch) && ch != System.lineSeparator().charAt(System.lineSeparator().length() - 1) && ch != '\t') {
-                continue;
-            }
-            safe.append(ch);
-        }
-        String normalized = safe.toString();
+        String normalized = TextIoSanitizerUtil.stripControlCharacters(normalizedInput);
         return normalized.length() > MAX_JSON_PAYLOAD_BYTES
-                ? new String(normalized.toCharArray(), 0, MAX_JSON_PAYLOAD_BYTES)
+                ? TextIoSanitizerUtil.safeSlice(normalized, 0, MAX_JSON_PAYLOAD_BYTES)
                 : normalized;
     }
 
@@ -433,7 +426,7 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
             ServletJsonResponseUtil.writeJson(resp, status, body);
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to write automatic-email JSON response", e);
-            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
+            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_UNABLE_TO_WRITE_RESPONSE);
         }
     }
 
@@ -444,7 +437,12 @@ public class AdminAutoEmailAlertsServlet extends HttpServlet {
         try {
             resp.sendError(status, safe(message));
         } catch (IOException ioe) {
-            log.log(Level.FINE, "Fallback sendError failed", ioe);
+            log.log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_FAILED, ioe);
         }
     }
+
+    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException, ClassNotFoundException {
+        throw new java.io.InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
+
 }

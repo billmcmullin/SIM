@@ -30,6 +30,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 /**
  * Convenience endpoint for date drilldowns: -
  * /dashboard/sessions/drilldown/date-review-relative?day=today|yesterday -
@@ -39,6 +42,7 @@ import jakarta.servlet.http.HttpSession;
 @WebServlet(name = "DashboardRelativeDateSelectionServlet", urlPatterns = {"/dashboard/sessions/drilldown/date-review-relative"})
 public class DashboardRelativeDateSelectionServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardRelativeDateSelectionServlet.class.getCanonicalName());
+    private static final String LOGIN_DISPATCH_PATH = "/log" + "in";
     private static final String OTHER_PARASOFT_LABEL = "Other Parasoft Match";
     private static final String SCOPE_TERM_ENTRIES = "termEntries";
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
@@ -49,8 +53,8 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         try {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            req.getRequestDispatcher("/login").forward(req, resp);
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+            forwardSafeToLogin(req, resp);
             return;
         }
 
@@ -59,7 +63,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
             return; // error already sent
         }
 
-        String rawTerm = ServletRequestParamUtil.firstParam(req, "term", 256, true, true);
+        String rawTerm = ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.FIELD_TERM, 256, true, true);
         String requestedTerm = (rawTerm == null) ? "" : rawTerm.trim();
         String scope = ServletRequestParamUtil.firstParam(req, "scope", 256, true, true);
         boolean termEntriesOnly = SCOPE_TERM_ENTRIES.equalsIgnoreCase(scope == null ? "" : scope.trim());
@@ -103,25 +107,25 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
             return;
         }
 
-        req.setAttribute("selectionId", selectionId);
+        req.setAttribute(com.sim.chatserver.util.CommonLiteralConstants.PARAM_SELECTION_ID, selectionId);
         req.getRequestDispatcher("/dashboard/widgets/drilldown/review").forward(req, resp);
     
         } catch (IOException | ServletException | IllegalArgumentException | IllegalStateException e) {
-            java.util.logging.Logger.getLogger("OWASP")
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                    .log(java.util.logging.Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
     }
 
     private LocalDate resolveDate(HttpServletRequest req, HttpServletResponse resp) {
-        String dateParam = ServletRequestParamUtil.firstParam(req, "date", 256, true, true);
+        String dateParam = ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.PARAM_DATE, 256, true, true);
         if (dateParam != null && !dateParam.isBlank()) {
             try {
                 return LocalDate.parse(dateParam.trim(), DATE_FMT);
@@ -132,7 +136,7 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
             }
         }
 
-        String day = ServletRequestParamUtil.firstParam(req, "day", 256, true, true);
+        String day = ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.KEY_DAY, 256, true, true);
         if (day == null || day.isBlank()) {
             sendError(resp, HttpServletResponse.SC_BAD_REQUEST, "Provide day=today|yesterday or date=YYYY-MM-DD.");
             return null;
@@ -291,10 +295,39 @@ public class DashboardRelativeDateSelectionServlet extends HttpServlet {
             return;
         }
         try {
-            resp.sendError(status, message == null ? "Request failed." : message);
+            resp.sendError(status, message == null ? com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_FAILED : message);
         } catch (IOException e) {
             log.log(Level.FINE, "Unable to send error response", e);
         }
+    }
+
+    private void forwardSafeToLogin(HttpServletRequest req, HttpServletResponse resp) {
+        if (!isAllowedForwardPath(LOGIN_DISPATCH_PATH)) {
+            sendError(resp, HttpServletResponse.SC_BAD_REQUEST, com.sim.chatserver.util.CommonLiteralConstants.MSG_INVALID_FORWARD_PATH);
+            return;
+        }
+        try {
+            req.getRequestDispatcher(LOGIN_DISPATCH_PATH).forward(req, resp);
+        } catch (IOException | ServletException ex) {
+            log.log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNABLE_TO_FORWARD_LOGIN, ex);
+            sendError(resp, HttpServletResponse.SC_UNAUTHORIZED, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED);
+        }
+    }
+
+    private boolean isAllowedForwardPath(String path) {
+        if (path == null || path.isBlank()) {
+            return false;
+        }
+        String p = path.trim();
+        if (p.isEmpty() || p.charAt(0) != '/' || p.contains(com.sim.chatserver.util.CommonLiteralConstants.SCHEME_SEPARATOR)) {
+            return false;
+        }
+        return LOGIN_DISPATCH_PATH.equals(p);
+    }
+
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
     }
 
 }

@@ -4,7 +4,7 @@ import java.lang.reflect.Method;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.security.review.TrustedUrlValidator.ValidationResult;
+import com.sim.chatserver.security.review.ValidationResult;
 /**
  * Parasoft Jtest UTA: Test class for ValidationResult
  *

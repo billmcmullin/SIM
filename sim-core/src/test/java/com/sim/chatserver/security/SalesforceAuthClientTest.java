@@ -67,8 +67,8 @@ class SalesforceAuthClientTest {
                 "{\"access_token\":\"token123\",\"instance_url\":\"https://instance\"}");
 
         assertNotNull(result);
-        assertTrue(result instanceof SalesforceAuthClient.AuthResult);
-        SalesforceAuthClient.AuthResult authResult = (SalesforceAuthClient.AuthResult) result;
+        assertTrue(result instanceof AuthResult);
+        AuthResult authResult = (AuthResult) result;
         assertEquals("token123", authResult.accessToken);
         assertEquals("https://instance", authResult.instanceUrl);
     }
@@ -106,7 +106,7 @@ class SalesforceAuthClientTest {
         cfg.setSalesforceClientSecret("csec");
         cfg.setSalesforceRefreshToken("rft");
 
-        SalesforceAuthClient.AuthResult result = client.refreshAccessToken(cfg);
+        AuthResult result = client.refreshAccessToken(cfg);
 
         assertNotNull(result);
         assertEquals("acc", result.accessToken);
@@ -137,7 +137,7 @@ class SalesforceAuthClientTest {
         cfg.setSalesforcePassword("pw");
         cfg.setSalesforceApiToken("token");
 
-        SalesforceAuthClient.AuthResult result = client.refreshAccessToken(cfg);
+        AuthResult result = client.refreshAccessToken(cfg);
 
         assertNotNull(result);
         assertEquals("session-123", result.accessToken);

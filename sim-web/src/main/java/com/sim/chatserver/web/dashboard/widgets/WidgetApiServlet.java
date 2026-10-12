@@ -10,9 +10,10 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
+import com.sim.chatserver.util.CommonLiteralConstants;
+import com.sim.chatserver.widget.DuplicateWidgetIdException;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
-import com.sim.chatserver.widget.WidgetStore.DuplicateWidgetIdException;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
@@ -26,11 +27,14 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "WidgetApiServlet", urlPatterns = {"/dashboard/widgets"})
 public class WidgetApiServlet extends HttpServlet {
 
     private static final Logger LOG = Logger.getLogger(WidgetApiServlet.class.getCanonicalName());
-    private static final String APPLICATION_JSON = "application/json; charset=UTF-8";
+    private static final String APPLICATION_JSON = CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON_UTF8;
     private static final Pattern SAFE_WIDGET_ID = Pattern.compile("^[A-Za-z0-9_-]{1,128}$");
 
     @Override
@@ -48,7 +52,7 @@ public class WidgetApiServlet extends HttpServlet {
                 arr.add(widgetToJson(widget));
             }
             JsonObject payload = Json.createObjectBuilder()
-                    .add("status", "ok")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
                     .add("widgets", arr)
                     .build();
             writeJson(resp, HttpServletResponse.SC_OK, payload);
@@ -56,20 +60,20 @@ public class WidgetApiServlet extends HttpServlet {
             LOG.log(Level.WARNING, "Unable to load widget entries", e);
             writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
                     Json.createObjectBuilder()
-                            .add("status", "error")
-                            .add("message", "Unable to load widget entries.")
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Unable to load widget entries.")
                             .build());
         }
     
         } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
-            java.util.logging.Logger.getLogger("OWASP")
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                    .log(java.util.logging.Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -82,15 +86,15 @@ public class WidgetApiServlet extends HttpServlet {
             return;
         }
 
-        String widgetId = sanitizeWidgetId(ServletRequestParamUtil.firstParam(req, "widgetId", 256, true, true));
-        String displayName = sanitizeDisplayName(ServletRequestParamUtil.firstParam(req, "displayName", 256, true, true));
+        String widgetId = sanitizeWidgetId(ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.KEY_WIDGET_ID, 256, true, true));
+        String displayName = sanitizeDisplayName(ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.FIELD_DISPLAY_NAME, 256, true, true));
         String idValue = ServletRequestParamUtil.firstParam(req, "id", 256, true, true);
 
         if (widgetId == null || displayName == null) {
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
                     Json.createObjectBuilder()
-                            .add("status", "error")
-                            .add("message", "Widget ID and name are required.")
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Widget ID and name are required.")
                             .build());
             return;
         }
@@ -103,8 +107,8 @@ public class WidgetApiServlet extends HttpServlet {
                 LOG.log(Level.FINE, "Invalid widget ID parameter", ex);
                 writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
                         Json.createObjectBuilder()
-                                .add("status", "error")
-                                .add("message", "ID must be an integer.")
+                                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "ID must be an integer.")
                                 .build());
                 return;
             }
@@ -113,42 +117,42 @@ public class WidgetApiServlet extends HttpServlet {
         try {
             WidgetEntry saved = WidgetStore.upsert(id, widgetId, displayName);
             JsonObject payload = Json.createObjectBuilder()
-                    .add("status", "ok")
-                    .add("widget", widgetToJson(saved))
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_WIDGET, widgetToJson(saved))
                     .build();
             writeJson(resp, HttpServletResponse.SC_OK, payload);
         } catch (DuplicateWidgetIdException ex) {
             LOG.log(Level.FINE, "Duplicate widget ID", ex);
             writeJson(resp, HttpServletResponse.SC_CONFLICT,
                     Json.createObjectBuilder()
-                            .add("status", "error")
-                            .add("message", "Widget ID already exists.")
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Widget ID already exists.")
                             .build());
         } catch (IllegalArgumentException ex) {
             LOG.log(Level.FINE, "Invalid widget input", ex);
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
                     Json.createObjectBuilder()
-                            .add("status", "error")
-                            .add("message", "Invalid widget input.")
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Invalid widget input.")
                             .build());
         } catch (SQLException ex) {
             log("Widget persistence error", ex);
             writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
                     Json.createObjectBuilder()
-                            .add("status", "error")
-                            .add("message", "Unable to persist widget entry.")
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Unable to persist widget entry.")
                             .build());
         }
     
         } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
-            java.util.logging.Logger.getLogger("OWASP")
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                    .log(java.util.logging.Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_POST, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -166,8 +170,8 @@ public class WidgetApiServlet extends HttpServlet {
         if (idsParam == null || idsParam.isBlank()) {
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
                     Json.createObjectBuilder()
-                            .add("status", "error")
-                            .add("message", "No widget IDs provided to delete.")
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "No widget IDs provided to delete.")
                             .build());
             return;
         }
@@ -180,8 +184,8 @@ public class WidgetApiServlet extends HttpServlet {
                 LOG.log(Level.FINE, "Invalid widget IDs parameter", ex);
                 writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
                         Json.createObjectBuilder()
-                                .add("status", "error")
-                                .add("message", "No valid widget IDs provided.")
+                                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "No valid widget IDs provided.")
                                 .build());
                 return;
             }
@@ -190,8 +194,8 @@ public class WidgetApiServlet extends HttpServlet {
         if (ids.isEmpty()) {
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST,
                     Json.createObjectBuilder()
-                            .add("status", "error")
-                            .add("message", "No valid widget IDs provided.")
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "No valid widget IDs provided.")
                             .build());
             return;
         }
@@ -200,27 +204,27 @@ public class WidgetApiServlet extends HttpServlet {
             int deleted = WidgetStore.deleteBulk(ids);
             writeJson(resp, HttpServletResponse.SC_OK,
                     Json.createObjectBuilder()
-                            .add("status", "ok")
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
                             .add("deleted", deleted)
                             .build());
         } catch (SQLException e) {
             LOG.log(Level.WARNING, "Unable to delete widget entries", e);
             writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR,
                     Json.createObjectBuilder()
-                            .add("status", "error")
-                            .add("message", "Unable to delete widget entries.")
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Unable to delete widget entries.")
                             .build());
         }
     
         } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
-            java.util.logging.Logger.getLogger("OWASP")
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doDelete", e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -228,11 +232,11 @@ public class WidgetApiServlet extends HttpServlet {
 
     private boolean requireAuth(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
             writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED,
                     Json.createObjectBuilder()
-                            .add("status", "error")
-                            .add("message", "Authentication required.")
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED)
                             .build());
             return false;
         }
@@ -242,8 +246,8 @@ public class WidgetApiServlet extends HttpServlet {
     private JsonObject widgetToJson(WidgetEntry entry) {
         return Json.createObjectBuilder()
                 .add("id", entry.getId())
-                .add("widgetId", entry.getWidgetId() == null ? "" : entry.getWidgetId())
-                .add("displayName", entry.getDisplayName() == null ? "" : entry.getDisplayName())
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_WIDGET_ID, entry.getWidgetId() == null ? "" : entry.getWidgetId())
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_DISPLAY_NAME, entry.getDisplayName() == null ? "" : entry.getDisplayName())
                 .build();
     }
 
@@ -252,7 +256,7 @@ public class WidgetApiServlet extends HttpServlet {
             ServletJsonResponseUtil.writeJson(resp, status, body);
         } catch (IOException e) {
             LOG.log(Level.WARNING, "Unable to write widget API response", e);
-            throw new IllegalStateException("Unable to write response", e);
+            throw new IllegalStateException(com.sim.chatserver.util.CommonLiteralConstants.MSG_UNABLE_TO_WRITE_RESPONSE_NO_PERIOD, e);
         }
     }
 
@@ -276,6 +280,11 @@ public class WidgetApiServlet extends HttpServlet {
             return null;
         }
         return trimmed.length() > 256 ? new String(trimmed.toCharArray(), 0, 256) : trimmed;
+    }
+
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
     }
 
 }

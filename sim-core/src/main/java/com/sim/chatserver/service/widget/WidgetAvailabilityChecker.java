@@ -24,9 +24,11 @@ import javax.sql.DataSource;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
-import com.sim.chatserver.service.widget.WidgetHealthConfigStore.WidgetHealthConfig;
+import com.sim.chatserver.service.widget.WidgetHealthConfig;
 import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.util.CommonLiteralConstants;
 import com.sim.chatserver.util.ServerDiagnosticsLog;
+import com.sim.chatserver.util.TextIoSanitizerUtil;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.inject.Inject;
@@ -47,20 +49,197 @@ public class WidgetAvailabilityChecker {
     private static final Logger log = Logger.getLogger(WidgetAvailabilityChecker.class.getCanonicalName());
 
     private static final String DEFAULT_URL = "http://anythingllm:3001/api/v1/system";
-    private static final String DEFAULT_METHOD = "GET";
+    private static final String METHOD_GET = "GET";
+    private static final String METHOD_HEAD = "HEAD";
+    private static final String METHOD_POST = CommonLiteralConstants.HTTP_METHOD_POST;
+    private static final String DEFAULT_METHOD = METHOD_GET;
     private static final int DEFAULT_TIMEOUT_MS = 8000;
     private static final int DEFAULT_CHECK_INTERVAL_SECONDS = 300;
     private static final boolean DEFAULT_HEALTHCHECK_ENABLED = true;
+    private static final String DIAG_COMPONENT = "widget-availability-checker";
+    private static final String HEADER_AUTHORIZATION = CommonLiteralConstants.HEADER_AUTHORIZATION;
+    private static final String HEADER_CONTENT_TYPE = CommonLiteralConstants.HEADER_CONTENT_TYPE;
+    private static final String HEADER_CONTENT_TYPE_LOWER = "content-type";
+    private static final String HEADER_AUTHORIZATION_LOWER = CommonLiteralConstants.HEADER_AUTHORIZATION_LOWER;
+    private static final String HEADER_WWW_AUTHENTICATE_LOWER = "www-authenticate";
+    private static final String HEADER_ACCEPT = CommonLiteralConstants.HEADER_ACCEPT;
+    private static final String HEADER_X_API_KEY = CommonLiteralConstants.HEADER_X_API_KEY;
+    private static final String HEADER_ORIGIN = "Origin";
+    private static final String HEADER_REFERER = "Referer";
+    private static final String HEADER_USER_AGENT = "User-Agent";
+    private static final String HEADER_COOKIE = "Cookie";
+    private static final String CONTENT_TYPE_EVENT_STREAM = "text/event-stream";
+    private static final String CONTENT_TYPE_JSON = com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON;
+    private static final String CONTENT_TYPE_TEXT_PLAIN_UTF8 = "text/plain;charset=UTF-8";
+    private static final String AUTHORIZATION_PREFIX = "Authorization:";
+    private static final String AUTH_SCHEME_BEARER = com.sim.chatserver.util.CommonLiteralConstants.AUTH_BEARER_PREFIX;
+    private static final String SSE_DATA_PREFIX = "data:";
+    private static final String EMBED_API_PATH = "/api/embed/";
+    private static final String STREAM_CHAT_PATH = "/stream-chat";
+    private static final String URL_SCHEME_SEPARATOR = CommonLiteralConstants.SCHEME_SEPARATOR;
+    private static final String LOG_KV_METHOD = "method=";
+    private static final String LOG_KV_STATUS = com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_STATUS;
+    private static final String LOG_KV_CONTENT_TYPE_DIAG = "contentType=";
+    private static final String LOG_KV_BODY_SNIPPET = "bodySnippet=";
+    private static final String LOG_KV_ERROR_REF = "errorRef=";
+    private static final String LOG_KV_URL_SPACED = " url=";
+    private static final String LOG_KV_ENABLED = " enabled=";
+    private static final String EVENT_HEALTHCHECK_ERROR = "healthcheck-error";
+    private static final String MSG_DEBUG_SET_PREFIX = " Set ";
+    private static final String MSG_DEBUG_DETAIL_SUFFIX = "=true for full debug details.";
+    private static final String LOG_KV_URL = com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_URL;
+    private static final String LOG_KV_LATENCY_MS = "latencyMs=";
+    private static final String LOG_KV_TIMEOUT_MS = " timeoutMs=";
+    private static final String LOG_KV_CHECK_INTERVAL_SECONDS = " checkIntervalSeconds=";
+    private static final String LOG_KV_CONTENT_TYPE = " contentType=";
+    private static final String SOURCE_DB = "DB";
+    private static final String SOURCE_ENV_DEFAULT = "ENV/DEFAULT";
+    private static final String STATUS_UP = "UP";
+    private static final String STATUS_DOWN = CommonLiteralConstants.STATUS_DOWN;
+    private static final String STATUS_DISABLED = "DISABLED";
+    private static final String MSG_DISABLED_BY_CONFIGURATION = "Widget healthcheck service is disabled by configuration";
+    private static final String MSG_MANUAL_CHECK_WHEN_DISABLED = "Widget healthcheck service is disabled, running one-off manual availability test.";
+    private static final String DETAIL_MANUAL_CHECK_WHILE_DISABLED = " [manual-check-while-disabled]";
+    private static final String MSG_GENERIC_FAILURE_PREFIX = "Something went wrong during widget healthcheck. To enable debug details set ";
+    private static final String MSG_OR_SYSTEM_PROPERTY_PREFIX = " (or system property ";
+    private static final String MSG_REFERENCE_PREFIX = " Reference: ";
+    private static final String VALUE_TRUE = CommonLiteralConstants.VALUE_TRUE;
+    private static final String VALUE_FALSE = CommonLiteralConstants.VALUE_FALSE;
+    private static final String VALUE_ONE = "1";
+    private static final String VALUE_ZERO = "0";
+    private static final String VALUE_YES = CommonLiteralConstants.VALUE_YES;
+    private static final String VALUE_NO = "no";
+    private static final String VALUE_Y = "y";
+    private static final String VALUE_N = "n";
+    private static final String VALUE_ON = "on";
+    private static final String VALUE_OFF = "off";
     private static final String DEBUG_FAILURES_ENV = "WIDGET_HEALTHCHECK_DEBUG_FAILURES";
     private static final String DEBUG_FAILURES_PROP = "sim.widget.healthcheck.debug.failures";
     private static final String REQUIRE_HTTPS_WITH_AUTH_ENV = "WIDGET_HEALTHCHECK_REQUIRE_HTTPS_WITH_AUTH";
     private static final String REQUIRE_HTTPS_WITH_AUTH_PROP = "sim.widget.healthcheck.require.https.with.auth";
+    private static final String ENV_WIDGET_HEALTHCHECK_ENABLED = "WIDGET_HEALTHCHECK_ENABLED";
+    private static final String ENV_WIDGET_HEALTHCHECK_INTERVAL_SECONDS = "WIDGET_HEALTHCHECK_INTERVAL_SECONDS";
+    private static final String ENV_WIDGET_HEALTHCHECK_URL = "WIDGET_HEALTHCHECK_URL";
+    private static final String ENV_WIDGET_HEALTHCHECK_METHOD = "WIDGET_HEALTHCHECK_METHOD";
+    private static final String ENV_WIDGET_HEALTHCHECK_TIMEOUT_MS = "WIDGET_HEALTHCHECK_TIMEOUT_MS";
+    private static final String ENV_WIDGET_HEALTHCHECK_EXPECT_JSON_FIELD = "WIDGET_HEALTHCHECK_EXPECT_JSON_FIELD";
+    private static final String ENV_WIDGET_HEALTHCHECK_EXPECT_JSON_VALUE = "WIDGET_HEALTHCHECK_EXPECT_JSON_VALUE";
+    private static final String ENV_WIDGET_HEALTHCHECK_WIDGET_ID = "WIDGET_HEALTHCHECK_WIDGET_ID";
+    private static final String ENV_WIDGET_HEALTHCHECK_REQUEST_ORIGIN = "WIDGET_HEALTHCHECK_REQUEST_ORIGIN";
+    private static final String ENV_WIDGET_HEALTHCHECK_REQUEST_REFERER = "WIDGET_HEALTHCHECK_REQUEST_REFERER";
+    private static final String ENV_WIDGET_HEALTHCHECK_REQUEST_USER_AGENT = "WIDGET_HEALTHCHECK_REQUEST_USER_AGENT";
+    private static final String ENV_WIDGET_HEALTHCHECK_REQUEST_COOKIE = "WIDGET_HEALTHCHECK_REQUEST_COOKIE";
+    private static final String ENV_WIDGET_HEALTHCHECK_API_KEY_HEADER = "WIDGET_HEALTHCHECK_API_KEY_HEADER";
+    private static final String ENV_WIDGET_HEALTHCHECK_API_KEY = "WIDGET_HEALTHCHECK_API_KEY";
+    private static final String JSON_KEY_MESSAGE = CommonLiteralConstants.FIELD_MESSAGE;
+    private static final String JSON_KEY_SESSION_ID = com.sim.chatserver.util.CommonLiteralConstants.FIELD_SESSION_ID;
+    private static final String JSON_KEY_USERNAME = CommonLiteralConstants.KEY_USERNAME;
+    private static final String JSON_KEY_PROMPT = CommonLiteralConstants.FIELD_PROMPT;
+    private static final String JSON_KEY_MODEL = "model";
+    private static final String JSON_KEY_TEMPERATURE = "temperature";
+    private static final String JSON_KEY_TYPE = "type";
+    private static final String JSON_KEY_ERROR = CommonLiteralConstants.KEY_ERROR;
+    private static final String JSON_KEY_CLOSE = "close";
+    private static final String JSON_KEY_TEXT_RESPONSE = com.sim.chatserver.util.CommonLiteralConstants.FIELD_TEXT_RESPONSE;
+    private static final String JSON_VALUE_TEST = "test";
+    private static final String JSON_VALUE_CUSTOMER_EMBEDDED_WIDGET = "Customer Embedded Widget";
+    private static final String JSON_VALUE_TEXT_RESPONSE_CHUNK = "textResponseChunk";
+    private static final String REGEX_DOUBLE_LINEBREAK = "\\R\\R+";
+    private static final String REGEX_LINEBREAK = "\\R";
+    private static final String MSG_EMPTY_RESPONSE_BODY = "empty response body";
+    private static final String MSG_IGNORE_MALFORMED_SSE_CHUNK = "Ignoring malformed SSE data chunk";
+    private static final String MSG_NO_SSE_DATA_EVENTS = "no SSE data events found";
+    private static final String MSG_SSE_ERROR_TRUE = "SSE returned error=true";
+    private static final String MSG_NO_VALID_TEXT_RESPONSE_CHUNK = "no valid non-empty textResponseChunk found";
+    private static final String MSG_NO_CLOSE_TRUE_EVENT = "stream did not include close=true event";
+    private static final String SCHEME_HTTPS = com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTPS;
+    private static final String MSG_PARSE_HTTPS_URL_FAILURE = "Unable to parse healthcheck URL for HTTPS check";
+    private static final String MSG_INIT_HTTP_REQUEST_BUILDER_FAILURE = "Unable to initialize HTTP request builder";
+    private static final String PATH_SLASH = "/";
+    private static final String VALUE_TRUE_SUFFIX = "=true";
+    private static final String VALUE_TRUE_WITH_CLOSE = "=true).";
+    private static final String LOG_MSG_CACHE_HIT_PREFIX = "Returning cached widget availability result ageSeconds=";
+    private static final String LOG_MSG_CACHE_HIT_INTERVAL = " intervalSeconds=";
+    private static final String LOG_MSG_CHECK_START_PREFIX = "Widget availability check starting: method=";
+    private static final String LOG_KV_EXPECT_FIELD_SET = " expectFieldSet=";
+    private static final String LOG_KV_EXPECT_VALUE_SET = " expectValueSet=";
+    private static final String LOG_KV_TIMEOUT_MS_PLAIN = "timeoutMs=";
+    private static final String LOG_KV_SOURCE = "source=";
+    private static final String EVENT_HEALTHCHECK_REQUEST = "healthcheck-request";
+    private static final String LOG_MSG_BLOCKED_HTTPS_REQUIRED = "Widget availability check blocked: sensitive auth material requires HTTPS url=";
+    private static final String EVENT_HEALTHCHECK_BLOCKED = "healthcheck-blocked";
+    private static final String REASON_SENSITIVE_AUTH_WITHOUT_HTTPS = "reason=sensitive-auth-without-https";
+    private static final String DETAIL_SENSITIVE_AUTH_WITHOUT_HTTPS = "Sensitive auth material configured but healthcheck URL is not HTTPS";
+    private static final String LOG_MSG_HTTP_ALLOWED_PREFIX = "Widget availability check allowing HTTP URL with sensitive auth material because ";
+    private static final String LOG_MSG_HTTP_ALLOWED_URL = " is disabled. url=";
+    private static final String LOG_MSG_RETRY_X_API_KEY_PREFIX = "Widget availability retrying with X-API-Key after status=";
+    private static final String EVENT_HEALTHCHECK_RETRY = "healthcheck-retry";
+    private static final String REASON_AUTH_HEADER_FALLBACK = "reason=auth-header-fallback";
+    private static final String LOG_KV_INITIAL_STATUS = "initialStatus=";
+    private static final String LOG_KV_FROM_HEADER_AUTHORIZATION = "fromHeader=Authorization";
+    private static final String LOG_KV_TO_HEADER = "toHeader=";
+    private static final String EVENT_HEALTHCHECK_RESPONSE = "healthcheck-response";
+    private static final String LOG_MSG_NON_SUCCESS_STATUS_PREFIX = "Widget availability check returned non-success status=";
+    private static final String DETAIL_NON_SUCCESS_HTTP_STATUS = "Non-success HTTP status: ";
+    private static final String LOG_MSG_JSON_EXPECTATION_FAILED_FIELD = "Widget availability JSON expectation failed field=";
+    private static final String LOG_MSG_JSON_EXPECTED_VALUE = " expectedValue=";
+    private static final String DETAIL_JSON_EXPECTATION_FAILED = "JSON expectation failed: ";
+    private static final String DETAIL_HEALTHCHECK_SUCCEEDED = "Healthcheck succeeded";
+    private static final String LOG_MSG_CHECK_SUCCEEDED_STATUS_PREFIX = "Widget availability check succeeded status=";
+    private static final String LOG_MSG_INTERRUPTED_FOR_URL = "Widget availability check interrupted for url=";
+    private static final String DETAIL_INTERRUPTED_DURING_HEALTHCHECK = "Interrupted during healthcheck";
+    private static final String LOG_MSG_INTERRUPTED_ERROR_REF = "Widget availability check interrupted. errorRef=";
+    private static final String LOG_KV_MESSAGE = com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_MESSAGE;
+    private static final String LOG_MSG_CHECK_ERROR_FOR_URL = "Widget availability check error for url=";
+    private static final String DETAIL_EXCEPTION_PREFIX = "Exception: ";
+    private static final String DETAIL_EXCEPTION_SEPARATOR = " - ";
+    private static final String LOG_MSG_CHECK_FAILED_ERROR_REF = "Widget availability check failed. errorRef=";
+    private static final String EVENT_SSE_REQUEST = "sse-request";
+    private static final String EVENT_SSE_RESPONSE = "sse-response";
+    private static final String LOG_KV_WIDGET_ID = "widgetId=";
+    private static final String LOG_KV_PAYLOAD = "payload=";
+    private static final String LOG_MSG_SSE_STARTING_PREFIX = "Widget synthetic SSE probe starting: url=";
+    private static final String LOG_MSG_SSE_NON_SUCCESS_STATUS_PREFIX = "Widget synthetic SSE probe returned non-success status=";
+    private static final String DETAIL_SSE_FAILED_HTTP_PREFIX = "Synthetic SSE probe failed: HTTP ";
+    private static final String LOG_MSG_SSE_UNEXPECTED_CONTENT_TYPE = "Widget synthetic SSE probe returned unexpected content-type=";
+    private static final String DETAIL_SSE_CONTENT_TYPE_PREFIX = "Synthetic SSE probe failed: content-type is not ";
+    private static final String DETAIL_SSE_ACTUAL_PREFIX = " (actual=";
+    private static final String LOG_MSG_SSE_VALIDATION_FAILED = "Widget synthetic SSE probe validation failed reason=";
+    private static final String DETAIL_SSE_FAILED_PREFIX = "Synthetic SSE probe failed: ";
+    private static final String LOG_MSG_SSE_SUCCEEDED_STATUS_PREFIX = "Widget synthetic SSE probe succeeded status=";
+    private static final String DETAIL_SSE_SUCCEEDED = "Synthetic SSE probe succeeded";
+    private static final String ERR_HEALTHCHECK_URL_EMPTY = "Healthcheck URL is empty";
+    private static final String ERR_WIDGET_ID_REQUIRED_POST = "Widget ID is required for POST synthetic check";
+    private static final String LOG_MSG_CONFIG_DB_RESOLVED = "Widget availability config resolved from DB: method=";
+    private static final String LOG_MSG_DB_CONFIG_UNAVAILABLE = "DB config unavailable, falling back to env/defaults";
+    private static final String LOG_MSG_CONFIG_ENV_RESOLVED = "Widget availability config resolved from ENV/DEFAULT: method=";
+    private static final String MSG_PARSE_EXPECTED_JSON_FAILED = "Failed to parse expected JSON health payload";
+    private static final String MSG_STRINGVAL_FALLBACK_PREFIX = "stringVal fallback for key=";
+    private static final String MSG_BOOLVAL_FALLBACK_PREFIX = "boolVal parse fallback for key=";
+    private static final String MSG_INVALID_INTEGER_ENV_PREFIX = "Invalid integer environment value for ";
+    private static final String MSG_UNABLE_RESOLVE_GLOBAL_API_KEY = "Unable to resolve global server API key fallback";
+    private static final String MSG_UNABLE_PARSE_URL_SAFE_LOG = "Unable to parse URL for safe log rendering";
+    private static final String SUFFIX_WWW_AUTHENTICATE_PREFIX = " [www-authenticate=";
+    private static final String SUFFIX_SOURCE_PREFIX = " [source=";
+    private static final String SUFFIX_ENABLED_PREFIX = " [enabled=";
+    private static final String SUFFIX_INTERVAL_PREFIX = " [checkIntervalSeconds=";
+    private static final String SUFFIX_WIDGET_ID_PREFIX = " [widgetId=";
+    private static final String SUFFIX_ORIGIN_SET = " [origin-set]";
+    private static final String SUFFIX_REFERER_SET = " [referer-set]";
+    private static final String SUFFIX_UA_SET = " [ua-set]";
+    private static final String SUFFIX_COOKIE_SET = " [cookie-set]";
+    private static final String SUFFIX_API_KEY_SET = " [api-key-set]";
+    private static final String SUFFIX_API_KEY_HEADER_PREFIX = " [api-key-header=";
+    private static final String SUFFIX_BODY_PREFIX = " [body=\"";
+    private static final String ELLIPSIS = CommonLiteralConstants.ELLIPSIS;
+    private static final String EMPTY = "";
+    private static final String SPACE = " ";
     private static final String LINE_SEPARATOR = System.lineSeparator();
     private static final Map<String, String> ENV = new ProcessBuilder().environment();
 
     private static final Pattern EMBED_STREAM_PATTERN = Pattern.compile("/api/embed/([^/]+)/stream-chat");
-    private static final Pattern CONTROL_CHARS = Pattern.compile("[\\u0000-\\u001F\\u007F]");
-    private static final Pattern TOKEN_WHITESPACE = Pattern.compile("\\s+");
+    private static final Pattern CONTROL_CHARS = Pattern.compile(com.sim.chatserver.util.CommonLiteralConstants.REGEX_CONTROL_CHARS);
+    private static final Pattern TOKEN_WHITESPACE = Pattern.compile(CommonLiteralConstants.REGEX_WHITESPACE);
 
     @Inject
     AppDataSourceHolder dsHolder;
@@ -100,7 +279,7 @@ public class WidgetAvailabilityChecker {
         }
 
         if (!cfg.enabled && runWhenDisabled) {
-            log.info(() -> "Widget healthcheck service is disabled, running one-off manual availability test.");
+            log.info(() -> MSG_MANUAL_CHECK_WHEN_DISABLED);
         }
 
         if (!forceRefresh && !runWhenDisabled) {
@@ -127,7 +306,7 @@ public class WidgetAvailabilityChecker {
                         live.status(),
                         live.checkedAtIso(),
                         live.latencyMs(),
-                        safeMsg(live.details()) + " [manual-check-while-disabled]");
+                    safeMsg(live.details()) + DETAIL_MANUAL_CHECK_WHILE_DISABLED);
             }
 
             if (!runWhenDisabled) {
@@ -153,8 +332,8 @@ public class WidgetAvailabilityChecker {
             return null;
         }
 
-        log.fine(() -> "Returning cached widget availability result ageSeconds=" + ageSeconds
-                + " intervalSeconds=" + cfg.checkIntervalSeconds + sourceSuffix(cfg));
+        log.fine(() -> LOG_MSG_CACHE_HIT_PREFIX + ageSeconds
+            + LOG_MSG_CACHE_HIT_INTERVAL + cfg.checkIntervalSeconds + sourceSuffix(cfg));
         return cached.result;
     }
 
@@ -188,22 +367,22 @@ public class WidgetAvailabilityChecker {
         Instant checkStart = start == null ? Instant.now() : start;
         String checkedAt = DateTimeFormatter.ISO_INSTANT.format(checkStart);
         String requestId = UUID.randomUUID().toString();
-        log.info(() -> "Widget availability check starting: method=" + safeMsg(cfg.method)
-                + " url=" + safeUrl(cfg.url)
-                + " timeoutMs=" + cfg.timeoutMs
-                + " expectFieldSet=" + (cfg.expectField != null)
-                + " expectValueSet=" + (cfg.expectValue != null)
-                + " checkIntervalSeconds=" + cfg.checkIntervalSeconds
+        log.info(() -> LOG_MSG_CHECK_START_PREFIX + safeMsg(cfg.method)
+            + SPACE + LOG_KV_URL + safeUrl(cfg.url)
+            + LOG_KV_TIMEOUT_MS + cfg.timeoutMs
+                + LOG_KV_EXPECT_FIELD_SET + (cfg.expectField != null)
+                + LOG_KV_EXPECT_VALUE_SET + (cfg.expectValue != null)
+            + LOG_KV_CHECK_INTERVAL_SECONDS + cfg.checkIntervalSeconds
                 + sourceSuffix(cfg));
 
         ServerDiagnosticsLog.write(
-            "widget-availability-checker",
+            DIAG_COMPONENT,
             requestId,
-            "healthcheck-request",
-            "method=" + safeMsg(cfg.method)
-                + LINE_SEPARATOR + "url=" + safeUrl(cfg.url)
-                + LINE_SEPARATOR + "timeoutMs=" + cfg.timeoutMs
-                + LINE_SEPARATOR + "source=" + safeMsg(cfg.source)
+            EVENT_HEALTHCHECK_REQUEST,
+            LOG_KV_METHOD + safeMsg(cfg.method)
+                + LINE_SEPARATOR + LOG_KV_URL + safeUrl(cfg.url)
+                + LINE_SEPARATOR + LOG_KV_TIMEOUT_MS_PLAIN + cfg.timeoutMs
+                + LINE_SEPARATOR + LOG_KV_SOURCE + safeMsg(cfg.source)
         );
 
         boolean sensitiveAuthConfigured = cfg.apiKeyValue != null || cfg.requestCookie != null;
@@ -212,28 +391,28 @@ public class WidgetAvailabilityChecker {
 
         if (sensitiveAuthConfigured && !httpsUrl && requireHttpsWithAuth) {
             long latencyMs = Duration.between(checkStart, Instant.now()).toMillis();
-            log.warning(() -> "Widget availability check blocked: sensitive auth material requires HTTPS url="
+                log.warning(() -> LOG_MSG_BLOCKED_HTTPS_REQUIRED
                 + safeUrl(cfg.url) + sourceSuffix(cfg));
             ServerDiagnosticsLog.write(
-                    "widget-availability-checker",
+                    DIAG_COMPONENT,
                     requestId,
-                    "healthcheck-blocked",
-                    "reason=sensitive-auth-without-https" + LINE_SEPARATOR + "url=" + safeUrl(cfg.url)
-                        + LINE_SEPARATOR + "latencyMs=" + latencyMs
+                    EVENT_HEALTHCHECK_BLOCKED,
+                    REASON_SENSITIVE_AUTH_WITHOUT_HTTPS + LINE_SEPARATOR + LOG_KV_URL + safeUrl(cfg.url)
+                        + LINE_SEPARATOR + LOG_KV_LATENCY_MS + latencyMs
             );
-            return down(checkedAt, latencyMs, "Sensitive auth material configured but healthcheck URL is not HTTPS"
+                return down(checkedAt, latencyMs, DETAIL_SENSITIVE_AUTH_WITHOUT_HTTPS
                 + sourceSuffix(cfg));
         }
 
         if (sensitiveAuthConfigured && !httpsUrl && !requireHttpsWithAuth) {
-            log.info(() -> "Widget availability check allowing HTTP URL with sensitive auth material because "
-                    + REQUIRE_HTTPS_WITH_AUTH_ENV + " is disabled. url=" + safeUrl(cfg.url)
+                log.info(() -> LOG_MSG_HTTP_ALLOWED_PREFIX
+                    + REQUIRE_HTTPS_WITH_AUTH_ENV + LOG_MSG_HTTP_ALLOWED_URL + safeUrl(cfg.url)
                     + sourceSuffix(cfg));
         }
 
         try {
             String effectiveWidgetId = effectiveWidgetId(cfg);
-            if ("POST".equals(cfg.method) && effectiveWidgetId != null) {
+            if (METHOD_POST.equals(cfg.method) && effectiveWidgetId != null) {
                 cfg.widgetId = effectiveWidgetId;
                 return runSyntheticSseProbe(cfg, checkStart, checkedAt, requestId);
             }
@@ -242,47 +421,47 @@ public class WidgetAvailabilityChecker {
 
             if (shouldRetryWithXApiKey(cfg, response.statusCode())) {
                 final int initialStatus = response.statusCode();
-                log.info(() -> "Widget availability retrying with X-API-Key after status=" + initialStatus
-                        + " url=" + safeUrl(cfg.url) + sourceSuffix(cfg));
+                log.info(() -> LOG_MSG_RETRY_X_API_KEY_PREFIX + initialStatus
+                        + SPACE + LOG_KV_URL + safeUrl(cfg.url) + sourceSuffix(cfg));
                 ServerDiagnosticsLog.write(
-                        "widget-availability-checker",
+                    DIAG_COMPONENT,
                         requestId,
-                        "healthcheck-retry",
-                        "reason=auth-header-fallback"
-                    + LINE_SEPARATOR + "initialStatus=" + initialStatus
-                        + LINE_SEPARATOR + "fromHeader=Authorization"
-                        + LINE_SEPARATOR + "toHeader=X-API-Key"
-                        + LINE_SEPARATOR + "url=" + safeUrl(cfg.url)
+                        EVENT_HEALTHCHECK_RETRY,
+                        REASON_AUTH_HEADER_FALLBACK
+                    + LINE_SEPARATOR + LOG_KV_INITIAL_STATUS + initialStatus
+                        + LINE_SEPARATOR + LOG_KV_FROM_HEADER_AUTHORIZATION
+                        + LINE_SEPARATOR + LOG_KV_TO_HEADER + HEADER_X_API_KEY
+                        + LINE_SEPARATOR + LOG_KV_URL + safeUrl(cfg.url)
                 );
-                response = sendHttpHealthRequest(cfg, "X-API-Key");
+                response = sendHttpHealthRequest(cfg, HEADER_X_API_KEY);
             }
 
             long latencyMs = Duration.between(checkStart, Instant.now()).toMillis();
             int status = response.statusCode();
-            String body = response.body() == null ? "" : response.body();
-            String contentType = headerValue(response, "content-type");
-            String wwwAuthenticate = headerValue(response, "www-authenticate");
+            String body = response.body() == null ? EMPTY : response.body();
+            String contentType = headerValue(response, HEADER_CONTENT_TYPE_LOWER);
+            String wwwAuthenticate = headerValue(response, HEADER_WWW_AUTHENTICATE_LOWER);
 
                 ServerDiagnosticsLog.write(
-                    "widget-availability-checker",
+                    DIAG_COMPONENT,
                     requestId,
-                    "healthcheck-response",
-                    "status=" + status
-                        + LINE_SEPARATOR + "latencyMs=" + latencyMs
-                        + LINE_SEPARATOR + "contentType=" + safeMsg(contentType)
-                        + LINE_SEPARATOR + "url=" + safeUrl(cfg.url)
-                        + LINE_SEPARATOR + "bodySnippet=" + bodySnippet(body)
+                    EVENT_HEALTHCHECK_RESPONSE,
+                    LOG_KV_STATUS + status
+                        + LINE_SEPARATOR + LOG_KV_LATENCY_MS + latencyMs
+                        + LINE_SEPARATOR + LOG_KV_CONTENT_TYPE_DIAG + safeMsg(contentType)
+                        + LINE_SEPARATOR + LOG_KV_URL + safeUrl(cfg.url)
+                        + LINE_SEPARATOR + LOG_KV_BODY_SNIPPET + bodySnippet(body)
                 );
 
             if (status < 200 || status >= 300) {
-                log.warning(() -> "Widget availability check returned non-success status=" + status
-                        + " contentType=" + safeMsg(contentType)
+                log.warning(() -> LOG_MSG_NON_SUCCESS_STATUS_PREFIX + status
+                    + LOG_KV_CONTENT_TYPE + safeMsg(contentType)
                         + authHeaderSuffix(wwwAuthenticate)
-                        + " latencyMs=" + latencyMs
-                        + " url=" + safeUrl(cfg.url)
+                    + SPACE + LOG_KV_LATENCY_MS + latencyMs
+                    + SPACE + LOG_KV_URL + safeUrl(cfg.url)
                         + bodySnippetSuffix(body)
                         + sourceSuffix(cfg));
-                return down(checkedAt, latencyMs, "Non-success HTTP status: " + status
+                return down(checkedAt, latencyMs, DETAIL_NON_SUCCESS_HTTP_STATUS + status
                         + authHeaderSuffix(wwwAuthenticate)
                         + bodySnippetSuffix(body) + sourceSuffix(cfg));
             }
@@ -290,63 +469,63 @@ public class WidgetAvailabilityChecker {
             if (cfg.expectField != null && cfg.expectValue != null) {
                 boolean jsonOk = matchesExpectedJson(body, cfg.expectField, cfg.expectValue);
                 if (!jsonOk) {
-                    log.warning(() -> "Widget availability JSON expectation failed field=" + cfg.expectField
-                            + " expectedValue=" + cfg.expectValue
-                            + " latencyMs=" + latencyMs
-                            + " url=" + safeUrl(cfg.url)
+                        log.warning(() -> LOG_MSG_JSON_EXPECTATION_FAILED_FIELD + cfg.expectField
+                            + LOG_MSG_JSON_EXPECTED_VALUE + cfg.expectValue
+                            + SPACE + LOG_KV_LATENCY_MS + latencyMs
+                            + SPACE + LOG_KV_URL + safeUrl(cfg.url)
                             + bodySnippetSuffix(body)
                             + sourceSuffix(cfg));
-                        return down(checkedAt, latencyMs, "JSON expectation failed: "
+                        return down(checkedAt, latencyMs, DETAIL_JSON_EXPECTATION_FAILED
                             + cfg.expectField + '=' + cfg.expectValue + sourceSuffix(cfg));
                 }
             }
 
-            log.info(() -> "Widget availability check succeeded status=" + status
-                    + " contentType=" + safeMsg(contentType)
-                    + " latencyMs=" + latencyMs
-                    + " url=" + safeUrl(cfg.url)
+                    log.info(() -> LOG_MSG_CHECK_SUCCEEDED_STATUS_PREFIX + status
+                    + LOG_KV_CONTENT_TYPE + safeMsg(contentType)
+                    + SPACE + LOG_KV_LATENCY_MS + latencyMs
+                    + SPACE + LOG_KV_URL + safeUrl(cfg.url)
                     + sourceSuffix(cfg));
-            return up(checkedAt, latencyMs, "Healthcheck succeeded" + sourceSuffix(cfg));
+                    return up(checkedAt, latencyMs, DETAIL_HEALTHCHECK_SUCCEEDED + sourceSuffix(cfg));
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             long latencyMs = Duration.between(checkStart, Instant.now()).toMillis();
             String errorRef = UUID.randomUUID().toString();
                 ServerDiagnosticsLog.write(
-                    "widget-availability-checker",
+                    DIAG_COMPONENT,
                     requestId,
-                    "healthcheck-error",
-                    "errorRef=" + errorRef + LINE_SEPARATOR + "latencyMs=" + latencyMs + LINE_SEPARATOR + "url=" + safeUrl(cfg.url),
+                    EVENT_HEALTHCHECK_ERROR,
+                    LOG_KV_ERROR_REF + errorRef + LINE_SEPARATOR + LOG_KV_LATENCY_MS + latencyMs + LINE_SEPARATOR + LOG_KV_URL + safeUrl(cfg.url),
                     e
                 );
             if (isFailureDebugEnabled()) {
-                log.log(Level.WARNING, "Widget availability check interrupted for url=" + safeUrl(cfg.url)
-                        + " errorRef=" + errorRef + sourceSuffix(cfg), e);
-                return down(checkedAt, latencyMs, "Interrupted during healthcheck" + sourceSuffix(cfg));
+                log.log(Level.WARNING, LOG_MSG_INTERRUPTED_FOR_URL + safeUrl(cfg.url)
+                        + SPACE + LOG_KV_ERROR_REF + errorRef + sourceSuffix(cfg), e);
+                return down(checkedAt, latencyMs, DETAIL_INTERRUPTED_DURING_HEALTHCHECK + sourceSuffix(cfg));
             }
 
-            log.warning(() -> "Widget availability check interrupted. errorRef=" + errorRef
-                    + " Set " + DEBUG_FAILURES_ENV + "=true for full debug details.");
+            log.warning(() -> LOG_MSG_INTERRUPTED_ERROR_REF + errorRef
+                    + MSG_DEBUG_SET_PREFIX + DEBUG_FAILURES_ENV + MSG_DEBUG_DETAIL_SUFFIX);
             return down(checkedAt, latencyMs, genericFailureDetails(errorRef));
         } catch (IOException | IllegalArgumentException e) {
             long latencyMs = Duration.between(checkStart, Instant.now()).toMillis();
             String errorRef = UUID.randomUUID().toString();
             ServerDiagnosticsLog.write(
-                "widget-availability-checker",
+                DIAG_COMPONENT,
                 requestId,
-                "healthcheck-error",
-                "errorRef=" + errorRef + LINE_SEPARATOR + "latencyMs=" + latencyMs + LINE_SEPARATOR + "url=" + safeUrl(cfg.url)
-                    + LINE_SEPARATOR + "message=" + safeMsg(e.getMessage()),
+                EVENT_HEALTHCHECK_ERROR,
+                LOG_KV_ERROR_REF + errorRef + LINE_SEPARATOR + LOG_KV_LATENCY_MS + latencyMs + LINE_SEPARATOR + LOG_KV_URL + safeUrl(cfg.url)
+                    + LINE_SEPARATOR + LOG_KV_MESSAGE + safeMsg(e.getMessage()),
                 e
             );
             if (isFailureDebugEnabled()) {
-                log.log(Level.WARNING, "Widget availability check error for url=" + safeUrl(cfg.url)
-                        + " latencyMs=" + latencyMs + " errorRef=" + errorRef + sourceSuffix(cfg), e);
-                return down(checkedAt, latencyMs, "Exception: " + e.getClass().getSimpleName()
-                        + " - " + safeMsg(e.getMessage()) + sourceSuffix(cfg));
+                log.log(Level.WARNING, LOG_MSG_CHECK_ERROR_FOR_URL + safeUrl(cfg.url)
+                    + SPACE + LOG_KV_LATENCY_MS + latencyMs + SPACE + LOG_KV_ERROR_REF + errorRef + sourceSuffix(cfg), e);
+                return down(checkedAt, latencyMs, DETAIL_EXCEPTION_PREFIX + e.getClass().getSimpleName()
+                        + DETAIL_EXCEPTION_SEPARATOR + safeMsg(e.getMessage()) + sourceSuffix(cfg));
             }
 
-            log.warning(() -> "Widget availability check failed. errorRef=" + errorRef
-                    + " Set " + DEBUG_FAILURES_ENV + "=true for full debug details.");
+            log.warning(() -> LOG_MSG_CHECK_FAILED_ERROR_REF + errorRef
+                    + MSG_DEBUG_SET_PREFIX + DEBUG_FAILURES_ENV + MSG_DEBUG_DETAIL_SUFFIX);
             return down(checkedAt, latencyMs, genericFailureDetails(errorRef));
         }
     }
@@ -389,11 +568,11 @@ public class WidgetAvailabilityChecker {
             return false;
         }
         String normalized = value.trim().toLowerCase(Locale.ROOT);
-        return "true".equals(normalized)
-                || "1".equals(normalized)
-                || "yes".equals(normalized)
-                || "y".equals(normalized)
-                || "on".equals(normalized);
+        return VALUE_TRUE.equals(normalized)
+            || VALUE_ONE.equals(normalized)
+            || VALUE_YES.equals(normalized)
+            || VALUE_Y.equals(normalized)
+            || VALUE_ON.equals(normalized);
     }
 
     private boolean isFalsy(String value) {
@@ -401,58 +580,58 @@ public class WidgetAvailabilityChecker {
             return false;
         }
         String normalized = value.trim().toLowerCase(Locale.ROOT);
-        return "false".equals(normalized)
-                || "0".equals(normalized)
-                || "no".equals(normalized)
-                || "n".equals(normalized)
-                || "off".equals(normalized);
+        return VALUE_FALSE.equals(normalized)
+            || VALUE_ZERO.equals(normalized)
+            || VALUE_NO.equals(normalized)
+            || VALUE_N.equals(normalized)
+            || VALUE_OFF.equals(normalized);
     }
 
     private String genericFailureDetails(String errorRef) {
-        return "Something went wrong during widget healthcheck. To enable debug details set "
-                + DEBUG_FAILURES_ENV + "=true"
-                + " (or system property " + DEBUG_FAILURES_PROP + "=true)."
-                + " Reference: " + errorRef;
+        return MSG_GENERIC_FAILURE_PREFIX
+                + DEBUG_FAILURES_ENV + VALUE_TRUE_SUFFIX
+            + MSG_OR_SYSTEM_PROPERTY_PREFIX + DEBUG_FAILURES_PROP + VALUE_TRUE_WITH_CLOSE
+            + MSG_REFERENCE_PREFIX + errorRef;
     }
 
     private WidgetAvailabilityResult runSyntheticSseProbe(EffectiveConfig cfg, Instant start, String checkedAt, String requestId) throws IOException, InterruptedException {
         String probeUrl = buildEmbedStreamUrl(cfg.url, cfg.widgetId);
         String payload = buildSyntheticPayload();
-        log.info(() -> "Widget synthetic SSE probe starting: url=" + safeUrl(probeUrl)
-            + " timeoutMs=" + cfg.timeoutMs
+        log.info(() -> LOG_MSG_SSE_STARTING_PREFIX + safeUrl(probeUrl)
+            + LOG_KV_TIMEOUT_MS + cfg.timeoutMs
             + sourceSuffix(cfg));
 
         ServerDiagnosticsLog.write(
-                "widget-availability-checker",
+            DIAG_COMPONENT,
                 requestId,
-                "sse-request",
-            "method=POST" + LINE_SEPARATOR + "url=" + safeUrl(probeUrl)
-                + LINE_SEPARATOR + "widgetId=" + safeMsg(cfg.widgetId)
-                + LINE_SEPARATOR + "payload=" + payload
+                EVENT_SSE_REQUEST,
+            LOG_KV_METHOD + METHOD_POST + LINE_SEPARATOR + LOG_KV_URL + safeUrl(probeUrl)
+                + LINE_SEPARATOR + LOG_KV_WIDGET_ID + safeMsg(cfg.widgetId)
+                + LINE_SEPARATOR + LOG_KV_PAYLOAD + payload
         );
 
         HttpRequest.Builder req = HttpRequest.newBuilder()
                 .uri(URI.create(probeUrl))
                 .timeout(Duration.ofMillis(cfg.timeoutMs))
-                .header("Accept", "text/event-stream")
-                .header("Content-Type", "text/plain;charset=UTF-8");
+            .header(HEADER_ACCEPT, CONTENT_TYPE_EVENT_STREAM)
+            .header(HEADER_CONTENT_TYPE, CONTENT_TYPE_TEXT_PLAIN_UTF8);
 
         applyApiKeyHeader(req, cfg);
 
         if (cfg.requestOrigin != null) {
-            req.header("Origin", cfg.requestOrigin);
+            req.header(HEADER_ORIGIN, cfg.requestOrigin);
         }
 
         if (cfg.requestReferer != null) {
-            req.header("Referer", cfg.requestReferer);
+            req.header(HEADER_REFERER, cfg.requestReferer);
         }
 
         if (cfg.requestUserAgent != null) {
-            req.header("User-Agent", cfg.requestUserAgent);
+            req.header(HEADER_USER_AGENT, cfg.requestUserAgent);
         }
 
         if (cfg.requestCookie != null) {
-            req.header("Cookie", cfg.requestCookie);
+            req.header(HEADER_COOKIE, cfg.requestCookie);
         }
 
         HttpRequest request = req
@@ -463,61 +642,61 @@ public class WidgetAvailabilityChecker {
 
         long latencyMs = Duration.between(start, Instant.now()).toMillis();
         int status = response.statusCode();
-        String body = response.body() == null ? "" : response.body();
-        String contentType = headerValue(response, "content-type");
-        String wwwAuthenticate = headerValue(response, "www-authenticate");
+        String body = response.body() == null ? EMPTY : response.body();
+        String contentType = headerValue(response, HEADER_CONTENT_TYPE_LOWER);
+        String wwwAuthenticate = headerValue(response, HEADER_WWW_AUTHENTICATE_LOWER);
 
         ServerDiagnosticsLog.write(
-            "widget-availability-checker",
+            DIAG_COMPONENT,
             requestId,
-            "sse-response",
-            "status=" + status
-                + LINE_SEPARATOR + "latencyMs=" + latencyMs
-                + LINE_SEPARATOR + "contentType=" + safeMsg(contentType)
-                + LINE_SEPARATOR + "url=" + safeUrl(probeUrl)
-                + LINE_SEPARATOR + "bodySnippet=" + bodySnippet(body)
+            EVENT_SSE_RESPONSE,
+            LOG_KV_STATUS + status
+                + LINE_SEPARATOR + LOG_KV_LATENCY_MS + latencyMs
+                + LINE_SEPARATOR + LOG_KV_CONTENT_TYPE_DIAG + safeMsg(contentType)
+                + LINE_SEPARATOR + LOG_KV_URL + safeUrl(probeUrl)
+                + LINE_SEPARATOR + LOG_KV_BODY_SNIPPET + bodySnippet(body)
         );
 
         if (status < 200 || status >= 300) {
-            log.warning(() -> "Widget synthetic SSE probe returned non-success status=" + status
-                + " contentType=" + safeMsg(contentType)
+            log.warning(() -> LOG_MSG_SSE_NON_SUCCESS_STATUS_PREFIX + status
+                + LOG_KV_CONTENT_TYPE + safeMsg(contentType)
                 + authHeaderSuffix(wwwAuthenticate)
-                + " latencyMs=" + latencyMs
-                + " url=" + safeUrl(probeUrl)
+                + SPACE + LOG_KV_LATENCY_MS + latencyMs
+                + SPACE + LOG_KV_URL + safeUrl(probeUrl)
                 + bodySnippetSuffix(body)
                 + sourceSuffix(cfg));
-            return down(checkedAt, latencyMs, "Synthetic SSE probe failed: HTTP " + status
+            return down(checkedAt, latencyMs, DETAIL_SSE_FAILED_HTTP_PREFIX + status
                 + authHeaderSuffix(wwwAuthenticate)
                     + bodySnippetSuffix(body) + sourceSuffix(cfg));
         }
 
-        if (contentType == null || !contentType.toLowerCase(Locale.ROOT).contains("text/event-stream")) {
-            log.warning(() -> "Widget synthetic SSE probe returned unexpected content-type=" + safeMsg(contentType)
-                + " latencyMs=" + latencyMs
-                + " url=" + safeUrl(probeUrl)
+        if (contentType == null || !contentType.toLowerCase(Locale.ROOT).contains(CONTENT_TYPE_EVENT_STREAM)) {
+            log.warning(() -> LOG_MSG_SSE_UNEXPECTED_CONTENT_TYPE + safeMsg(contentType)
+                + SPACE + LOG_KV_LATENCY_MS + latencyMs
+                + SPACE + LOG_KV_URL + safeUrl(probeUrl)
                 + bodySnippetSuffix(body)
                 + sourceSuffix(cfg));
-            return down(checkedAt, latencyMs, "Synthetic SSE probe failed: content-type is not text/event-stream"
-                    + " (actual=" + safeMsg(contentType) + ')' + sourceSuffix(cfg));
+            return down(checkedAt, latencyMs, DETAIL_SSE_CONTENT_TYPE_PREFIX + CONTENT_TYPE_EVENT_STREAM
+                    + DETAIL_SSE_ACTUAL_PREFIX + safeMsg(contentType) + ')' + sourceSuffix(cfg));
         }
 
         String canonicalBody = canonicalizeBodyForValidation(body, 100_000);
         SseValidationResult sse = validateSseBody(canonicalBody);
         if (!sse.ok) {
-            log.warning(() -> "Widget synthetic SSE probe validation failed reason=" + safeMsg(sse.reason)
-                + " latencyMs=" + latencyMs
-                + " url=" + safeUrl(probeUrl)
+            log.warning(() -> LOG_MSG_SSE_VALIDATION_FAILED + safeMsg(sse.reason)
+                + SPACE + LOG_KV_LATENCY_MS + latencyMs
+                + SPACE + LOG_KV_URL + safeUrl(probeUrl)
                 + bodySnippetSuffix(canonicalBody)
                 + sourceSuffix(cfg));
-            return down(checkedAt, latencyMs, "Synthetic SSE probe failed: " + sse.reason + sourceSuffix(cfg));
+            return down(checkedAt, latencyMs, DETAIL_SSE_FAILED_PREFIX + sse.reason + sourceSuffix(cfg));
         }
 
-        log.info(() -> "Widget synthetic SSE probe succeeded status=" + status
-            + " contentType=" + safeMsg(contentType)
-            + " latencyMs=" + latencyMs
-            + " url=" + safeUrl(probeUrl)
+        log.info(() -> LOG_MSG_SSE_SUCCEEDED_STATUS_PREFIX + status
+            + LOG_KV_CONTENT_TYPE + safeMsg(contentType)
+            + SPACE + LOG_KV_LATENCY_MS + latencyMs
+            + SPACE + LOG_KV_URL + safeUrl(probeUrl)
             + sourceSuffix(cfg));
-        return up(checkedAt, latencyMs, "Synthetic SSE probe succeeded" + sourceSuffix(cfg));
+        return up(checkedAt, latencyMs, DETAIL_SSE_SUCCEEDED + sourceSuffix(cfg));
     }
 
     private String effectiveWidgetId(EffectiveConfig cfg) {
@@ -540,57 +719,57 @@ public class WidgetAvailabilityChecker {
     }
 
     private String buildEmbedStreamUrl(String configuredUrl, String widgetId) {
-        String base = configuredUrl == null ? "" : configuredUrl.trim();
-        String wid = widgetId == null ? "" : widgetId.trim();
+        String base = configuredUrl == null ? EMPTY : configuredUrl.trim();
+        String wid = widgetId == null ? EMPTY : widgetId.trim();
 
         if (base.isEmpty()) {
-            throw new IllegalArgumentException("Healthcheck URL is empty");
+            throw new IllegalArgumentException(ERR_HEALTHCHECK_URL_EMPTY);
         }
         if (wid.isEmpty()) {
-            throw new IllegalArgumentException("Widget ID is required for POST synthetic check");
+            throw new IllegalArgumentException(ERR_WIDGET_ID_REQUIRED_POST);
         }
 
         String normalizedBase = stripQueryAndFragment(base);
 
-        if (normalizedBase.contains("/api/embed/") && normalizedBase.endsWith("/stream-chat")) {
+        if (normalizedBase.contains(EMBED_API_PATH) && normalizedBase.endsWith(STREAM_CHAT_PATH)) {
             return normalizedBase;
         }
 
         URI u = URI.create(normalizedBase);
-        String origin = u.getScheme() + "://" + u.getAuthority();
+        String origin = u.getScheme() + URL_SCHEME_SEPARATOR + u.getAuthority();
 
-        return origin + "/api/embed/" + URLEncoder.encode(wid, StandardCharsets.UTF_8) + "/stream-chat";
+        return origin + EMBED_API_PATH + URLEncoder.encode(wid, StandardCharsets.UTF_8) + STREAM_CHAT_PATH;
     }
 
     private String stripQueryAndFragment(String url) {
         URI u = URI.create(url);
-        URI clean = URI.create(u.getScheme() + "://" + u.getAuthority()
-                + (u.getPath() == null ? "" : u.getPath()));
+        URI clean = URI.create(u.getScheme() + URL_SCHEME_SEPARATOR + u.getAuthority()
+                + (u.getPath() == null ? EMPTY : u.getPath()));
         String s = clean.toString();
-        while (s.endsWith("/")) {
-            s = safeSlice(s, 0, s.length() - 1);
+        while (s.endsWith(PATH_SLASH)) {
+            s = TextIoSanitizerUtil.safeSlice(s, 0, s.length() - 1);
         }
         return s;
     }
 
     private String buildSyntheticPayload() {
         JsonObject payload = Json.createObjectBuilder()
-                .add("message", "test")
-                .add("sessionId", UUID.randomUUID().toString())
-                .add("username", "Customer Embedded Widget")
-                .addNull("prompt")
-                .addNull("model")
-                .addNull("temperature")
+                .add(JSON_KEY_MESSAGE, JSON_VALUE_TEST)
+                .add(JSON_KEY_SESSION_ID, UUID.randomUUID().toString())
+                .add(JSON_KEY_USERNAME, JSON_VALUE_CUSTOMER_EMBEDDED_WIDGET)
+                .addNull(JSON_KEY_PROMPT)
+                .addNull(JSON_KEY_MODEL)
+                .addNull(JSON_KEY_TEMPERATURE)
                 .build();
         return payload.toString();
     }
 
     private SseValidationResult validateSseBody(String body) {
         if (body == null || body.isBlank()) {
-            return SseValidationResult.fail("empty response body");
+            return SseValidationResult.fail(MSG_EMPTY_RESPONSE_BODY);
         }
 
-        String[] events = body.split("\\R\\R+");
+        String[] events = body.split(REGEX_DOUBLE_LINEBREAK);
         boolean sawDataEvent = false;
         boolean sawGoodChunk = false;
         boolean sawClose = false;
@@ -601,14 +780,14 @@ public class WidgetAvailabilityChecker {
                 continue;
             }
 
-            String[] lines = event.split("\\R");
+            String[] lines = event.split(REGEX_LINEBREAK);
             for (String line : lines) {
-                String trimmed = line == null ? "" : line.trim();
-                if (!trimmed.startsWith("data:")) {
+                String trimmed = line == null ? EMPTY : line.trim();
+                if (!trimmed.startsWith(SSE_DATA_PREFIX)) {
                     continue;
                 }
 
-                String jsonPart = safeSlice(trimmed, "data:".length(), trimmed.length()).trim();
+                String jsonPart = TextIoSanitizerUtil.safeSlice(trimmed, SSE_DATA_PREFIX.length(), trimmed.length()).trim();
                 if (jsonPart.isEmpty()) {
                     continue;
                 }
@@ -617,10 +796,10 @@ public class WidgetAvailabilityChecker {
                 try (JsonReader reader = Json.createReader(new StringReader(jsonPart))) {
                     JsonObject obj = reader.readObject();
 
-                    String type = stringVal(obj, "type");
-                    boolean error = boolVal(obj, "error", false);
-                    boolean close = boolVal(obj, "close", false);
-                    String text = stringVal(obj, "textResponse");
+                    String type = stringVal(obj, JSON_KEY_TYPE);
+                    boolean error = boolVal(obj, JSON_KEY_ERROR, false);
+                    boolean close = boolVal(obj, JSON_KEY_CLOSE, false);
+                    String text = stringVal(obj, JSON_KEY_TEXT_RESPONSE);
 
                     if (error) {
                         sawErrorTrue = true;
@@ -629,26 +808,26 @@ public class WidgetAvailabilityChecker {
                         sawClose = true;
                     }
 
-                    if ("textResponseChunk".equals(type) && !error && text != null && !text.trim().isEmpty()) {
+                    if (JSON_VALUE_TEXT_RESPONSE_CHUNK.equals(type) && !error && text != null && !text.trim().isEmpty()) {
                         sawGoodChunk = true;
                     }
                 } catch (JsonException | ClassCastException | IllegalStateException ex) {
-                    log.log(Level.FINE, "Ignoring malformed SSE data chunk", ex);
+                    log.log(Level.FINE, MSG_IGNORE_MALFORMED_SSE_CHUNK, ex);
                 }
             }
         }
 
         if (!sawDataEvent) {
-            return SseValidationResult.fail("no SSE data events found");
+            return SseValidationResult.fail(MSG_NO_SSE_DATA_EVENTS);
         }
         if (sawErrorTrue) {
-            return SseValidationResult.fail("SSE returned error=true");
+            return SseValidationResult.fail(MSG_SSE_ERROR_TRUE);
         }
         if (!sawGoodChunk) {
-            return SseValidationResult.fail("no valid non-empty textResponseChunk found");
+            return SseValidationResult.fail(MSG_NO_VALID_TEXT_RESPONSE_CHUNK);
         }
         if (!sawClose) {
-            return SseValidationResult.fail("stream did not include close=true event");
+            return SseValidationResult.fail(MSG_NO_CLOSE_TRUE_EVENT);
         }
 
         return SseValidationResult.ok();
@@ -669,7 +848,7 @@ public class WidgetAvailabilityChecker {
                 WidgetHealthConfig db = store.load();
                 if (db != null && trimToNull(db.getHealthcheckUrl()) != null) {
                     EffectiveConfig cfg = new EffectiveConfig();
-                    cfg.source = "DB";
+                    cfg.source = SOURCE_DB;
                     cfg.enabled = db.isHealthcheckEnabled();
                     cfg.checkIntervalSeconds = normalizeCheckIntervalSeconds(db.getCheckIntervalSeconds());
                     cfg.url = trimToNull(db.getHealthcheckUrl());
@@ -691,60 +870,60 @@ public class WidgetAvailabilityChecker {
                         cfg.apiKeyValue = resolveGlobalServerApiKey();
                     }
                     if (cfg.apiKeyValue != null && cfg.apiKeyHeaderName == null) {
-                        cfg.apiKeyHeaderName = "Authorization";
+                        cfg.apiKeyHeaderName = HEADER_AUTHORIZATION;
                     }
 
-                    log.info(() -> "Widget availability config resolved from DB: method=" + safeMsg(cfg.method)
-                            + " url=" + safeUrl(cfg.url)
-                            + " timeoutMs=" + cfg.timeoutMs
-                            + " enabled=" + cfg.enabled
-                            + " checkIntervalSeconds=" + cfg.checkIntervalSeconds
+                        log.info(() -> LOG_MSG_CONFIG_DB_RESOLVED + safeMsg(cfg.method)
+                            + LOG_KV_URL_SPACED + safeUrl(cfg.url)
+                            + LOG_KV_TIMEOUT_MS + cfg.timeoutMs
+                            + LOG_KV_ENABLED + cfg.enabled
+                            + LOG_KV_CHECK_INTERVAL_SECONDS + cfg.checkIntervalSeconds
                             + sourceSuffix(cfg));
                     return cfg;
                 }
             }
         } catch (java.sql.SQLException | IllegalStateException | IllegalArgumentException e) {
-            log.log(Level.FINE, "DB config unavailable, falling back to env/defaults", e);
+            log.log(Level.FINE, LOG_MSG_DB_CONFIG_UNAVAILABLE, e);
         }
 
         EffectiveConfig envCfg = new EffectiveConfig();
-        envCfg.source = "ENV/DEFAULT";
-        envCfg.enabled = parseBooleanEnv("WIDGET_HEALTHCHECK_ENABLED", DEFAULT_HEALTHCHECK_ENABLED);
+        envCfg.source = SOURCE_ENV_DEFAULT;
+        envCfg.enabled = parseBooleanEnv(ENV_WIDGET_HEALTHCHECK_ENABLED, DEFAULT_HEALTHCHECK_ENABLED);
         envCfg.checkIntervalSeconds = normalizeCheckIntervalSeconds(
-            parseIntEnv("WIDGET_HEALTHCHECK_INTERVAL_SECONDS", DEFAULT_CHECK_INTERVAL_SECONDS));
-        envCfg.url = env("WIDGET_HEALTHCHECK_URL", DEFAULT_URL);
-        envCfg.method = normalizeMethod(env("WIDGET_HEALTHCHECK_METHOD", DEFAULT_METHOD));
-        envCfg.timeoutMs = normalizeTimeout(parseIntEnv("WIDGET_HEALTHCHECK_TIMEOUT_MS", DEFAULT_TIMEOUT_MS));
-        envCfg.expectField = trimToNull(env("WIDGET_HEALTHCHECK_EXPECT_JSON_FIELD", ""));
-        envCfg.expectValue = trimToNull(env("WIDGET_HEALTHCHECK_EXPECT_JSON_VALUE", ""));
-        envCfg.widgetId = trimToNull(env("WIDGET_HEALTHCHECK_WIDGET_ID", ""));
+            parseIntEnv(ENV_WIDGET_HEALTHCHECK_INTERVAL_SECONDS, DEFAULT_CHECK_INTERVAL_SECONDS));
+        envCfg.url = env(ENV_WIDGET_HEALTHCHECK_URL, DEFAULT_URL);
+        envCfg.method = normalizeMethod(env(ENV_WIDGET_HEALTHCHECK_METHOD, DEFAULT_METHOD));
+        envCfg.timeoutMs = normalizeTimeout(parseIntEnv(ENV_WIDGET_HEALTHCHECK_TIMEOUT_MS, DEFAULT_TIMEOUT_MS));
+        envCfg.expectField = trimToNull(env(ENV_WIDGET_HEALTHCHECK_EXPECT_JSON_FIELD, EMPTY));
+        envCfg.expectValue = trimToNull(env(ENV_WIDGET_HEALTHCHECK_EXPECT_JSON_VALUE, EMPTY));
+        envCfg.widgetId = trimToNull(env(ENV_WIDGET_HEALTHCHECK_WIDGET_ID, EMPTY));
 
         // Optional env fallbacks for synthetic probe headers
-        envCfg.requestOrigin = trimToNull(env("WIDGET_HEALTHCHECK_REQUEST_ORIGIN", ""));
-        envCfg.requestReferer = trimToNull(env("WIDGET_HEALTHCHECK_REQUEST_REFERER", ""));
-        envCfg.requestUserAgent = trimToNull(env("WIDGET_HEALTHCHECK_REQUEST_USER_AGENT", ""));
-        envCfg.requestCookie = trimToNull(env("WIDGET_HEALTHCHECK_REQUEST_COOKIE", ""));
-        envCfg.apiKeyHeaderName = trimToNull(env("WIDGET_HEALTHCHECK_API_KEY_HEADER", "Authorization"));
-        envCfg.apiKeyValue = trimToNull(env("WIDGET_HEALTHCHECK_API_KEY", ""));
+        envCfg.requestOrigin = trimToNull(env(ENV_WIDGET_HEALTHCHECK_REQUEST_ORIGIN, EMPTY));
+        envCfg.requestReferer = trimToNull(env(ENV_WIDGET_HEALTHCHECK_REQUEST_REFERER, EMPTY));
+        envCfg.requestUserAgent = trimToNull(env(ENV_WIDGET_HEALTHCHECK_REQUEST_USER_AGENT, EMPTY));
+        envCfg.requestCookie = trimToNull(env(ENV_WIDGET_HEALTHCHECK_REQUEST_COOKIE, EMPTY));
+        envCfg.apiKeyHeaderName = trimToNull(env(ENV_WIDGET_HEALTHCHECK_API_KEY_HEADER, HEADER_AUTHORIZATION));
+        envCfg.apiKeyValue = trimToNull(env(ENV_WIDGET_HEALTHCHECK_API_KEY, EMPTY));
         if (envCfg.apiKeyValue == null) {
             envCfg.apiKeyValue = resolveGlobalServerApiKey();
         }
         if (envCfg.apiKeyValue != null && envCfg.apiKeyHeaderName == null) {
-            envCfg.apiKeyHeaderName = "Authorization";
+            envCfg.apiKeyHeaderName = HEADER_AUTHORIZATION;
         }
 
-        log.info(() -> "Widget availability config resolved from ENV/DEFAULT: method=" + safeMsg(envCfg.method)
-            + " url=" + safeUrl(envCfg.url)
-            + " timeoutMs=" + envCfg.timeoutMs
-            + " enabled=" + envCfg.enabled
-            + " checkIntervalSeconds=" + envCfg.checkIntervalSeconds
+        log.info(() -> LOG_MSG_CONFIG_ENV_RESOLVED + safeMsg(envCfg.method)
+            + LOG_KV_URL_SPACED + safeUrl(envCfg.url)
+            + LOG_KV_TIMEOUT_MS + envCfg.timeoutMs
+            + LOG_KV_ENABLED + envCfg.enabled
+            + LOG_KV_CHECK_INTERVAL_SECONDS + envCfg.checkIntervalSeconds
             + sourceSuffix(envCfg));
         return envCfg;
     }
 
     private String normalizeMethod(String method) {
         String m = method == null ? DEFAULT_METHOD : method.trim().toUpperCase(Locale.ROOT);
-        if (!"GET".equals(m) && !"HEAD".equals(m) && !"POST".equals(m)) {
+        if (!METHOD_GET.equals(m) && !METHOD_HEAD.equals(m) && !METHOD_POST.equals(m)) {
             return DEFAULT_METHOD;
         }
         return m;
@@ -768,7 +947,7 @@ public class WidgetAvailabilityChecker {
     }
 
     private boolean matchesExpectedJson(String body, String expectedField, String expectedValue) {
-        String canonicalBody = canonicalizeInput(body == null ? "" : body, 100_000);
+        String canonicalBody = canonicalizeInput(body == null ? EMPTY : body, 100_000);
         try (JsonReader reader = Json.createReader(new StringReader(canonicalBody))) {
             JsonObject obj = reader.readObject();
             if (!obj.containsKey(expectedField) || obj.isNull(expectedField)) {
@@ -776,11 +955,11 @@ public class WidgetAvailabilityChecker {
             }
             String actual = obj.get(expectedField).toString();
             if (actual.length() >= 2 && actual.charAt(0) == '"' && actual.charAt(actual.length() - 1) == '"') {
-                actual = safeSlice(actual, 1, actual.length() - 1);
+                actual = TextIoSanitizerUtil.safeSlice(actual, 1, actual.length() - 1);
             }
             return expectedValue.equalsIgnoreCase(actual.trim());
         } catch (JsonException | ClassCastException | IllegalStateException e) {
-            log.log(Level.FINE, "Failed to parse expected JSON health payload", e);
+            log.log(Level.FINE, MSG_PARSE_EXPECTED_JSON_FAILED, e);
             return false;
         }
     }
@@ -792,10 +971,10 @@ public class WidgetAvailabilityChecker {
         try {
             return obj.getString(key, null);
         } catch (ClassCastException | IllegalStateException e) {
-            log.log(Level.FINE, "stringVal fallback for key=" + key, e);
+            log.log(Level.FINE, MSG_STRINGVAL_FALLBACK_PREFIX + key, e);
             String v = obj.get(key).toString();
             if (v != null && v.length() >= 2 && v.charAt(0) == '"' && v.charAt(v.length() - 1) == '"') {
-                v = safeSlice(v, 1, v.length() - 1);
+                v = TextIoSanitizerUtil.safeSlice(v, 1, v.length() - 1);
             }
             return v;
         }
@@ -808,8 +987,8 @@ public class WidgetAvailabilityChecker {
         try {
             return obj.getBoolean(key);
         } catch (ClassCastException | IllegalStateException e) {
-            log.log(Level.FINE, "boolVal parse fallback for key=" + key, e);
-            return Boolean.parseBoolean(obj.get(key).toString().replace("\"", "").trim());
+            log.log(Level.FINE, MSG_BOOLVAL_FALLBACK_PREFIX + key, e);
+            return Boolean.parseBoolean(obj.get(key).toString().replace(String.valueOf('"'), EMPTY).trim());
         }
     }
 
@@ -825,7 +1004,7 @@ public class WidgetAvailabilityChecker {
         try {
             return Integer.parseInt(env(key, String.valueOf(defaultValue)).trim());
         } catch (NumberFormatException e) {
-            log.log(Level.FINE, "Invalid integer environment value for " + key, e);
+            log.log(Level.FINE, MSG_INVALID_INTEGER_ENV_PREFIX + key, e);
             return defaultValue;
         }
     }
@@ -845,21 +1024,21 @@ public class WidgetAvailabilityChecker {
     }
 
     private String canonicalizeInput(String value, int maxChars) {
-        String normalized = Normalizer.normalize(value == null ? "" : value, Normalizer.Form.NFKC).trim();
+        String normalized = Normalizer.normalize(value == null ? EMPTY : value, Normalizer.Form.NFKC).trim();
         if (normalized.isBlank()) {
-            return "";
+            return EMPTY;
         }
         if (normalized.length() > maxChars || CONTROL_CHARS.matcher(normalized).find()) {
-            return "";
+            return EMPTY;
         }
         return normalized;
     }
 
     private String canonicalizeBodyForValidation(String body, int maxChars) {
-        String normalized = Normalizer.normalize(body == null ? "" : body, Normalizer.Form.NFKC);
+        String normalized = Normalizer.normalize(body == null ? EMPTY : body, Normalizer.Form.NFKC);
         String withoutNul = normalized.replace('\u0000', ' ');
         if (withoutNul.length() > maxChars) {
-            return safeSlice(withoutNul, 0, maxChars);
+            return TextIoSanitizerUtil.safeSlice(withoutNul, 0, maxChars);
         }
         return withoutNul;
     }
@@ -896,9 +1075,9 @@ public class WidgetAvailabilityChecker {
         }
         try {
             URI uri = URI.create(t);
-            return "https".equalsIgnoreCase(uri.getScheme());
+            return SCHEME_HTTPS.equalsIgnoreCase(uri.getScheme());
         } catch (IllegalArgumentException e) {
-            log.log(Level.FINE, "Unable to parse healthcheck URL for HTTPS check", e);
+            log.log(Level.FINE, MSG_PARSE_HTTPS_URL_FAILURE, e);
             return false;
         }
     }
@@ -910,16 +1089,16 @@ public class WidgetAvailabilityChecker {
                 .timeout(Duration.ofMillis(cfg.timeoutMs));
 
         if (builder == null) {
-            throw new IllegalStateException("Unable to initialize HTTP request builder");
+            throw new IllegalStateException(MSG_INIT_HTTP_REQUEST_BUILDER_FAILURE);
         }
 
         applyApiKeyHeader(builder, cfg, apiKeyHeaderOverride);
 
-        if ("HEAD".equals(cfg.method)) {
-            builder.method("HEAD", HttpRequest.BodyPublishers.noBody());
-        } else if ("POST".equals(cfg.method)) {
+        if (METHOD_HEAD.equals(cfg.method)) {
+            builder.method(METHOD_HEAD, HttpRequest.BodyPublishers.noBody());
+        } else if (METHOD_POST.equals(cfg.method)) {
             builder.POST(HttpRequest.BodyPublishers.noBody());
-            builder.header("Content-Type", "application/json");
+            builder.header(HEADER_CONTENT_TYPE, CONTENT_TYPE_JSON);
         } else {
             builder.GET();
         }
@@ -933,14 +1112,14 @@ public class WidgetAvailabilityChecker {
             return false;
         }
         String configuredHeader = trimToNull(cfg.apiKeyHeaderName);
-        if (configuredHeader != null && !"authorization".equalsIgnoreCase(configuredHeader)) {
+        if (configuredHeader != null && !HEADER_AUTHORIZATION_LOWER.equalsIgnoreCase(configuredHeader)) {
             return false;
         }
         return statusCode == 400 || statusCode == 401 || statusCode == 403;
     }
 
     private String safeMsg(String msg) {
-        return msg == null ? "" : msg;
+        return msg == null ? EMPTY : msg;
     }
 
     private void applyApiKeyHeader(HttpRequest.Builder requestBuilder, EffectiveConfig cfg) {
@@ -953,14 +1132,14 @@ public class WidgetAvailabilityChecker {
         }
         String headerName = headerOverride != null
                 ? headerOverride
-                : (cfg.apiKeyHeaderName == null ? "Authorization" : cfg.apiKeyHeaderName);
+                : (cfg.apiKeyHeaderName == null ? HEADER_AUTHORIZATION : cfg.apiKeyHeaderName);
         String token = normalizeApiTokenForHeader(cfg.apiKeyValue);
         if (token.isEmpty()) {
             return;
         }
         String headerValue;
-        if ("authorization".equalsIgnoreCase(headerName)) {
-            headerValue = "Bearer " + token;
+        if (HEADER_AUTHORIZATION_LOWER.equalsIgnoreCase(headerName)) {
+            headerValue = AUTH_SCHEME_BEARER + token;
         } else {
             headerValue = token;
         }
@@ -970,32 +1149,32 @@ public class WidgetAvailabilityChecker {
     private String stripAuthorizationPrefix(String token) {
         String t = trimToNull(token);
         if (t == null) {
-            return "";
+            return EMPTY;
         }
-        if (t.regionMatches(true, 0, "Authorization:", 0, 14)) {
-            return safeSlice(t, 14, t.length()).trim();
+        if (t.regionMatches(true, 0, AUTHORIZATION_PREFIX, 0, AUTHORIZATION_PREFIX.length())) {
+            return TextIoSanitizerUtil.safeSlice(t, AUTHORIZATION_PREFIX.length(), t.length()).trim();
         }
         return t;
     }
 
     private String normalizeApiTokenForHeader(String rawToken) {
         String token = stripAuthorizationPrefix(rawToken);
-        if (token.regionMatches(true, 0, "Bearer ", 0, 7)) {
-            token = safeSlice(token, 7, token.length()).trim();
+        if (token.regionMatches(true, 0, AUTH_SCHEME_BEARER, 0, AUTH_SCHEME_BEARER.length())) {
+            token = TextIoSanitizerUtil.safeSlice(token, AUTH_SCHEME_BEARER.length(), token.length()).trim();
         }
 
-        token = CONTROL_CHARS.matcher(token).replaceAll("");
+        token = CONTROL_CHARS.matcher(token).replaceAll(EMPTY);
         token = token.trim();
 
         if (token.length() >= 2) {
             char first = token.charAt(0);
             char last = token.charAt(token.length() - 1);
             if ((first == '"' && last == '"') || (first == '\'' && last == '\'')) {
-                token = safeSlice(token, 1, token.length() - 1).trim();
+                token = TextIoSanitizerUtil.safeSlice(token, 1, token.length() - 1).trim();
             }
         }
 
-        return TOKEN_WHITESPACE.matcher(token).replaceAll("");
+        return TOKEN_WHITESPACE.matcher(token).replaceAll(EMPTY);
     }
 
     private String resolveGlobalServerApiKey() {
@@ -1006,25 +1185,25 @@ public class WidgetAvailabilityChecker {
             }
             return trimToNull(config.getApiKey());
         } catch (java.sql.SQLException | IllegalStateException | IllegalArgumentException e) {
-            log.log(Level.FINE, "Unable to resolve global server API key fallback", e);
+            log.log(Level.FINE, MSG_UNABLE_RESOLVE_GLOBAL_API_KEY, e);
             return null;
         }
     }
 
     private String authHeaderSuffix(String wwwAuthenticate) {
         String t = trimToNull(wwwAuthenticate);
-        return t == null ? "" : " [www-authenticate=" + t + ']';
+        return t == null ? EMPTY : SUFFIX_WWW_AUTHENTICATE_PREFIX + t + ']';
     }
 
     private String safeUrl(String url) {
         if (url == null) {
-            return "";
+            return EMPTY;
         }
         try {
             URI uri = URI.create(url);
             StringBuilder sb = new StringBuilder();
             if (uri.getScheme() != null) {
-                sb.append(uri.getScheme()).append("://");
+                sb.append(uri.getScheme()).append(URL_SCHEME_SEPARATOR);
             }
             if (uri.getHost() != null) {
                 sb.append(uri.getHost());
@@ -1039,49 +1218,49 @@ public class WidgetAvailabilityChecker {
             }
             return sb.toString();
         } catch (IllegalArgumentException e) {
-            log.log(Level.FINE, "Unable to parse URL for safe log rendering", e);
+            log.log(Level.FINE, MSG_UNABLE_PARSE_URL_SAFE_LOG, e);
             return safeMsg(url);
         }
     }
 
     private String sourceSuffix(EffectiveConfig cfg) {
-        StringBuilder sb = new StringBuilder(" [source=").append(cfg.source).append(']')
-                .append(" [enabled=").append(cfg.enabled).append(']')
-                .append(" [checkIntervalSeconds=").append(cfg.checkIntervalSeconds).append(']');
+        StringBuilder sb = new StringBuilder(SUFFIX_SOURCE_PREFIX).append(cfg.source).append(']')
+                .append(SUFFIX_ENABLED_PREFIX).append(cfg.enabled).append(']')
+                .append(SUFFIX_INTERVAL_PREFIX).append(cfg.checkIntervalSeconds).append(']');
         if (cfg.widgetId != null) {
-            sb.append(" [widgetId=").append(cfg.widgetId).append(']');
+            sb.append(SUFFIX_WIDGET_ID_PREFIX).append(cfg.widgetId).append(']');
         }
         if (cfg.requestOrigin != null) {
-            sb.append(" [origin-set]");
+            sb.append(SUFFIX_ORIGIN_SET);
         }
         if (cfg.requestReferer != null) {
-            sb.append(" [referer-set]");
+            sb.append(SUFFIX_REFERER_SET);
         }
         if (cfg.requestUserAgent != null) {
-            sb.append(" [ua-set]");
+            sb.append(SUFFIX_UA_SET);
         }
         if (cfg.requestCookie != null) {
-            sb.append(" [cookie-set]");
+            sb.append(SUFFIX_COOKIE_SET);
         }
         if (cfg.apiKeyValue != null) {
-            sb.append(" [api-key-set]");
-            sb.append(" [api-key-header=").append(cfg.apiKeyHeaderName == null ? "Authorization" : cfg.apiKeyHeaderName).append(']');
+            sb.append(SUFFIX_API_KEY_SET);
+            sb.append(SUFFIX_API_KEY_HEADER_PREFIX).append(cfg.apiKeyHeaderName == null ? HEADER_AUTHORIZATION : cfg.apiKeyHeaderName).append(']');
         }
         return sb.toString();
     }
 
     private String bodySnippetSuffix(String body) {
         if (body == null) {
-            return "";
+            return EMPTY;
         }
-        String s = body.replaceAll("\\s+", " ").trim();
+        String s = TOKEN_WHITESPACE.matcher(body).replaceAll(SPACE).trim();
         if (s.isEmpty()) {
-            return "";
+            return EMPTY;
         }
         if (s.length() > 300) {
-            s = safeSlice(s, 0, 300) + "...";
+            s = TextIoSanitizerUtil.safeSlice(s, 0, 300) + ELLIPSIS;
         }
-        return new StringBuilder(" [body=\"")
+        return new StringBuilder(SUFFIX_BODY_PREFIX)
                 .append(s)
                 .append('"')
                 .append(']')
@@ -1090,36 +1269,21 @@ public class WidgetAvailabilityChecker {
 
     private String bodySnippet(String body) {
         if (body == null) {
-            return "";
+            return EMPTY;
         }
-        String s = body.replaceAll("\\s+", " ").trim();
+        String s = TOKEN_WHITESPACE.matcher(body).replaceAll(SPACE).trim();
         if (s.isEmpty()) {
-            return "";
+            return EMPTY;
         }
-        return s.length() > 300 ? safeSlice(s, 0, 300) + "..." : s;
-    }
-
-    private static String safeSlice(String value, int beginIndex, int endIndex) {
-        if (value == null) {
-            return "";
-        }
-        int start = Math.max(0, Math.min(beginIndex, value.length()));
-        int end = Math.max(start, Math.min(endIndex, value.length()));
-        int length = end - start;
-        if (length <= 0) {
-            return "";
-        }
-        char[] copied = new char[length];
-        value.getChars(start, end, copied, 0);
-        return new String(copied);
+        return s.length() > 300 ? TextIoSanitizerUtil.safeSlice(s, 0, 300) + ELLIPSIS : s;
     }
 
     private WidgetAvailabilityResult up(String checkedAt, long latencyMs, String details) {
-        return new WidgetAvailabilityResult(true, "UP", checkedAt, latencyMs, details);
+        return new WidgetAvailabilityResult(true, STATUS_UP, checkedAt, latencyMs, details);
     }
 
     private WidgetAvailabilityResult down(String checkedAt, long latencyMs, String details) {
-        return new WidgetAvailabilityResult(false, "DOWN", checkedAt, latencyMs, details);
+        return new WidgetAvailabilityResult(false, STATUS_DOWN, checkedAt, latencyMs, details);
     }
 
     private WidgetAvailabilityResult disabled(Instant checkedAt, EffectiveConfig cfg) {
@@ -1128,99 +1292,12 @@ public class WidgetAvailabilityChecker {
                 : DateTimeFormatter.ISO_INSTANT.format(checkedAt);
         return new WidgetAvailabilityResult(
             true,
-                "DISABLED",
+                STATUS_DISABLED,
                 checkedAtIso,
                 0L,
-                "Widget healthcheck service is disabled by configuration" + sourceSuffix(cfg));
-    }
-
-    static final class EffectiveConfig {
-
-        String source;
-        boolean enabled;
-        int checkIntervalSeconds;
-        String url;
-        String method;
-        int timeoutMs;
-        String expectField;
-        String expectValue;
-        String widgetId;
-
-        // Optional synthetic probe request headers
-        String requestOrigin;
-        String requestReferer;
-        String requestUserAgent;
-        String requestCookie;
-        String apiKeyHeaderName;
-        String apiKeyValue;
-    }
-
-    static final class CachedHealthResult {
-
-        final String configFingerprint;
-        final Instant checkedAt;
-        final WidgetAvailabilityResult result;
-
-        private CachedHealthResult(String configFingerprint, Instant checkedAt, WidgetAvailabilityResult result) {
-            this.configFingerprint = configFingerprint;
-            this.checkedAt = checkedAt;
-            this.result = result;
-        }
-    }
-
-    static final class SseValidationResult {
-
-        final boolean ok;
-        final String reason;
-
-        private SseValidationResult(boolean ok, String reason) {
-            this.ok = ok;
-            this.reason = reason;
-        }
-
-        private static SseValidationResult ok() {
-            return new SseValidationResult(true, null);
-        }
-
-        private static SseValidationResult fail(String reason) {
-            return new SseValidationResult(false, reason);
-        }
-    }
-
-    public static final class WidgetAvailabilityResult {
-
-        private final boolean available;
-        private final String status;
-        private final String checkedAtIso;
-        private final long latencyMs;
-        private final String details;
-
-        public WidgetAvailabilityResult(boolean available, String status, String checkedAtIso, long latencyMs, String details) {
-            this.available = available;
-            this.status = status;
-            this.checkedAtIso = checkedAtIso;
-            this.latencyMs = latencyMs;
-            this.details = details;
-        }
-
-        public boolean available() {
-            return available;
-        }
-
-        public String status() {
-            return status;
-        }
-
-        public String checkedAtIso() {
-            return checkedAtIso;
-        }
-
-        public long latencyMs() {
-            return latencyMs;
-        }
-
-        public String details() {
-            return details;
-        }
+                MSG_DISABLED_BY_CONFIGURATION + sourceSuffix(cfg));
     }
 }
+
+
+

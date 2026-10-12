@@ -24,6 +24,13 @@ public final class SqlTimeUtil {
     private static final Logger LOG = Logger.getLogger(SqlTimeUtil.class.getCanonicalName());
     private static final int MAX_TIMESTAMP_TEXT_LENGTH = 96;
     private static final Pattern SAFE_TIMESTAMP_TEXT = Pattern.compile("^[0-9TtZz:\\-+\\. ]{1,96}$");
+    private static final String EMPTY = "";
+    private static final String MSG_TIMESTAMP_CHAR_STREAM_READ_FAILED = "Timestamp character-stream read failed for column ";
+    private static final String MSG_TIMESTAMP_CHAR_STREAM_DECODE_FAILED = "Timestamp character-stream decode failed for column ";
+    private static final String MSG_TIMESTAMP_BINARY_READ_FAILED = "Timestamp binary read failed for column ";
+    private static final String UTC_SUFFIX = "Z";
+    private static final String LETTER_T = "T";
+    private static final String SPACE_TEXT = " ";
 
     private static final DateTimeFormatter FLEX_TIMESTAMP_FORMATTER = new DateTimeFormatterBuilder()
             .append(DateTimeFormatter.ISO_LOCAL_DATE_TIME)
@@ -86,25 +93,25 @@ public final class SqlTimeUtil {
             return binaryText;
         }
 
-        return "";
+        return EMPTY;
     }
 
     private static String readRawFromCharacterStream(ResultSet rs, String column) {
         try {
             Reader reader = rs.getCharacterStream(column);
             if (reader == null) {
-                return "";
+                return EMPTY;
             }
             try (Reader closeable = reader) {
                 String raw = TextIoSanitizerUtil.readAtMostChars(closeable, MAX_TIMESTAMP_TEXT_LENGTH);
                 return validateCanonicalizedTimestamp(raw);
             }
         } catch (SQLException ex) {
-            LOG.log(Level.FINER, "Timestamp character-stream read failed for column " + column, ex);
-            return "";
+            LOG.log(Level.FINER, MSG_TIMESTAMP_CHAR_STREAM_READ_FAILED + column, ex);
+            return EMPTY;
         } catch (IOException ex) {
-            LOG.log(Level.FINER, "Timestamp character-stream decode failed for column " + column, ex);
-            return "";
+            LOG.log(Level.FINER, MSG_TIMESTAMP_CHAR_STREAM_DECODE_FAILED + column, ex);
+            return EMPTY;
         }
     }
 
@@ -112,7 +119,7 @@ public final class SqlTimeUtil {
         try {
             byte[] bytes = rs.getBytes(column);
             if (bytes == null) {
-                return "";
+                return EMPTY;
             }
             String raw = new String(bytes, StandardCharsets.UTF_8);
             if (raw.length() > MAX_TIMESTAMP_TEXT_LENGTH) {
@@ -120,14 +127,14 @@ public final class SqlTimeUtil {
             }
             return validateCanonicalizedTimestamp(raw);
         } catch (SQLException ex) {
-            LOG.log(Level.FINER, "Timestamp binary read failed for column " + column, ex);
-            return "";
+            LOG.log(Level.FINER, MSG_TIMESTAMP_BINARY_READ_FAILED + column, ex);
+            return EMPTY;
         }
     }
 
     private static String validateCanonicalizedTimestamp(String value) {
         if (value == null || value.isBlank()) {
-            return "";
+            return EMPTY;
         }
         String canonical = TextIoSanitizerUtil.canonicalize(value);
 
@@ -145,17 +152,17 @@ public final class SqlTimeUtil {
 
     private static String sanitizeTimestampCandidate(String value) {
         if (value == null) {
-            return "";
+            return EMPTY;
         }
         String trimmed = value.trim();
         if (trimmed.isEmpty()) {
-            return "";
+            return EMPTY;
         }
         if (trimmed.length() > MAX_TIMESTAMP_TEXT_LENGTH) {
             trimmed = new String(trimmed.toCharArray(), 0, MAX_TIMESTAMP_TEXT_LENGTH);
         }
         if (!SAFE_TIMESTAMP_TEXT.matcher(trimmed).matches()) {
-            return "";
+            return EMPTY;
         }
         return trimmed;
     }
@@ -196,7 +203,7 @@ public final class SqlTimeUtil {
         }
 
         try {
-            return Timestamp.valueOf(raw.replace('T', ' ').replace("Z", "")); // fallback
+            return Timestamp.valueOf(raw.replace('T', ' ').replace(UTC_SUFFIX, EMPTY)); // fallback
         } catch (IllegalArgumentException ignore) {
             return null;
         }
@@ -204,8 +211,8 @@ public final class SqlTimeUtil {
 
     private static String normalizeTimestampText(String raw) {
         String normalized = raw.trim();
-        if (!normalized.contains("T") && normalized.contains(" ")) {
-            normalized = normalized.replaceFirst(" ", "T");
+        if (!normalized.contains(LETTER_T) && normalized.contains(SPACE_TEXT)) {
+            normalized = normalized.replaceFirst(SPACE_TEXT, LETTER_T);
         }
         return normalized;
     }

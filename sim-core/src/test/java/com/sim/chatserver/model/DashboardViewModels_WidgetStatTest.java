@@ -2,8 +2,8 @@ package com.sim.chatserver.model;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.model.DashboardViewModels.ProgressStat;
-import com.sim.chatserver.model.DashboardViewModels.WidgetStat;
+import com.sim.chatserver.model.ProgressStat;
+import com.sim.chatserver.model.WidgetStat;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -11,7 +11,7 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
 /**
  * Parasoft Jtest UTA: Test class for WidgetStat
  *
- * @see com.sim.chatserver.model.DashboardViewModels.WidgetStat
+ * @see com.sim.chatserver.model.WidgetStat
  * @author bmcmullin
  */
 public class DashboardViewModels_WidgetStatTest
@@ -20,7 +20,7 @@ public class DashboardViewModels_WidgetStatTest
     /**
      * Parasoft Jtest UTA: Test for getCount()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.WidgetStat#getCount()
+     * @see com.sim.chatserver.model.WidgetStat#getCount()
      * @author bmcmullin
      */
     @Test
@@ -50,7 +50,7 @@ public class DashboardViewModels_WidgetStatTest
     /**
      * Parasoft Jtest UTA: Test for getDelta()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.WidgetStat#getDelta()
+     * @see com.sim.chatserver.model.WidgetStat#getDelta()
      * @author bmcmullin
      */
     @Test
@@ -80,7 +80,7 @@ public class DashboardViewModels_WidgetStatTest
     /**
      * Parasoft Jtest UTA: Test for getDirection()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.WidgetStat#getDirection()
+     * @see com.sim.chatserver.model.WidgetStat#getDirection()
      * @author bmcmullin
      */
     @Test
@@ -110,7 +110,7 @@ public class DashboardViewModels_WidgetStatTest
     /**
      * Parasoft Jtest UTA: Test for getLabel()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.WidgetStat#getLabel()
+     * @see com.sim.chatserver.model.WidgetStat#getLabel()
      * @author bmcmullin
      */
     @Test
@@ -140,7 +140,7 @@ public class DashboardViewModels_WidgetStatTest
     /**
      * Parasoft Jtest UTA: Test for getProgression()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.WidgetStat#getProgression()
+     * @see com.sim.chatserver.model.WidgetStat#getProgression()
      * @author bmcmullin
      */
     @Test
@@ -178,7 +178,7 @@ public class DashboardViewModels_WidgetStatTest
     /**
      * Parasoft Jtest UTA: Test for getTodayCount()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.WidgetStat#getTodayCount()
+     * @see com.sim.chatserver.model.WidgetStat#getTodayCount()
      * @author bmcmullin
      */
     @Test
@@ -204,7 +204,7 @@ public class DashboardViewModels_WidgetStatTest
     /**
      * Parasoft Jtest UTA: Test for getWidgetId()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.WidgetStat#getWidgetId()
+     * @see com.sim.chatserver.model.WidgetStat#getWidgetId()
      * @author bmcmullin
      */
     @Test
@@ -234,7 +234,7 @@ public class DashboardViewModels_WidgetStatTest
     /**
      * Parasoft Jtest UTA: Test for getYesterdayCount()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.WidgetStat#getYesterdayCount()
+     * @see com.sim.chatserver.model.WidgetStat#getYesterdayCount()
      * @author bmcmullin
      */
     @Test
@@ -257,3 +257,4 @@ public class DashboardViewModels_WidgetStatTest
 
     }
 }
+

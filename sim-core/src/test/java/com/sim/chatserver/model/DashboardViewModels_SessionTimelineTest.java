@@ -7,14 +7,14 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.model.DashboardViewModels.SessionTimeline;
+import com.sim.chatserver.model.SessionTimeline;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
 /**
  * Parasoft Jtest UTA: Test class for SessionTimeline
  *
- * @see com.sim.chatserver.model.DashboardViewModels.SessionTimeline
+ * @see com.sim.chatserver.model.SessionTimeline
  * @author bmcmullin
  */
 public class DashboardViewModels_SessionTimelineTest
@@ -23,7 +23,7 @@ public class DashboardViewModels_SessionTimelineTest
     /**
      * Parasoft Jtest UTA: Test for getCountsBySession()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.SessionTimeline#getCountsBySession()
+     * @see com.sim.chatserver.model.SessionTimeline#getCountsBySession()
      * @author bmcmullin
      */
     @Test
@@ -57,7 +57,7 @@ public class DashboardViewModels_SessionTimelineTest
     /**
      * Parasoft Jtest UTA: Test for getLabels()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.SessionTimeline#getLabels()
+     * @see com.sim.chatserver.model.SessionTimeline#getLabels()
      * @author bmcmullin
      */
     @Test
@@ -88,3 +88,4 @@ public class DashboardViewModels_SessionTimelineTest
 
     }
 }
+

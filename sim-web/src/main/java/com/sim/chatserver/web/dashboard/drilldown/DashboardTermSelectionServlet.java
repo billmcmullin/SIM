@@ -38,6 +38,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "DashboardTermSelectionServlet", urlPatterns = {"/dashboard/term-review", "/dashboard/term-review/select"})
 public class DashboardTermSelectionServlet extends HttpServlet {
 
@@ -50,9 +53,9 @@ public class DashboardTermSelectionServlet extends HttpServlet {
     private static final String MODE_INCREASE_ONLY = "increaseOnly";
     private static final String MODE_YESTERDAY_ONLY = "yesterdayOnly";
     private static final String OTHER_PARASOFT_LABEL = "Other Parasoft Match";
-    private static final String REVIEW_FORWARD_PATH = "/dashboard/widgets/drilldown/review";
+    private static final String REVIEW_FORWARD_PATH = com.sim.chatserver.util.CommonLiteralConstants.PATH_WIDGET_REVIEW;
 
-    private static final Set<String> SAFE_FORWARD_PATHS = Set.of("/login", REVIEW_FORWARD_PATH);
+    private static final Set<String> SAFE_FORWARD_PATHS = Set.of(com.sim.chatserver.util.CommonLiteralConstants.PATH_LOGIN, REVIEW_FORWARD_PATH);
     private static final Pattern SAFE_TERM_PATH = Pattern.compile("^/dashboard/widgets/drilldown/review\\?selectionId=[A-Za-z0-9%._-]+$");
         private DashboardTermSelectionQueryService queryService() {
             return new DashboardTermSelectionQueryService(dataSourceHolder(), termsStore(), log);
@@ -62,16 +65,16 @@ public class DashboardTermSelectionServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         String contextPath = ServletPathUtil.safeContextPathStrict(req.getServletContext().getContextPath());
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
             if (wantsJson(req)) {
-                writeJsonError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+                writeJsonError(resp, HttpServletResponse.SC_UNAUTHORIZED, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED);
             } else {
-                forwardSafe(req, resp, "/login", HttpServletResponse.SC_UNAUTHORIZED);
+                forwardSafe(req, resp, com.sim.chatserver.util.CommonLiteralConstants.PATH_LOGIN, HttpServletResponse.SC_UNAUTHORIZED);
             }
             return;
         }
 
-        String rawTerm = ServletRequestParamUtil.firstParam(req, "term", 256, true, true);
+        String rawTerm = ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.FIELD_TERM, 256, true, true);
         if (rawTerm == null || rawTerm.isBlank()) {
             if (wantsJson(req)) {
                 writeJsonError(resp, HttpServletResponse.SC_BAD_REQUEST, "term parameter is required.");
@@ -82,7 +85,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
         }
 
         String normalizedTerm = normalize(rawTerm);
-        String mode = normalize(ServletRequestParamUtil.firstParam(req, "mode", 64, true, true));
+        String mode = normalize(ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.FIELD_MODE, 64, true, true));
         boolean increaseOnly = MODE_INCREASE_ONLY.equalsIgnoreCase(mode);
         boolean yesterdayOnly = MODE_YESTERDAY_ONLY.equalsIgnoreCase(mode);
 
@@ -218,8 +221,8 @@ public class DashboardTermSelectionServlet extends HttpServlet {
 
         if (wantsJson(req)) {
             JsonObject body = Json.createObjectBuilder()
-                    .add("status", "ok")
-                    .add("selectionId", selectionId)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.PARAM_SELECTION_ID, selectionId)
                     .add("reviewUrl", contextPath + reviewPath)
                     .build();
             writeJson(resp, HttpServletResponse.SC_OK, body);
@@ -230,7 +233,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
             sendErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST);
             return;
         }
-        req.setAttribute("selectionId", selectionId);
+        req.setAttribute(com.sim.chatserver.util.CommonLiteralConstants.PARAM_SELECTION_ID, selectionId);
         forwardSafe(req, resp, reviewForwardPath, HttpServletResponse.SC_BAD_REQUEST);
     }
 
@@ -244,8 +247,8 @@ public class DashboardTermSelectionServlet extends HttpServlet {
 
     private void writeJsonError(HttpServletResponse resp, int status, String message) {
         JsonObject body = Json.createObjectBuilder()
-                .add("status", "error")
-                .add("message", message == null ? "" : message)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, message == null ? "" : message)
                 .build();
         writeJson(resp, status, body);
     }
@@ -315,7 +318,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
         }
         try {
             RequestDispatcher dispatcher = null;
-            if ("/login".equals(path)) {
+            if (com.sim.chatserver.util.CommonLiteralConstants.PATH_LOGIN.equals(path)) {
                 dispatcher = req.getRequestDispatcher("/login");
             } else if (REVIEW_FORWARD_PATH.equals(path)) {
                 dispatcher = req.getRequestDispatcher(REVIEW_FORWARD_PATH);
@@ -336,7 +339,7 @@ public class DashboardTermSelectionServlet extends HttpServlet {
             return false;
         }
         String p = path.trim();
-        if (p.isEmpty() || p.charAt(0) != '/' || p.contains("://") || p.contains(System.lineSeparator()) || p.contains(System.lineSeparator())) {
+        if (p.isEmpty() || p.charAt(0) != '/' || p.contains(com.sim.chatserver.util.CommonLiteralConstants.SCHEME_SEPARATOR) || p.contains(System.lineSeparator()) || p.contains(System.lineSeparator())) {
             return false;
         }
         if (SAFE_FORWARD_PATHS.contains(p)) {
@@ -365,4 +368,9 @@ public class DashboardTermSelectionServlet extends HttpServlet {
             sendErrorSafe(resp, status);
         }
     }
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
+
 }

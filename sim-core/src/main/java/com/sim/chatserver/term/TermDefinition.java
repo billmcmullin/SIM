@@ -2,6 +2,7 @@ package com.sim.chatserver.term;
 
 public class TermDefinition {
 
+
     private final Long id;
     private final String name;
     private final String description;
@@ -9,12 +10,10 @@ public class TermDefinition {
     private final String matchType;
     private final boolean systemFlag;
 
-    @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }

@@ -2,7 +2,7 @@ package com.sim.chatserver.service.translation;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.service.translation.TranslationService.TranslationResult;
+import com.sim.chatserver.service.translation.TranslationResult;
 /**
  * Parasoft Jtest UTA: Test class for DefaultTranslationService
  *

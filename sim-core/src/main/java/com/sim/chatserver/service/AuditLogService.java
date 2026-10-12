@@ -3,6 +3,8 @@ package com.sim.chatserver.service;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.sim.chatserver.util.CommonLiteralConstants;
+
 /**
  * Centralized, safe audit logging for manual-message workflow.
  *
@@ -10,17 +12,26 @@ import java.util.logging.Logger;
  */
 public class AuditLogService {
 
+    private static final String EMPTY = "";
+    private static final String VALUE_UNKNOWN = CommonLiteralConstants.MARKER_UNKNOWN;
+    private static final String LOG_MANUAL_MESSAGE_REQUEST =
+        "manual-message requestId={0} user={1} ip={2} mode={3} reset={4} retried={5} selected={6} sampled={7} msgChars={8} ctxChars={9} attach={10} status={11} latencyMs={12} ua=\"{13}\" origin=\"{14}\" referer=\"{15}\"";
+    private static final String LOG_MANUAL_MESSAGE_VALIDATION_FAILURE =
+        "manual-message validation-failure requestId={0} user={1} ip={2} reason=\"{3}\"";
+    private static final String LOG_MANUAL_MESSAGE_UPSTREAM_FAILURE =
+        "manual-message upstream-failure requestId={0} user={1} ip={2} status={3} summary=\"{4}\"";
+    private static final String ELLIPSIS = CommonLiteralConstants.ELLIPSIS;
+
+
     private static final int MAX_FIELD_CHARS = 180;
     private static final int MAX_REASON_CHARS = 300;
 
     private final Logger ownerLogger;
 
-    @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
@@ -42,7 +53,7 @@ public class AuditLogService {
 
         ownerLogger.log(
             level,
-            "manual-message requestId={0} user={1} ip={2} mode={3} reset={4} retried={5} selected={6} sampled={7} msgChars={8} ctxChars={9} attach={10} status={11} latencyMs={12} ua=\"{13}\" origin=\"{14}\" referer=\"{15}\"",
+            LOG_MANUAL_MESSAGE_REQUEST,
             new Object[]{
                 safe(event.requestId()),
                 safe(event.username()),
@@ -67,7 +78,7 @@ public class AuditLogService {
     final void logValidationFailure(String requestId, String username, String clientIp, String reason) {
         ownerLogger.log(
             Level.WARNING,
-            "manual-message validation-failure requestId={0} user={1} ip={2} reason=\"{3}\"",
+            LOG_MANUAL_MESSAGE_VALIDATION_FAILURE,
             new Object[]{
                 safe(requestId),
                 safe(username),
@@ -81,7 +92,7 @@ public class AuditLogService {
         Level level = toLevel(statusCode);
         ownerLogger.log(
             level,
-            "manual-message upstream-failure requestId={0} user={1} ip={2} status={3} summary=\"{4}\"",
+            LOG_MANUAL_MESSAGE_UPSTREAM_FAILURE,
             new Object[]{
                 safe(requestId),
                 safe(username),
@@ -107,7 +118,7 @@ public class AuditLogService {
     }
 
     private String safe(String value) {
-        return (value == null || value.isBlank()) ? "(unknown)" : value;
+        return (value == null || value.isBlank()) ? VALUE_UNKNOWN : value;
     }
 
     /**
@@ -115,7 +126,7 @@ public class AuditLogService {
      */
     private String scrub(String value) {
         if (value == null) {
-            return "";
+            return EMPTY;
         }
         StringBuilder out = new StringBuilder(value.length());
         for (int i = 0; i < value.length(); i++) {
@@ -138,11 +149,15 @@ public class AuditLogService {
 
     private String truncate(String value, int maxChars) {
         if (value == null || maxChars <= 0) {
-            return "";
+            return EMPTY;
         }
-        return value.length() <= maxChars
-                ? value
-                : new String(value.toCharArray(), 0, Math.max(0, maxChars - 1)) + "Ã¢â‚¬Â¦";
+        if (value.length() <= maxChars) {
+            return value;
+        }
+        if (maxChars <= ELLIPSIS.length()) {
+            return new String(ELLIPSIS.toCharArray(), 0, Math.max(0, maxChars));
+        }
+        return new String(value.toCharArray(), 0, maxChars - ELLIPSIS.length()) + ELLIPSIS;
     }
 
     public record ManualMessageAuditEvent(

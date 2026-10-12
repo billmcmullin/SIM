@@ -10,6 +10,7 @@ import java.util.Objects;
 import java.util.Set;
 
 import com.sim.chatserver.model.SelectedEntry;
+import com.sim.chatserver.util.CommonLiteralConstants;
 
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
@@ -22,6 +23,42 @@ import jakarta.json.JsonObject;
  * (for this batch)
  */
 public final class MapBatchRequest {
+
+    private static final String EMPTY = "";
+    private static final String DEFAULT_MODE = CommonLiteralConstants.DEFAULT_MODE_CHAT;
+    private static final String BATCH_ID_PREFIX = "batch-";
+    private static final String FIELD_REQUEST_ID = CommonLiteralConstants.FIELD_REQUEST_ID;
+    private static final String FIELD_TOTAL_SELECTED = CommonLiteralConstants.FIELD_TOTAL_SELECTED;
+    private static final String FIELD_TOTAL_BATCHES = CommonLiteralConstants.FIELD_TOTAL_BATCHES;
+    private static final String FIELD_BATCH_INDEX = "batchIndex";
+    private static final String FIELD_BATCH_ID = "batchId";
+    private static final String FIELD_BATCH_SIZE = "batchSize";
+    private static final String FIELD_BATCH_CHAT_IDS = "batchChatIds";
+    private static final String FIELD_EXPECTED_CHAT_IDS = "expectedChatIds";
+    private static final String FIELD_ALL_SELECTED_CHAT_IDS = "authoritativeAllSelectedChatIds";
+    private static final String FIELD_TARGET_URL = "targetUrl";
+    private static final String FIELD_MODE = CommonLiteralConstants.FIELD_MODE;
+    private static final String FIELD_SESSION_ID = CommonLiteralConstants.FIELD_SESSION_ID;
+    private static final String FIELD_RESET = com.sim.chatserver.util.CommonLiteralConstants.VALUE_RESET;
+    private static final String FIELD_ENTRIES = "entries";
+    private static final String FIELD_CONTROLLED_PROMPT = "controlledPrompt";
+    private static final String ERR_BATCH_INDEX_GT_TOTAL = "batchIndex cannot be greater than totalBatches";
+    private static final String ERR_EXPECTED_SUBSET_PREFIX = "expectedChatIds must be subset of chat IDs present in entries: ";
+    private static final String ERR_ALL_IDS_GT_TOTAL = "authoritativeAllSelectedChatIds.size cannot exceed totalSelected";
+    private static final String ERR_REQUIRED_SUFFIX = CommonLiteralConstants.ERR_REQUIRED_SUFFIX;
+    private static final String ERR_POSITIVE_SUFFIX = " must be > 0";
+    private static final String ERR_NON_NEGATIVE_SUFFIX = " must be >= 0";
+    private static final String TOSTRING_PREFIX = "MapBatchRequest{";
+    private static final String TOSTRING_REQUEST_ID_PREFIX = CommonLiteralConstants.TOSTRING_REQUEST_ID_PREFIX;
+    private static final String TOSTRING_TOTAL_SELECTED_PREFIX = ", totalSelected=";
+    private static final String TOSTRING_TOTAL_BATCHES_PREFIX = CommonLiteralConstants.TOSTRING_TOTAL_BATCHES_PREFIX;
+    private static final String TOSTRING_BATCH_INDEX_PREFIX = ", batchIndex=";
+    private static final String TOSTRING_BATCH_ID_PREFIX = ", batchId='";
+    private static final String TOSTRING_BATCH_SIZE_PREFIX = ", batchSize=";
+    private static final String TOSTRING_EXPECTED_IDS_PREFIX = ", expectedChatIds=";
+    private static final String TOSTRING_ALL_IDS_PREFIX = ", authoritativeAllSelectedChatIds=";
+    private static final String TOSTRING_MODE_PREFIX = ", mode='";
+    private static final String TOSTRING_RESET_PREFIX = ", reset=";
 
     private final String requestId;
     private final int totalSelected;
@@ -40,24 +77,24 @@ public final class MapBatchRequest {
     private final List<String> authoritativeAllSelectedChatIds;
     private final List<String> expectedChatIds;
 
-    private MapBatchRequest(Builder b) {
-        this.requestId = nonBlank(b.requestId, "requestId");
-        this.totalSelected = positiveOrZero(b.totalSelected, "totalSelected");
-        this.totalBatches = positive(b.totalBatches, "totalBatches");
-        this.batchIndex = positive(b.batchIndex, "batchIndex");
+    MapBatchRequest(MapBatchRequestBuilder b) {
+        this.requestId = nonBlank(b.requestId, FIELD_REQUEST_ID);
+        this.totalSelected = positiveOrZero(b.totalSelected, FIELD_TOTAL_SELECTED);
+        this.totalBatches = positive(b.totalBatches, FIELD_TOTAL_BATCHES);
+        this.batchIndex = positive(b.batchIndex, FIELD_BATCH_INDEX);
 
         if (this.batchIndex > this.totalBatches) {
-            throw new IllegalArgumentException("batchIndex cannot be greater than totalBatches");
+            throw new IllegalArgumentException(ERR_BATCH_INDEX_GT_TOTAL);
         }
 
-        this.batchId = defaultIfBlank(b.batchId, "batch-" + this.batchIndex);
-        this.entries = Collections.unmodifiableList(new ArrayList<>(Objects.requireNonNull(b.entries, "entries")));
+        this.batchId = defaultIfBlank(b.batchId, BATCH_ID_PREFIX + this.batchIndex);
+        this.entries = Collections.unmodifiableList(new ArrayList<>(Objects.requireNonNull(b.entries, FIELD_ENTRIES)));
 
-        this.targetUrl = nonBlank(b.targetUrl, "targetUrl");
-        this.mode = defaultIfBlank(b.mode, "chat");
-        this.sessionId = defaultIfNull(b.sessionId, "");
+        this.targetUrl = nonBlank(b.targetUrl, FIELD_TARGET_URL);
+        this.mode = defaultIfBlank(b.mode, DEFAULT_MODE);
+        this.sessionId = defaultIfNull(b.sessionId, EMPTY);
         this.reset = b.reset;
-        this.controlledPrompt = nonBlank(b.controlledPrompt, "controlledPrompt");
+        this.controlledPrompt = nonBlank(b.controlledPrompt, FIELD_CONTROLLED_PROMPT);
 
         // authoritative ids across all selected entries
         this.authoritativeAllSelectedChatIds = normalizeDistinctIds(
@@ -73,8 +110,8 @@ public final class MapBatchRequest {
         validateCoverageMetadata();
     }
 
-    public static Builder builder() {
-        return new Builder();
+    public static MapBatchRequestBuilder builder() {
+        return new MapBatchRequestBuilder();
     }
 
     public String getRequestId() {
@@ -157,128 +194,36 @@ public final class MapBatchRequest {
         }
 
         return Json.createObjectBuilder()
-                .add("requestId", requestId)
-                .add("totalSelected", totalSelected)
-                .add("totalBatches", totalBatches)
-                .add("batchIndex", batchIndex)
-                .add("batchId", batchId)
-                .add("batchSize", batchSize())
-                .add("batchChatIds", ids)
-                .add("expectedChatIds", ids)
-                .add("authoritativeAllSelectedChatIds", allIds)
-                .add("targetUrl", targetUrl)
-                .add("mode", mode)
-                .add("sessionId", sessionId == null ? "" : sessionId)
-                .add("reset", reset)
+            .add(FIELD_REQUEST_ID, requestId)
+            .add(FIELD_TOTAL_SELECTED, totalSelected)
+            .add(FIELD_TOTAL_BATCHES, totalBatches)
+            .add(FIELD_BATCH_INDEX, batchIndex)
+            .add(FIELD_BATCH_ID, batchId)
+            .add(FIELD_BATCH_SIZE, batchSize())
+            .add(FIELD_BATCH_CHAT_IDS, ids)
+            .add(FIELD_EXPECTED_CHAT_IDS, ids)
+            .add(FIELD_ALL_SELECTED_CHAT_IDS, allIds)
+            .add(FIELD_TARGET_URL, targetUrl)
+            .add(FIELD_MODE, mode)
+            .add(FIELD_SESSION_ID, sessionId == null ? EMPTY : sessionId)
+            .add(FIELD_RESET, reset)
                 .build();
     }
 
     @Override
     public String toString() {
-        return "MapBatchRequest{"
-                + "requestId='" + requestId + '\''
-                + ", totalSelected=" + totalSelected
-                + ", totalBatches=" + totalBatches
-                + ", batchIndex=" + batchIndex
-                + ", batchId='" + batchId + '\''
-                + ", batchSize=" + batchSize()
-                + ", expectedChatIds=" + expectedChatIds.size()
-                + ", authoritativeAllSelectedChatIds=" + authoritativeAllSelectedChatIds.size()
-                + ", mode='" + mode + '\''
-                + ", reset=" + reset
+        return TOSTRING_PREFIX
+            + TOSTRING_REQUEST_ID_PREFIX + requestId + '\''
+            + TOSTRING_TOTAL_SELECTED_PREFIX + totalSelected
+            + TOSTRING_TOTAL_BATCHES_PREFIX + totalBatches
+            + TOSTRING_BATCH_INDEX_PREFIX + batchIndex
+            + TOSTRING_BATCH_ID_PREFIX + batchId + '\''
+            + TOSTRING_BATCH_SIZE_PREFIX + batchSize()
+            + TOSTRING_EXPECTED_IDS_PREFIX + expectedChatIds.size()
+            + TOSTRING_ALL_IDS_PREFIX + authoritativeAllSelectedChatIds.size()
+            + TOSTRING_MODE_PREFIX + mode + '\''
+            + TOSTRING_RESET_PREFIX + reset
                 + '}';
-    }
-
-    public static final class Builder {
-
-        private String requestId;
-        private int totalSelected;
-        private int totalBatches;
-        private int batchIndex;
-        private String batchId;
-        private List<SelectedEntry> entries = new ArrayList<>();
-
-        private String targetUrl;
-        private String mode;
-        private String sessionId;
-        private boolean reset;
-        private String controlledPrompt;
-
-        private List<String> authoritativeAllSelectedChatIds = new ArrayList<>();
-        private List<String> expectedChatIds = new ArrayList<>();
-
-        private Builder() {
-        }
-
-        public Builder requestId(String requestId) {
-            this.requestId = requestId;
-            return this;
-        }
-
-        public Builder totalSelected(int totalSelected) {
-            this.totalSelected = totalSelected;
-            return this;
-        }
-
-        public Builder totalBatches(int totalBatches) {
-            this.totalBatches = totalBatches;
-            return this;
-        }
-
-        public Builder batchIndex(int batchIndex) {
-            this.batchIndex = batchIndex;
-            return this;
-        }
-
-        public Builder batchId(String batchId) {
-            this.batchId = batchId;
-            return this;
-        }
-
-        public Builder entries(List<SelectedEntry> entries) {
-            this.entries = entries == null ? new ArrayList<>() : entries;
-            return this;
-        }
-
-        public Builder targetUrl(String targetUrl) {
-            this.targetUrl = targetUrl;
-            return this;
-        }
-
-        public Builder mode(String mode) {
-            this.mode = mode;
-            return this;
-        }
-
-        public Builder sessionId(String sessionId) {
-            this.sessionId = sessionId;
-            return this;
-        }
-
-        public Builder reset(boolean reset) {
-            this.reset = reset;
-            return this;
-        }
-
-        public Builder controlledPrompt(String controlledPrompt) {
-            this.controlledPrompt = controlledPrompt;
-            return this;
-        }
-
-        public Builder authoritativeAllSelectedChatIds(List<String> authoritativeAllSelectedChatIds) {
-            this.authoritativeAllSelectedChatIds
-                    = authoritativeAllSelectedChatIds == null ? new ArrayList<>() : authoritativeAllSelectedChatIds;
-            return this;
-        }
-
-        public Builder expectedChatIds(List<String> expectedChatIds) {
-            this.expectedChatIds = expectedChatIds == null ? new ArrayList<>() : expectedChatIds;
-            return this;
-        }
-
-        public MapBatchRequest build() {
-            return new MapBatchRequest(this);
-        }
     }
 
     private void validateCoverageMetadata() {
@@ -287,14 +232,14 @@ public final class MapBatchRequest {
             Set<String> batchDerived = new LinkedHashSet<>(normalizeDistinctIds(rawBatchChatIdsFromEntries(entries)));
             for (String id : expectedChatIds) {
                 if (!batchDerived.contains(id)) {
-                    throw new IllegalArgumentException("expectedChatIds must be subset of chat IDs present in entries: " + id);
+                    throw new IllegalArgumentException(ERR_EXPECTED_SUBSET_PREFIX + id);
                 }
             }
         }
 
         if (!authoritativeAllSelectedChatIds.isEmpty() && totalSelected > 0
                 && authoritativeAllSelectedChatIds.size() > totalSelected) {
-            throw new IllegalArgumentException("authoritativeAllSelectedChatIds.size cannot exceed totalSelected");
+            throw new IllegalArgumentException(ERR_ALL_IDS_GT_TOTAL);
         }
     }
 
@@ -330,21 +275,21 @@ public final class MapBatchRequest {
 
     private static int positive(int value, String field) {
         if (value <= 0) {
-            throw new IllegalArgumentException(field + " must be > 0");
+            throw new IllegalArgumentException(field + ERR_POSITIVE_SUFFIX);
         }
         return value;
     }
 
     private static int positiveOrZero(int value, String field) {
         if (value < 0) {
-            throw new IllegalArgumentException(field + " must be >= 0");
+            throw new IllegalArgumentException(field + ERR_NON_NEGATIVE_SUFFIX);
         }
         return value;
     }
 
     private static String nonBlank(String value, String field) {
         if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(field + " is required");
+            throw new IllegalArgumentException(field + ERR_REQUIRED_SUFFIX);
         }
         return value;
     }
@@ -356,4 +301,6 @@ public final class MapBatchRequest {
     private static String defaultIfNull(String value, String fallback) {
         return value == null ? fallback : value;
     }
+
 }
+

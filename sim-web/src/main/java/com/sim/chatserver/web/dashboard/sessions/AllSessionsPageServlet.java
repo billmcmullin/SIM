@@ -16,8 +16,11 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 /**
- * Serves the /dashboard/sessions page which renders the ÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã¢â‚¬Å“All SessionsÃƒÆ’Ã†â€™Ãƒâ€ Ã¢â‚¬â„¢ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€¦Ã‚Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã†â€™ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â SPA. The
+ * Serves the /dashboard/sessions page which renders the "All Sessions" SPA. The
  * initial script tag injects the context path (for AJAX), default pagination
  * parameters, and initial filters.
  */
@@ -32,13 +35,13 @@ public class AllSessionsPageServlet extends HttpServlet {
         try {
         // require authentication
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
             safeForwardToLogin(req, resp);
             return;
         }
 
         String contextPath = req.getContextPath();
-        String user = String.valueOf(session.getAttribute("user"));
+        String user = String.valueOf(session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER));
 
         // New "identity" filter:
         // all | name | email | either | both
@@ -48,7 +51,7 @@ public class AllSessionsPageServlet extends HttpServlet {
                     all: true,
                     page: 1,
                     limit: 10,
-                    activity: "all",
+                    activity: com.sim.chatserver.util.CommonLiteralConstants.VALUE_ALL,
                     identity: "either"
                 };
                 """.formatted(toJsonString(contextPath));
@@ -60,25 +63,25 @@ public class AllSessionsPageServlet extends HttpServlet {
         }
 
         String rendered = template
-                .replace("${contextPath}", escapeHtml(contextPath))
-                .replace("${user}", escapeHtml(user))
+                .replace(com.sim.chatserver.util.CommonLiteralConstants.TEMPLATE_CONTEXT_PATH, escapeHtml(contextPath))
+                .replace(com.sim.chatserver.util.CommonLiteralConstants.TEMPLATE_USER, escapeHtml(user))
                 .replace("${initialScript}", initialScript);
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType("text/html; charset=UTF-8");
+        resp.setContentType(com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_HTML_UTF8_SPACED);
         try (PrintWriter writer = resp.getWriter()) {
             writer.print(rendered);
         }
     
         } catch (IOException | IllegalArgumentException | IllegalStateException e) {
-            java.util.logging.Logger.getLogger("OWASP")
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                    .log(java.util.logging.Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -98,7 +101,7 @@ public class AllSessionsPageServlet extends HttpServlet {
                 return builder.toString();
             }
         } catch (IOException e) {
-            java.util.logging.Logger.getLogger("OWASP")
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
                     .log(java.util.logging.Level.WARNING, "Unable to load template: " + path, e);
             return null;
         }
@@ -112,11 +115,11 @@ public class AllSessionsPageServlet extends HttpServlet {
         for (int i = 0; i < input.length(); i++) {
             char ch = input.charAt(i);
             switch (ch) {
-                case '&' -> out.append("&amp;");
-                case '<' -> out.append("&lt;");
-                case '>' -> out.append("&gt;");
-                case '"' -> out.append("&quot;");
-                case '\'' -> out.append("&#39;");
+                case '&' -> out.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_AMP);
+                case '<' -> out.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_LT);
+                case '>' -> out.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_GT);
+                case '"' -> out.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_QUOT);
+                case '\'' -> out.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_APOS);
                 default -> out.append(ch);
             }
         }
@@ -125,16 +128,16 @@ public class AllSessionsPageServlet extends HttpServlet {
 
     private String toJsonString(String value) {
         if (value == null) {
-            return "\"\"";
+            return com.sim.chatserver.util.CommonLiteralConstants.DOUBLE_QUOTE_ESCAPED;
         }
         StringBuilder escaped = new StringBuilder(value.length() + 8);
         for (int i = 0; i < value.length(); i++) {
             char ch = value.charAt(i);
             switch (ch) {
-                case '\\' -> escaped.append("\\\\");
-                case '"' -> escaped.append("\\\"");
-                case com.sim.chatserver.util.LineSeparatorUtil.CARRIAGE_RETURN -> escaped.append("\\r");
-                case com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED -> escaped.append("\\n");
+                case '\\' -> escaped.append(com.sim.chatserver.util.CommonLiteralConstants.JSON_ESCAPE_BACKSLASH_TO);
+                case '"' -> escaped.append(com.sim.chatserver.util.CommonLiteralConstants.JSON_ESCAPE_QUOTE_TO);
+                case com.sim.chatserver.util.LineSeparatorUtil.CARRIAGE_RETURN -> escaped.append(com.sim.chatserver.util.CommonLiteralConstants.ESCAPED_CARRIAGE_RETURN);
+                case com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED -> escaped.append(com.sim.chatserver.util.CommonLiteralConstants.JSON_ESCAPE_NEWLINE_TO);
                 default -> escaped.append(ch);
             }
         }
@@ -142,15 +145,11 @@ public class AllSessionsPageServlet extends HttpServlet {
     }
 
     private void safeForwardToLogin(HttpServletRequest req, HttpServletResponse resp) {
-        try {
-            req.getRequestDispatcher("/login").forward(req, resp);
-        } catch (IOException | ServletException ex) {
-            log.log(Level.WARNING, "Unable to forward unauthenticated user to login", ex);
-            try {
-                resp.sendError(HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
-            } catch (IOException ioe) {
-                log.log(Level.FINE, "Unable to send authentication error", ioe);
-            }
-        }
+        com.sim.chatserver.web.util.ServletPathUtil.forwardToLogin(req, resp, log);
     }
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
+
 }

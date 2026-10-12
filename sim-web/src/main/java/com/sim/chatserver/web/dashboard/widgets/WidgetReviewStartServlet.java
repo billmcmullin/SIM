@@ -37,98 +37,11 @@ public class WidgetReviewStartServlet extends HttpServlet {
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
     private static final SearchTerms EMPTY_SEARCH_TERMS = new SearchTerms("", "", "");
 
-    public static final class Selection {
-
-        public final String widgetId;
-        public final String displayName;
-        public final String backUrl;
-        public final List<String> chatIds;
-        public final SearchTerms searchTerms;
-        public final List<TermChatSnapshot> snapshots;
-        public final String date; // optional YYYY-MM-DD scope
-
-        private Selection(String widgetId,
-                String displayName,
-                String backUrl,
-                List<String> chatIds,
-                List<TermChatSnapshot> snapshots,
-                SearchTerms searchTerms,
-                String date) {
-            this.widgetId = widgetId;
-            this.displayName = displayName;
-            this.backUrl = backUrl;
-            this.chatIds = chatIds;
-            this.searchTerms = searchTerms;
-            this.snapshots = snapshots;
-            this.date = date;
-        }
-
-        private static Selection fromWidget(String widgetId, List<String> chatIds, SearchTerms searchTerms, String date) {
-            return new Selection(
-                    safe(widgetId),
-                    safe(widgetId),
-                    null,
-                    new ArrayList<>(chatIds),
-                    null,
-                    searchTerms == null ? EMPTY_SEARCH_TERMS : searchTerms,
-                    normalizeDate(date)
-            );
-        }
-
-        private static Selection fromWidget(String widgetId, List<String> chatIds, SearchTerms searchTerms) {
-            return fromWidget(widgetId, chatIds, searchTerms, null);
-        }
-
-        private static Selection fromTermSnapshots(String displayName, String backUrl, List<TermChatSnapshot> snapshots) {
-            List<String> chatIds = snapshots.stream()
-                    .map(TermChatSnapshot::getChatId)
-                    .filter(v -> v != null && !v.isBlank())
-                    .collect(Collectors.toCollection(LinkedHashSet::new))
-                    .stream()
-                    .toList();
-
-            return new Selection(
-                    safe(displayName),
-                    safe(displayName),
-                    safe(backUrl),
-                    chatIds,
-                    new ArrayList<>(snapshots),
-                    EMPTY_SEARCH_TERMS,
-                    null
-            );
-        }
-
-        public boolean hasSnapshots() {
-            return snapshots != null && !snapshots.isEmpty();
-        }
-
-        public String getBackUrl() {
-            return backUrl;
-        }
-
-        public String getDate() {
-            return date;
-        }
-    }
-
-    public static final class SearchTerms {
-
-        public final String global;
-        public final String prompt;
-        public final String response;
-
-        private SearchTerms(String global, String prompt, String response) {
-            this.global = safe(global);
-            this.prompt = safe(prompt);
-            this.response = safe(response);
-        }
-    }
-
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.", null);
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+            writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED, null);
             return;
         }
 
@@ -150,8 +63,8 @@ public class WidgetReviewStartServlet extends HttpServlet {
             return;
         }
 
-        String widgetId = safe(payload.getString("widgetId", ""));
-        var chatArray = payload.getJsonArray("selectedChatIds");
+        String widgetId = safe(payload.getString(com.sim.chatserver.util.CommonLiteralConstants.KEY_WIDGET_ID, ""));
+        var chatArray = payload.getJsonArray(com.sim.chatserver.util.CommonLiteralConstants.KEY_SELECTED_CHAT_IDS);
         if (widgetId.isBlank() || chatArray == null || chatArray.isEmpty()) {
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "widgetId and selections required.", null);
             return;
@@ -174,9 +87,9 @@ public class WidgetReviewStartServlet extends HttpServlet {
 
         JsonObject search = payload.getJsonObject("searchTerms");
         String global = search == null ? "" : search.getString("global", "");
-        String prompt = search == null ? "" : search.getString("prompt", "");
-        String responseText = search == null ? "" : search.getString("response", "");
-        String date = payload.getString("date", "");
+        String prompt = search == null ? "" : search.getString(com.sim.chatserver.util.CommonLiteralConstants.FIELD_PROMPT, "");
+        String responseText = search == null ? "" : search.getString(com.sim.chatserver.util.CommonLiteralConstants.FIELD_RESPONSE, "");
+        String date = payload.getString(com.sim.chatserver.util.CommonLiteralConstants.PARAM_DATE, "");
 
         Selection selection = Selection.fromWidget(
                 widgetId,
@@ -188,8 +101,8 @@ public class WidgetReviewStartServlet extends HttpServlet {
         String selectionId = storeSelection(session, selection);
 
         JsonObject ok = Json.createObjectBuilder()
-                .add("status", "ok")
-                .add("selectionId", selectionId)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
+                .add(com.sim.chatserver.util.CommonLiteralConstants.PARAM_SELECTION_ID, selectionId)
                 .build()
             ;
         writeJson(resp, HttpServletResponse.SC_OK, ok);
@@ -333,10 +246,10 @@ public class WidgetReviewStartServlet extends HttpServlet {
 
     private void writeError(HttpServletResponse resp, int status, String message, String selectionId) {
         var b = Json.createObjectBuilder()
-                .add("status", "error")
-                .add("message", safe(message));
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, safe(message));
         if (selectionId != null && !selectionId.isBlank()) {
-            b.add("selectionId", selectionId.trim());
+            b.add(com.sim.chatserver.util.CommonLiteralConstants.PARAM_SELECTION_ID, selectionId.trim());
         }
         writeJson(resp, status, b.build());
     }
@@ -345,7 +258,7 @@ public class WidgetReviewStartServlet extends HttpServlet {
         try {
             ServletJsonResponseUtil.writeJson(resp, status, payload);
         } catch (IOException e) {
-            log.log(java.util.logging.Level.FINE, "Unable to write JSON response", e);
+            log.log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_UNABLE_TO_WRITE_JSON_RESPONSE, e);
             try {
                 if (!resp.isCommitted()) {
                     resp.sendError(status);
@@ -355,4 +268,10 @@ public class WidgetReviewStartServlet extends HttpServlet {
             }
         }
     }
+
+    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException, ClassNotFoundException {
+        throw new java.io.InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
+
 }
+

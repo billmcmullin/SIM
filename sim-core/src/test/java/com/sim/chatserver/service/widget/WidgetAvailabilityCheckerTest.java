@@ -111,7 +111,7 @@ class WidgetAvailabilityCheckerTest {
         when(loadRs.getObject("updated_by", String.class)).thenReturn("tester");
         when(loadRs.getObject("updated_at", Timestamp.class)).thenReturn(Timestamp.from(Instant.now()));
 
-        WidgetAvailabilityChecker.WidgetAvailabilityResult result = underTest.checkNow();
+        WidgetAvailabilityResult result = underTest.checkNow();
 
         assertFalse(result.available());
         assertEquals("DOWN", result.status());
@@ -195,7 +195,7 @@ class WidgetAvailabilityCheckerTest {
         when(loadRs.getObject("updated_by", String.class)).thenReturn("tester");
         when(loadRs.getObject("updated_at", Timestamp.class)).thenReturn(Timestamp.from(Instant.now()));
 
-        WidgetAvailabilityChecker.WidgetAvailabilityResult result = underTest.checkNow();
+        WidgetAvailabilityResult result = underTest.checkNow();
 
         assertFalse(result.available());
         assertEquals("DOWN", result.status());
@@ -277,7 +277,7 @@ class WidgetAvailabilityCheckerTest {
             when(loadRs.getObject("updated_by", String.class)).thenReturn("tester");
             when(loadRs.getObject("updated_at", Timestamp.class)).thenReturn(Timestamp.from(Instant.now()));
 
-            WidgetAvailabilityChecker.WidgetAvailabilityResult result = underTest.checkNow();
+            WidgetAvailabilityResult result = underTest.checkNow();
 
             assertFalse(result.available());
             assertEquals("DOWN", result.status());
@@ -376,7 +376,7 @@ class WidgetAvailabilityCheckerTest {
         when(loadRs.getObject("updated_by", String.class)).thenReturn("tester");
         when(loadRs.getObject("updated_at", Timestamp.class)).thenReturn(Timestamp.from(Instant.now()));
 
-        WidgetAvailabilityChecker.WidgetAvailabilityResult result = underTest.checkNow();
+        WidgetAvailabilityResult result = underTest.checkNow();
 
         assertTrue(result.available());
         assertEquals("DISABLED", result.status());
@@ -407,7 +407,7 @@ class WidgetAvailabilityCheckerTest {
         assertEquals(86400, normalizeInterval.invoke(underTest, 999999));
         assertEquals(45, normalizeInterval.invoke(underTest, 45));
 
-        Class<?> cfgType = Class.forName("com.sim.chatserver.service.widget.WidgetAvailabilityChecker$EffectiveConfig");
+        Class<?> cfgType = Class.forName("com.sim.chatserver.service.widget.EffectiveConfig");
         Object cfg = newEffectiveConfig(cfgType);
         setField(cfgType, cfg, "apiKeyValue", "token");
         setField(cfgType, cfg, "apiKeyHeaderName", "Authorization");
@@ -473,7 +473,7 @@ class WidgetAvailabilityCheckerTest {
         );
         assertTrue((boolean) getField(good, "ok"));
 
-        Class<?> cfgType = Class.forName("com.sim.chatserver.service.widget.WidgetAvailabilityChecker$EffectiveConfig");
+        Class<?> cfgType = Class.forName("com.sim.chatserver.service.widget.EffectiveConfig");
         Object cfg = newEffectiveConfig(cfgType);
 
         Method effectiveWidgetId = WidgetAvailabilityChecker.class.getDeclaredMethod("effectiveWidgetId", cfgType);
@@ -588,7 +588,7 @@ class WidgetAvailabilityCheckerTest {
         assertEquals("", bodySnippetSuffix.invoke(underTest, (Object) null));
         assertTrue(String.valueOf(bodySnippetSuffix.invoke(underTest, "line1\nline2")).contains("body=\"line1 line2\""));
 
-        Class<?> cfgType = Class.forName("com.sim.chatserver.service.widget.WidgetAvailabilityChecker$EffectiveConfig");
+        Class<?> cfgType = Class.forName("com.sim.chatserver.service.widget.EffectiveConfig");
         Object cfg = newEffectiveConfig(cfgType);
         setField(cfgType, cfg, "source", "DB");
         setField(cfgType, cfg, "enabled", true);

@@ -15,6 +15,7 @@ import java.util.logging.Logger;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
+import com.sim.chatserver.util.CommonLiteralConstants;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 import com.sim.chatserver.web.util.ServletPathUtil;
@@ -41,30 +42,30 @@ import jakarta.servlet.http.HttpSession;
 public class DashboardTopicsSelectServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardTopicsSelectServlet.class.getCanonicalName());
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
-    private static final String JSON_UTF8 = "application/json; charset=UTF-8";
+    private static final String JSON_UTF8 = CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON_UTF8;
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+            writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED);
             return;
         }
 
         JsonObject payload;
         if (!isValidJsonPayloadRequest(req)) {
-            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, com.sim.chatserver.util.CommonLiteralConstants.MSG_INVALID_JSON_PAYLOAD);
             return;
         }
         try (JsonReader reader = Json.createReader(new StringReader(readRequestBody(req)))) {
             payload = reader.readObject();
         } catch (JsonException ex) {
             log.log(Level.FINE, "Invalid topics selection payload", ex);
-            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
+            writeError(resp, HttpServletResponse.SC_BAD_REQUEST, com.sim.chatserver.util.CommonLiteralConstants.MSG_INVALID_JSON_PAYLOAD);
             return;
         }
 
-        JsonArray arr = payload.getJsonArray("selectedChatIds");
+        JsonArray arr = payload.getJsonArray(com.sim.chatserver.util.CommonLiteralConstants.KEY_SELECTED_CHAT_IDS);
         if (arr == null || arr.isEmpty()) {
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, "selectedChatIds required.");
             return;
@@ -130,8 +131,8 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
         }
 
         JsonObject ok = Json.createObjectBuilder()
-                .add("status", "ok")
-                .add("selectionId", selectionId)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
+                .add(com.sim.chatserver.util.CommonLiteralConstants.PARAM_SELECTION_ID, selectionId)
                 .add("requestedCount", requestedIds.size())
                 .add("resolvedCount", foundIds.size())
                 .build();
@@ -188,7 +189,7 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
         if (mediaType.isBlank()) {
             return false;
         }
-        return "application/json".equals(mediaType) || mediaType.endsWith("+json");
+        return com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON.equals(mediaType) || mediaType.endsWith("+json");
     }
 
     private String validateCanonicalizedBodyText(String value) {
@@ -217,9 +218,9 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
             log.log(Level.WARNING, "Unable to write topics-select error response", e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(status, message == null ? "Request failed." : message);
+                    resp.sendError(status, message == null ? com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_FAILED : message);
                 } catch (IOException ioe) {
-                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                    log.log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_FAILED, ioe);
                 }
             }
         }
@@ -232,11 +233,16 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
             log.log(Level.WARNING, "Unable to write topics-select JSON response", e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_UNABLE_TO_WRITE_RESPONSE);
                 } catch (IOException ioe) {
-                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                    log.log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_FAILED, ioe);
                 }
             }
         }
     }
+
+    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException, ClassNotFoundException {
+        throw new java.io.InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
+
 }

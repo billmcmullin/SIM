@@ -6,6 +6,7 @@ import java.util.logging.Logger;
 
 import com.sim.chatserver.model.UserAccount;
 import com.sim.chatserver.service.UserService;
+import com.sim.chatserver.util.CommonLiteralConstants;
 
 import jakarta.inject.Inject;
 import jakarta.servlet.http.HttpServletRequest;
@@ -18,15 +19,23 @@ import jakarta.ws.rs.core.Context;
 import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 
-@Path("/auth")
+@Path(AuthResource.PATH_AUTH)
 public class AuthResource implements AuthApiEndpoint {
+
 
     private static final Logger log = Logger.getLogger(AuthResource.class.getCanonicalName());
 
-    private static final String KEY_USERNAME = "username";
-    private static final String KEY_PASSWORD = "password";
+    private static final String KEY_USERNAME = CommonLiteralConstants.KEY_USERNAME;
+    private static final String KEY_PASSWORD = CommonLiteralConstants.KEY_PASSWORD;
     private static final String KEY_AUTHENTICATED = "authenticated";
-    private static final String KEY_ERROR = "error";
+    private static final String KEY_ERROR = CommonLiteralConstants.KEY_ERROR;
+    public static final String PATH_AUTH = "/auth";
+    private static final String PATH_LOGIN = CommonLiteralConstants.PATH_LOGIN;
+    private static final String KEY_SESSION_USER = CommonLiteralConstants.VALUE_USER;
+    private static final String KEY_SESSION_ROLE = CommonLiteralConstants.ROLE;
+    private static final String LOG_AUTH_FAILED = "Authentication failed for username: {0}";
+    private static final String LOG_USER_LOGGED_IN = "User ''{0}'' logged in with role ''{1}''";
+    private static final String MSG_USERNAME_PASSWORD_REQUIRED = "username and password required";
 
     @Inject
     UserService userService;
@@ -34,18 +43,16 @@ public class AuthResource implements AuthApiEndpoint {
     @Context
     HttpServletRequest servletRequest;
 
-    @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
     @POST
-    @Path("/login")
+    @Path(PATH_LOGIN)
     @Consumes(MediaType.APPLICATION_JSON)
     @Produces(MediaType.APPLICATION_JSON)
     public Response loginApi(Map<String, String> payload) {
@@ -63,7 +70,7 @@ public class AuthResource implements AuthApiEndpoint {
 
         if (user == null) {
             if (log.isLoggable(Level.WARNING)) {
-                log.log(Level.WARNING, "Authentication failed for username: {0}", credentials.username());
+                log.log(Level.WARNING, LOG_AUTH_FAILED, credentials.username());
             }
             return Response.status(Response.Status.UNAUTHORIZED)
                     .entity(Map.of(KEY_AUTHENTICATED, Boolean.FALSE))
@@ -79,12 +86,12 @@ public class AuthResource implements AuthApiEndpoint {
         String resolvedUsername = user.getUsername();
         String role = normalizeRole(user.getRole());
 
-        session.setAttribute("user", resolvedUsername);
-        session.setAttribute("role", role);
+        session.setAttribute(KEY_SESSION_USER, resolvedUsername);
+        session.setAttribute(KEY_SESSION_ROLE, role);
         session.setMaxInactiveInterval(30 * 60);
 
         if (log.isLoggable(Level.INFO)) {
-            log.log(Level.INFO, "User ''{0}'' logged in with role ''{1}''",
+            log.log(Level.INFO, LOG_USER_LOGGED_IN,
                     new Object[]{resolvedUsername, role});
         }
 
@@ -117,7 +124,7 @@ public class AuthResource implements AuthApiEndpoint {
 
     private static Response badRequest() {
         return Response.status(Response.Status.BAD_REQUEST)
-                .entity(Map.of(KEY_ERROR, "username and password required"))
+                .entity(Map.of(KEY_ERROR, MSG_USERNAME_PASSWORD_REQUIRED))
                 .build();
     }
 

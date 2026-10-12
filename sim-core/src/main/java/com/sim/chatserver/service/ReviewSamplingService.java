@@ -22,20 +22,23 @@ import com.sim.chatserver.model.SelectedEntry;
  */
 public class ReviewSamplingService {
 
+    private static final String EMPTY = "";
+    private static final String REGEX_TERM_SPLIT = "[^a-z0-9]+";
+    private static final String NULL_KEY_PREFIX = "__null__";
+
+
     private static final Set<String> STOP_WORDS = Set.of(
-            "the", "and", "for", "with", "that", "this", "from", "into", "about",
+            "the", "and", "for", "with", "that", "this", com.sim.chatserver.util.CommonLiteralConstants.FIELD_FROM, "into", "about",
             "what", "when", "where", "which", "have", "has", "had", "you", "your",
             "are", "was", "were", "how", "why", "can", "could", "would", "should"
     );
 
     private final SecureRandom secureRandom = new SecureRandom();
 
-    @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
@@ -46,7 +49,7 @@ public class ReviewSamplingService {
         }
         int limit = Math.max(1, maxTerms);
 
-        return List.of(text.toLowerCase(Locale.ROOT).split("[^a-z0-9]+"))
+        return List.of(text.toLowerCase(Locale.ROOT).split(REGEX_TERM_SPLIT))
                 .stream()
                 .filter(s -> s.length() >= 3 && !STOP_WORDS.contains(s))
                 .distinct()
@@ -150,7 +153,7 @@ public class ReviewSamplingService {
             }
             String key = safe(e.getChatId());
             if (key.isBlank()) {
-                key = "__null__" + (nullKeyCounter++);
+                key = NULL_KEY_PREFIX + (nullKeyCounter++);
             }
             out.putIfAbsent(key, e);
         }
@@ -173,6 +176,6 @@ public class ReviewSamplingService {
     }
 
     private String safe(String v) {
-        return v == null ? "" : v;
+        return v == null ? EMPTY : v;
     }
 }

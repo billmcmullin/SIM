@@ -9,7 +9,9 @@ package com.sim.chatserver.util;
  */
 public final class SessionIdFormatter {
 
-    private static final String ELLIPSIS = "...";
+    private static final String EMPTY = "";
+    private static final String ELLIPSIS = com.sim.chatserver.util.CommonLiteralConstants.ELLIPSIS;
+    private static final String VALUE_DASH = "-";
 
     private SessionIdFormatter() {
         // utility
@@ -21,11 +23,11 @@ public final class SessionIdFormatter {
      */
     public static String formatForDisplay(String sessionId) {
         if (sessionId == null) {
-            return "";
+            return EMPTY;
         }
         String s = sessionId.trim();
         if (s.isEmpty()) {
-            return "";
+            return EMPTY;
         }
 
         // If already short enough, return as-is
@@ -34,7 +36,7 @@ public final class SessionIdFormatter {
         }
 
         // If looks like a UUID (contains dashes or is long), collapse to first 8 + last 4
-        if (s.contains("-") || s.length() > 24) {
+        if (s.contains(VALUE_DASH) || s.length() > 24) {
             String first = s.substring(0, Math.min(8, s.length()));
             String last = s.substring(Math.max(0, s.length() - 4));
             return first + ELLIPSIS + last;

@@ -5,7 +5,7 @@ import java.time.Duration;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.service.WorkspaceClient.WorkspaceResponse;
+import com.sim.chatserver.service.WorkspaceResponse;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -154,5 +154,6 @@ public class WorkspaceClientTest
 
     }
 }
+
 
 

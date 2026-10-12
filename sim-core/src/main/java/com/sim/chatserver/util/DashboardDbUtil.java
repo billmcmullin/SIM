@@ -13,12 +13,18 @@ import java.util.Map;
  */
 public final class DashboardDbUtil {
 
+    private static final String DEFAULT_WIDGET_TABLE_NAME = com.sim.chatserver.util.CommonLiteralConstants.FIELD_WIDGET;
+    private static final String WIDGET_TABLE_PREFIX = "w_";
+    private static final String DOUBLE_QUOTE = "\"";
+    private static final String DOUBLE_DOUBLE_QUOTE = com.sim.chatserver.util.CommonLiteralConstants.DOUBLE_QUOTE_ESCAPED;
+    private static final String DB_TABLE_TYPE = com.sim.chatserver.util.CommonLiteralConstants.DB_TABLE_TYPE_TABLE;
+
     private DashboardDbUtil() {
     }
 
     public static String sanitizeWidgetTableName(String widgetId) {
         if (widgetId == null || widgetId.isBlank()) {
-            return "widget";
+            return DEFAULT_WIDGET_TABLE_NAME;
         }
 
         String trimmed = widgetId.trim();
@@ -35,9 +41,9 @@ public final class DashboardDbUtil {
             }
         }
 
-        String normalized = sb.length() == 0 ? "widget" : sb.toString();
+        String normalized = sb.length() == 0 ? DEFAULT_WIDGET_TABLE_NAME : sb.toString();
         if (!Character.isLetter(normalized.charAt(0))) {
-            normalized = "w_" + normalized;
+            normalized = WIDGET_TABLE_PREFIX + normalized;
         }
         if (normalized.length() > 60) {
             normalized = new String(normalized.toCharArray(), 0, 60);
@@ -47,9 +53,9 @@ public final class DashboardDbUtil {
 
     public static String quoteIdentifier(String identifier) {
         if (identifier == null) {
-            return "\"\"";
+            return DOUBLE_DOUBLE_QUOTE;
         }
-        return '"' + identifier.replace("\"", "\"\"") + '"';
+        return DOUBLE_QUOTE + identifier.replace(DOUBLE_QUOTE, DOUBLE_DOUBLE_QUOTE) + DOUBLE_QUOTE;
     }
 
     private static boolean tableExists(Connection conn, String tableName) throws SQLException {
@@ -62,7 +68,7 @@ public final class DashboardDbUtil {
             return true;
         }
         for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-            try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
+            try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{DB_TABLE_TYPE})) {
                 if (rs.next()) {
                     return true;
                 }

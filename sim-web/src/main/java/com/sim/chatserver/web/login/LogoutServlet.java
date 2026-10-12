@@ -4,12 +4,14 @@ import java.io.IOException;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import jakarta.servlet.ServletException;
 import jakarta.servlet.annotation.WebServlet;
 import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "LogoutServlet", urlPatterns = {"/logout"})
 public class LogoutServlet extends HttpServlet {
 
@@ -24,29 +26,23 @@ public class LogoutServlet extends HttpServlet {
             }
             safeForwardToLogin(req, resp);
         } catch (IllegalArgumentException | IllegalStateException e) {
-            log.log(Level.WARNING, "Unhandled exception in doGet", e);
+            log.log(Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (IOException ioe) {
-                    log.log(Level.FINE, "Failed sending fallback server error.", ioe);
+                    log.log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
     }
 
     private void safeForwardToLogin(HttpServletRequest req, HttpServletResponse resp) {
-        try {
-            req.getRequestDispatcher("/login").forward(req, resp);
-        } catch (IOException | ServletException ex) {
-            log.log(Level.WARNING, "Logout forward failed", ex);
-            if (!resp.isCommitted()) {
-                try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
-                } catch (IOException ioe) {
-                    log.log(Level.FINE, "Failed sending fallback server error.", ioe);
-                }
-            }
-        }
+        com.sim.chatserver.web.util.ServletPathUtil.forwardToLogin(req, resp, log);
     }
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
+
 }

@@ -5,10 +5,10 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.model.DashboardViewModels.ProgressStat;
-import com.sim.chatserver.model.DashboardViewModels.SessionOverview;
-import com.sim.chatserver.model.DashboardViewModels.SessionStat;
-import com.sim.chatserver.model.DashboardViewModels.SessionTimeline;
+import com.sim.chatserver.model.ProgressStat;
+import com.sim.chatserver.model.SessionOverview;
+import com.sim.chatserver.model.SessionStat;
+import com.sim.chatserver.model.SessionTimeline;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
@@ -17,7 +17,7 @@ import static org.mockito.Mockito.mock;
 /**
  * Parasoft Jtest UTA: Test class for SessionOverview
  *
- * @see com.sim.chatserver.model.DashboardViewModels.SessionOverview
+ * @see com.sim.chatserver.model.SessionOverview
  * @author bmcmullin
  */
 public class DashboardViewModels_SessionOverviewTest
@@ -26,7 +26,7 @@ public class DashboardViewModels_SessionOverviewTest
     /**
      * Parasoft Jtest UTA: Test for getActiveDays()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.SessionOverview#getActiveDays()
+     * @see com.sim.chatserver.model.SessionOverview#getActiveDays()
      * @author bmcmullin
      */
     @Test
@@ -90,7 +90,7 @@ public class DashboardViewModels_SessionOverviewTest
     /**
      * Parasoft Jtest UTA: Test for getActiveUsers()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.SessionOverview#getActiveUsers()
+     * @see com.sim.chatserver.model.SessionOverview#getActiveUsers()
      * @author bmcmullin
      */
     @Test
@@ -144,7 +144,7 @@ public class DashboardViewModels_SessionOverviewTest
     /**
      * Parasoft Jtest UTA: Test for getActiveUsersProgression()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.SessionOverview#getActiveUsersProgression()
+     * @see com.sim.chatserver.model.SessionOverview#getActiveUsersProgression()
      * @author bmcmullin
      */
     @Test
@@ -210,7 +210,7 @@ public class DashboardViewModels_SessionOverviewTest
     /**
      * Parasoft Jtest UTA: Test for getActiveUsersYesterday()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.SessionOverview#getActiveUsersYesterday()
+     * @see com.sim.chatserver.model.SessionOverview#getActiveUsersYesterday()
      * @author bmcmullin
      */
     @Test
@@ -274,7 +274,7 @@ public class DashboardViewModels_SessionOverviewTest
     /**
      * Parasoft Jtest UTA: Test for getInactiveUsers()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.SessionOverview#getInactiveUsers()
+     * @see com.sim.chatserver.model.SessionOverview#getInactiveUsers()
      * @author bmcmullin
      */
     @Test
@@ -338,7 +338,7 @@ public class DashboardViewModels_SessionOverviewTest
     /**
      * Parasoft Jtest UTA: Test for getNewSessionsProgression()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.SessionOverview#getNewSessionsProgression()
+     * @see com.sim.chatserver.model.SessionOverview#getNewSessionsProgression()
      * @author bmcmullin
      */
     @Test
@@ -404,7 +404,7 @@ public class DashboardViewModels_SessionOverviewTest
     /**
      * Parasoft Jtest UTA: Test for getNewSessionsToday()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.SessionOverview#getNewSessionsToday()
+     * @see com.sim.chatserver.model.SessionOverview#getNewSessionsToday()
      * @author bmcmullin
      */
     @Test
@@ -468,7 +468,7 @@ public class DashboardViewModels_SessionOverviewTest
     /**
      * Parasoft Jtest UTA: Test for getNewSessionsYesterday()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.SessionOverview#getNewSessionsYesterday()
+     * @see com.sim.chatserver.model.SessionOverview#getNewSessionsYesterday()
      * @author bmcmullin
      */
     @Test
@@ -532,7 +532,7 @@ public class DashboardViewModels_SessionOverviewTest
     /**
      * Parasoft Jtest UTA: Test for getTimeline()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.SessionOverview#getTimeline()
+     * @see com.sim.chatserver.model.SessionOverview#getTimeline()
      * @author bmcmullin
      */
     @Test
@@ -596,7 +596,7 @@ public class DashboardViewModels_SessionOverviewTest
     /**
      * Parasoft Jtest UTA: Test for getTopSessions()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.SessionOverview#getTopSessions()
+     * @see com.sim.chatserver.model.SessionOverview#getTopSessions()
      * @author bmcmullin
      */
     @Test
@@ -660,7 +660,7 @@ public class DashboardViewModels_SessionOverviewTest
     /**
      * Parasoft Jtest UTA: Test for getTotalUsers()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.SessionOverview#getTotalUsers()
+     * @see com.sim.chatserver.model.SessionOverview#getTotalUsers()
      * @author bmcmullin
      */
     @Test
@@ -721,3 +721,4 @@ public class DashboardViewModels_SessionOverviewTest
 
     }
 }
+

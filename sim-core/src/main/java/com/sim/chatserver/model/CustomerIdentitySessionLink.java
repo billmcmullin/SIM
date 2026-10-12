@@ -4,6 +4,8 @@ import java.time.OffsetDateTime;
 
 public class CustomerIdentitySessionLink {
 
+    private static final String SUPPRESS_UNUSED = com.sim.chatserver.util.CommonLiteralConstants.SUPPRESS_UNUSED;
+
     private String sessionId;
     private Long identityId;
     private String displayNameSnapshot;
@@ -11,12 +13,12 @@ public class CustomerIdentitySessionLink {
     private OffsetDateTime linkedAt;
     private OffsetDateTime updatedAt;
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(SUPPRESS_UNUSED)
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(SUPPRESS_UNUSED)
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }

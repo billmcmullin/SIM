@@ -30,6 +30,7 @@ import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.util.DashboardDbUtil;
 
 import jakarta.enterprise.inject.Instance;
 import jakarta.enterprise.inject.spi.CDI;
@@ -48,13 +49,11 @@ class WidgetTableSelectIdsQueryServiceTest {
 
     @Test
     void sanitizeWidgetTableName_normalizesAndTruncatesUnsafeInput() throws Exception {
-        WidgetTableSelectIdsQueryService underTest = new WidgetTableSelectIdsQueryService(Logger.getLogger("test"));
-
-        assertEquals("widget", invokePrivateString(underTest, "sanitizeWidgetTableName", (Object) null));
-        assertEquals("w_9bad_id_", invokePrivateString(underTest, "sanitizeWidgetTableName", " 9bad-id! "));
+        assertEquals("widget", DashboardDbUtil.sanitizeWidgetTableName(null));
+        assertEquals("w_9bad_id_", DashboardDbUtil.sanitizeWidgetTableName(" 9bad-id! "));
 
         String longId = "1" + "x".repeat(100);
-        String sanitized = invokePrivateString(underTest, "sanitizeWidgetTableName", longId);
+        String sanitized = DashboardDbUtil.sanitizeWidgetTableName(longId);
         assertTrue(sanitized.startsWith("w_"));
         assertTrue(sanitized.length() <= 60);
     }

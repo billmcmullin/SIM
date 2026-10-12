@@ -7,7 +7,7 @@ import java.util.Set;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.security.SecurityValidationService.UrlValidationResult;
+import com.sim.chatserver.security.UrlValidationResult;
 
 import jakarta.servlet.http.HttpServletRequest;
 

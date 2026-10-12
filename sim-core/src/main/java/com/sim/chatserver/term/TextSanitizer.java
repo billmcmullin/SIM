@@ -8,6 +8,8 @@ import java.util.regex.Pattern;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.sim.chatserver.util.CommonLiteralConstants;
+
 /**
  * Utility for sanitizing prompt text retrieved from the database and for
  * preparing text for storage, matching, and display.
@@ -23,29 +25,68 @@ public final class TextSanitizer {
     private static final Pattern TAGS = Pattern.compile("<[^>]+>");
     private static final Pattern HTML_ENTITY = Pattern.compile("&(#(x)?[0-9a-fA-F]+|[a-zA-Z]+);");
     private static final Pattern CONTROL_CHARS = Pattern.compile("[\\u0000-\\u0008\\u000B\\u000C\\u000E-\\u001F]");
-    private static final Pattern WHITESPACE = Pattern.compile("\\s+");
+    private static final Pattern WHITESPACE = Pattern.compile(CommonLiteralConstants.REGEX_WHITESPACE);
+
+    private static final String EMPTY = "";
+    private static final String SPACE = " ";
+    private static final String REGEX_MATCH_TYPE = "REGEX";
+    private static final String ENTITY_LT = "lt";
+    private static final String ENTITY_GT = "gt";
+    private static final String ENTITY_AMP = "amp";
+    private static final String ENTITY_QUOT = "quot";
+    private static final String ENTITY_APOS = "apos";
+    private static final String ENTITY_NBSP = "nbsp";
+    private static final String ENTITY_RSQUO = "rsquo";
+    private static final String ENTITY_LSQUO = "lsquo";
+    private static final String ENTITY_LDQUO = "ldquo";
+    private static final String ENTITY_RDQUO = "rdquo";
+    private static final String ENTITY_NDASH = "ndash";
+    private static final String ENTITY_MDASH = "mdash";
+    private static final String ENTITY_HELLIP = "hellip";
+    private static final String ENTITY_COPY = "copy";
+    private static final String ENTITY_REG = "reg";
+    private static final String ENTITY_TRADE = "trade";
+    private static final String ENTITY_EURO = "euro";
+    private static final String VALUE_LT = "<";
+    private static final String VALUE_GT = ">";
+    private static final String VALUE_AMP = "&";
+    private static final String VALUE_QUOTE = "\"";
+    private static final String VALUE_APOS = "'";
+    private static final String VALUE_DASH = "-";
+    private static final String VALUE_ELLIPSIS = CommonLiteralConstants.ELLIPSIS;
+    private static final String UNICODE_ELLIPSIS = "\u2026";
+    private static final String VALUE_COPY = "(c)";
+    private static final String VALUE_REG = "(r)";
+    private static final String VALUE_TRADE = "(tm)";
+    private static final String VALUE_EURO = "\u20AC";
+    private static final String NUMERIC_ENTITY_DECODE_FAILED = "Failed to decode HTML numeric entity";
+    private static final String REGEX_COMBINING_MARKS = "\\p{M}";
+    private static final String REGEX_NON_ASCII = "[^\\p{ASCII}]";
+    private static final String HTML_ESCAPE_AMP = CommonLiteralConstants.HTML_ESCAPE_AMP;
+    private static final String HTML_ESCAPE_LT = CommonLiteralConstants.HTML_ESCAPE_LT;
+    private static final String HTML_ESCAPE_GT = CommonLiteralConstants.HTML_ESCAPE_GT;
 
     private static final Map<String, String> NAMED_ENTITY_MAP = buildNamedEntityMap();
 
     private static Map<String, String> buildNamedEntityMap() {
         Map<String, String> m = new HashMap<>();
-        m.put("lt", "<");
-        m.put("gt", ">");
-        m.put("amp", "&");
-        m.put("quot", "\"");
-        m.put("apos", "'");
-        m.put("nbsp", " ");
-        m.put("rsquo", "'");
-        m.put("lsquo", "'");
-        m.put("ldquo", "\"");
-        m.put("rdquo", "\"");
-        m.put("ndash", "-");
-        m.put("mdash", "-");
-        m.put("hellip", "...");
-        m.put("copy", "(c)");
-        m.put("reg", "(r)");
-        m.put("trade", "(tm)");
-        m.put("euro", "â‚¬");
+        m.put(ENTITY_LT, VALUE_LT);
+        m.put(ENTITY_GT, VALUE_GT);
+        m.put(ENTITY_AMP, VALUE_AMP);
+        m.put(ENTITY_QUOT, VALUE_QUOTE);
+        m.put(ENTITY_APOS, VALUE_APOS);
+        m.put(ENTITY_NBSP, SPACE);
+        m.put(ENTITY_RSQUO, VALUE_APOS);
+        m.put(ENTITY_LSQUO, VALUE_APOS);
+        m.put(ENTITY_LDQUO, VALUE_QUOTE);
+        m.put(ENTITY_RDQUO, VALUE_QUOTE);
+        m.put(ENTITY_NDASH, VALUE_DASH);
+        m.put(ENTITY_MDASH, VALUE_DASH);
+        m.put(ENTITY_HELLIP, VALUE_ELLIPSIS);
+        m.put(ENTITY_COPY, VALUE_COPY);
+        m.put(ENTITY_REG, VALUE_REG);
+        m.put(ENTITY_TRADE, VALUE_TRADE);
+        m.put(ENTITY_EURO, VALUE_EURO);
         return m;
     }
 
@@ -55,15 +96,15 @@ public final class TextSanitizer {
     // --- Existing helpers kept (matching/storage) ---
     public static String sanitizeForMatching(String input) {
         if (input == null || input.isEmpty()) {
-            return "";
+            return EMPTY;
         }
         String s = input;
         s = normalizeUnicodePunctuation(s);
-        s = XML_HEADER.matcher(s).replaceFirst("");
-        s = TAGS.matcher(s).replaceAll(" ");
+        s = XML_HEADER.matcher(s).replaceFirst(EMPTY);
+        s = TAGS.matcher(s).replaceAll(SPACE);
         s = decodeHtmlEntities(s);
-        s = CONTROL_CHARS.matcher(s).replaceAll(" ");
-        s = WHITESPACE.matcher(s).replaceAll(" ").trim();
+        s = CONTROL_CHARS.matcher(s).replaceAll(SPACE);
+        s = WHITESPACE.matcher(s).replaceAll(SPACE).trim();
         s = toAscii(s);
         return s;
     }
@@ -74,17 +115,17 @@ public final class TextSanitizer {
 
     static String sanitizePatternForStorage(String pattern, String matchType) {
         if (pattern == null) {
-            return "";
+            return EMPTY;
         }
         String p = pattern.trim();
         if (p.isEmpty()) {
-            return "";
+            return EMPTY;
         }
         p = normalizeUnicodePunctuation(p);
         p = decodeHtmlEntities(p);
-        p = CONTROL_CHARS.matcher(p).replaceAll(" ");
-        p = WHITESPACE.matcher(p).replaceAll(" ").trim();
-        if ("REGEX".equalsIgnoreCase(matchType)) {
+        p = CONTROL_CHARS.matcher(p).replaceAll(SPACE);
+        p = WHITESPACE.matcher(p).replaceAll(SPACE).trim();
+        if (REGEX_MATCH_TYPE.equalsIgnoreCase(matchType)) {
             // keep regex metacharacters intact
             return p;
         } else {
@@ -106,7 +147,7 @@ public final class TextSanitizer {
      */
     static String sanitizeMarkdownForDisplay(String markdown) {
         if (markdown == null || markdown.isEmpty()) {
-            return "";
+            return EMPTY;
         }
         String s = markdown;
         // Normalize punctuation but keep Unicode characters (do not transliterate)
@@ -116,14 +157,14 @@ public final class TextSanitizer {
 
         // Null-safe guard for static analysis and defensive safety
         if (s == null) {
-            return "";
+            return EMPTY;
         }
 
         // Escape literal ampersands and angle-brackets so raw HTML doesn't break display
         s = escapeHtmlChars(s);
         // Remove control chars and collapse whitespace
-        s = CONTROL_CHARS.matcher(s).replaceAll(" ");
-        s = WHITESPACE.matcher(s).replaceAll(" ").trim();
+        s = CONTROL_CHARS.matcher(s).replaceAll(SPACE);
+        s = WHITESPACE.matcher(s).replaceAll(SPACE).trim();
         return s;
     }
 
@@ -140,7 +181,7 @@ public final class TextSanitizer {
         s = s.replace('\u201E', '"');
         s = s.replace('\u2013', '-');
         s = s.replace('\u2014', '-');
-        s = s.replace("\u2026", "...");
+        s = s.replace(UNICODE_ELLIPSIS, VALUE_ELLIPSIS);
         s = s.replace('\u00A0', ' ');
         return s;
     }
@@ -155,7 +196,7 @@ public final class TextSanitizer {
 
     private static String decodeEntity(String ent) {
         if (ent == null || ent.isEmpty()) {
-            return "";
+            return EMPTY;
         }
         if (ent.charAt(0) == '#') {
             try {
@@ -164,17 +205,17 @@ public final class TextSanitizer {
                     if (Character.isValidCodePoint(code)) {
                         return new String(Character.toChars(code));
                     }
-                    return "";
+                    return EMPTY;
                 } else {
                     int code = Integer.parseInt(ent.substring(1));
                     if (Character.isValidCodePoint(code)) {
                         return new String(Character.toChars(code));
                     }
-                    return "";
+                    return EMPTY;
                 }
             } catch (IllegalArgumentException e) {
-                LOG.log(Level.FINE, "Failed to decode HTML numeric entity", e);
-                return "";
+                LOG.log(Level.FINE, NUMERIC_ENTITY_DECODE_FAILED, e);
+                return EMPTY;
             }
         }
         String lower = ent.toLowerCase();
@@ -182,32 +223,32 @@ public final class TextSanitizer {
         if (mapped != null) {
             return mapped;
         }
-        return "";
+        return EMPTY;
     }
 
     private static String toAscii(String s) {
         if (s == null || s.isEmpty()) {
-            return "";
+            return EMPTY;
         }
         String normalized = Normalizer.normalize(s, Normalizer.Form.NFKD);
-        normalized = normalized.replaceAll("\\p{M}", "");
-        normalized = normalized.replaceAll("[^\\p{ASCII}]", "");
+        normalized = normalized.replaceAll(REGEX_COMBINING_MARKS, EMPTY);
+        normalized = normalized.replaceAll(REGEX_NON_ASCII, EMPTY);
         return normalized;
     }
 
     private static String escapeHtmlChars(String input) {
         if (input == null || input.isEmpty()) {
-            return "";
+            return EMPTY;
         }
         StringBuilder sb = new StringBuilder(input.length() + 16);
         for (int i = 0; i < input.length(); i++) {
             char ch = input.charAt(i);
             if (ch == '&') {
-                sb.append("&amp;");
+                sb.append(HTML_ESCAPE_AMP);
             } else if (ch == '<') {
-                sb.append("&lt;");
+                sb.append(HTML_ESCAPE_LT);
             } else if (ch == '>') {
-                sb.append("&gt;");
+                sb.append(HTML_ESCAPE_GT);
             } else {
                 sb.append(ch);
             }

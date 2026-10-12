@@ -58,18 +58,21 @@ import com.sim.chatserver.config.ServerConfig;
 import com.sim.chatserver.model.SelectedEntry;
 import com.sim.chatserver.security.review.ReviewOutputValidator;
 import com.sim.chatserver.security.review.TrustedUrlValidator;
+import com.sim.chatserver.security.review.ValidationResult;
 import com.sim.chatserver.service.PromptTemplateService;
 import com.sim.chatserver.service.ReviewContextBuilderService;
 import com.sim.chatserver.service.ReviewSamplingService;
 import com.sim.chatserver.service.ApiAuthResolver;
+import com.sim.chatserver.service.ResolvedApiAuth;
 import com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator;
 import com.sim.chatserver.service.WorkspaceClient;
-import com.sim.chatserver.service.WorkspaceClient.WorkspaceResponse;
+import com.sim.chatserver.service.WorkspaceResponse;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermMatcher;
 import com.sim.chatserver.term.TermsStore;
 import com.sim.chatserver.term.TextSanitizer;
+import com.sim.chatserver.util.CommonLiteralConstants;
 import com.sim.chatserver.util.ServerDiagnosticsLog;
 import com.sim.chatserver.util.ThrowableUtil;
 import com.sim.chatserver.web.util.JsonPrimaryTextUtil;
@@ -99,6 +102,13 @@ public class WidgetSyncServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(WidgetSyncServlet.class.getCanonicalName());
     private static final String LS = System.lineSeparator();
+    private static final String EMPTY = "";
+    private static final String SYNC_PHASE_IDLE = CommonLiteralConstants.STATUS_IDLE;
+    private static final String JSON_KEY_WIDGET_ID = CommonLiteralConstants.KEY_WIDGET_ID;
+    private static final String JSON_KEY_TABLE_NAME = CommonLiteralConstants.KEY_TABLE_NAME;
+    private static final String JSON_KEY_TABLE_EXISTS = CommonLiteralConstants.KEY_TABLE_EXISTS;
+    private static final String JSON_KEY_SYNCED = CommonLiteralConstants.KEY_SYNCED;
+    private static final String JSON_KEY_MESSAGE = CommonLiteralConstants.FIELD_MESSAGE;
 
     private static final HttpClient HTTP_CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(15))
@@ -172,7 +182,7 @@ public class WidgetSyncServlet extends HttpServlet {
             Integer.valueOf(SYNC_PARALLELISM),
             Long.valueOf(SYNC_MIN_REQUEST_GAP_MS)
         };
-    private static final Pattern NON_ALNUM_UNDERSCORE = Pattern.compile("[^A-Za-z0-9_]");
+    private static final Pattern NON_ALNUM_UNDERSCORE = Pattern.compile(CommonLiteralConstants.REGEX_NON_ALNUM_UNDERSCORE);
     private static final Pattern SUMMARY_INCLUDED_COUNT_PATTERN = Pattern.compile("coverage:\\s*included=(\\d+)");
 
     private static final int HTTP_MAX_ATTEMPTS = 3;
@@ -268,7 +278,7 @@ public class WidgetSyncServlet extends HttpServlet {
                         - In "Next steps", ask concretely for: product/version, environment details, exact error text or screenshot, expected result, steps already tried, and relevant logs/config snippets.
                         """;
 
-    private enum AuthHeaderMode {
+    enum AuthHeaderMode {
         CUSTOM_HEADER,
         AUTH_BEARER,
         AUTH_RAW,
@@ -276,124 +286,18 @@ public class WidgetSyncServlet extends HttpServlet {
         AUTH_BEARER_AND_X_API_KEY
     }
 
-    private static final class SyncHttpResult {
-        final HttpResponse<InputStream> response;
-        final String authSource;
-        final AuthHeaderMode authMode;
-
-        private SyncHttpResult(HttpResponse<InputStream> response, String authSource, AuthHeaderMode authMode) {
-            this.response = response;
-            this.authSource = authSource;
-            this.authMode = authMode;
-        }
-    }
-
-    private static final class SummaryPayloadPlan {
-        final String message;
-        final int includedEntries;
-        final int requestBytes;
-        final boolean budgetReduced;
-
-        private SummaryPayloadPlan(String message, int includedEntries, int requestBytes, boolean budgetReduced) {
-            this.message = message == null ? "" : message;
-            this.includedEntries = Math.max(0, includedEntries);
-            this.requestBytes = Math.max(0, requestBytes);
-            this.budgetReduced = budgetReduced;
-        }
-    }
-
-    private static final class RecentChatIdCache {
-        private final int maxSize;
-        private final Deque<String> order = new ArrayDeque<>();
-        private final Set<String> ids = new HashSet<>();
-
-        private RecentChatIdCache(int maxSize) {
-            this.maxSize = Math.max(0, maxSize);
-        }
-
-        private synchronized List<String> missingFromCache(List<String> chatIds) {
-            List<String> missing = new ArrayList<>();
-            if (chatIds == null || chatIds.isEmpty()) {
-                return missing;
-            }
-            for (String chatId : chatIds) {
-                if (chatId == null || chatId.isBlank()) {
-                    continue;
-                }
-                if (!ids.contains(chatId)) {
-                    missing.add(chatId);
-                }
-            }
-            return missing;
-        }
-
-        private synchronized void recordAll(List<String> chatIds) {
-            if (maxSize <= 0 || chatIds == null || chatIds.isEmpty()) {
-                return;
-            }
-            for (String chatId : chatIds) {
-                if (chatId == null || chatId.isBlank()) {
-                    continue;
-                }
-                if (ids.add(chatId)) {
-                    order.addLast(chatId);
-                }
-            }
-
-            while (ids.size() > maxSize) {
-                String evicted = order.pollFirst();
-                if (evicted == null) {
-                    break;
-                }
-                ids.remove(evicted);
-            }
-        }
-    }
-
-    private static final RuntimeState STATE = new RuntimeState();
-
-    private static final class RuntimeState {
-        private volatile DashboardDailySummaryStore summaryStore;
-        private final Object summaryStoreLock = new Object();
-        private final WidgetSyncJdbcStore jdbcStore = new WidgetSyncJdbcStore(
-            DEFAULT_SUMMARY_INTERVAL_SECONDS,
-            DEFAULT_SUMMARY_AUTO_ENABLED,
-            DEFAULT_SUMMARY_MAX_ROWS,
-            DEFAULT_SUMMARY_MAX_UPSTREAM_ENTRIES,
-            DEFAULT_SUMMARY_MAX_MESSAGE_CHARS,
-            DEFAULT_SUMMARY_MAX_REQUEST_BYTES,
-            MAX_SUMMARY_PROMPT_CHARS
-        );
-        private ScheduledExecutorService scheduler = WidgetSyncSchedulerManager.createScheduler(log);
-        private final AtomicLong summaryIntervalSeconds = new AtomicLong(DEFAULT_SUMMARY_INTERVAL_SECONDS);
-        private final AtomicReference<String> summaryPromptTemplate = new AtomicReference<>(DEFAULT_SUMMARY_PROMPT);
-        private final AtomicReference<Timestamp> summaryLastRun = new AtomicReference<>();
-        private ScheduledFuture<?> scheduledFuture;
-        private long syncIntervalSeconds = DEFAULT_INTERVAL_SECONDS;
-        private boolean summaryAutoEnabled = DEFAULT_SUMMARY_AUTO_ENABLED;
-        private int summaryMaxRows = DEFAULT_SUMMARY_MAX_ROWS;
-        private int summaryMaxUpstreamEntries = DEFAULT_SUMMARY_MAX_UPSTREAM_ENTRIES;
-        private int summaryMaxMessageChars = DEFAULT_SUMMARY_MAX_MESSAGE_CHARS;
-        private int summaryMaxRequestBytes = DEFAULT_SUMMARY_MAX_REQUEST_BYTES;
-        private Timestamp lastSynced;
-        private Instant syncStartedAt;
-        private Instant syncFinishedAt;
-        private String syncPhase = "idle";
-        private String syncStatusMessage = "";
-        private int syncTotalWidgets;
-        private String syncCurrentWidgetId = "";
-        private String syncCurrentWidgetTable = "";
-        private int syncCurrentWidgetIndex;
-        private int syncProgressPercent;
-        private boolean summaryAutoPausedUntilManualSuccess;
-        private String summaryAutoPausedReason = "";
-        private MapReduceConfig mrConfig;
-        private WorkspaceClient workspaceClient;
-        private WidgetReviewMapReduceOrchestrator orchestrator;
-        private TrustedUrlValidator trustedUrlValidator;
-        private ReviewOutputValidator reviewOutputValidator;
-        private AppDataSourceHolder dsHolder;
-    }
+    private static final RuntimeState STATE = new RuntimeState(
+        log,
+        DEFAULT_SUMMARY_INTERVAL_SECONDS,
+        DEFAULT_SUMMARY_AUTO_ENABLED,
+        DEFAULT_SUMMARY_MAX_ROWS,
+        DEFAULT_SUMMARY_MAX_UPSTREAM_ENTRIES,
+        DEFAULT_SUMMARY_MAX_MESSAGE_CHARS,
+        DEFAULT_SUMMARY_MAX_REQUEST_BYTES,
+        MAX_SUMMARY_PROMPT_CHARS,
+        DEFAULT_INTERVAL_SECONDS,
+        DEFAULT_SUMMARY_PROMPT
+    );
 
     private static final Object syncRateLimitLock = new Object();
     private static final AtomicLong SYNC_LAST_REQUEST_AT_NANOS = new AtomicLong(0L);
@@ -459,7 +363,7 @@ public class WidgetSyncServlet extends HttpServlet {
 
             Set<String> allowedHosts = parseCsvToSet(readEnvSanitized("REVIEW_TRUSTED_HOSTS", 2048));
             Set<String> allowedSuffixes = parseCsvToSet(readEnvSanitized("REVIEW_TRUSTED_HOST_SUFFIXES", 2048));
-            boolean allowPrivate = Boolean.parseBoolean(defaultIfBlank(readEnvSanitized("REVIEW_ALLOW_PRIVATE_NETWORKS", 16), "false"));
+            boolean allowPrivate = Boolean.parseBoolean(defaultIfBlank(readEnvSanitized("REVIEW_ALLOW_PRIVATE_NETWORKS", 16), com.sim.chatserver.util.CommonLiteralConstants.VALUE_FALSE));
             STATE.trustedUrlValidator = new TrustedUrlValidator(allowedHosts, allowedSuffixes, allowPrivate);
 
             STATE.orchestrator = new WidgetReviewMapReduceOrchestrator(
@@ -556,10 +460,10 @@ public class WidgetSyncServlet extends HttpServlet {
             return;
         }
 
-        String requestedWidgetId = firstParam(req, "widgetId");
+        String requestedWidgetId = firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.KEY_WIDGET_ID);
         beginSyncProgress("manual_sync", "Manual sync started.");
         try {
-            WidgetSyncExecutionCoordinator.OrchestrationResult<WidgetSyncStatus> execution =
+                OrchestrationResult<WidgetSyncStatus> execution =
                     WidgetSyncExecutionCoordinator.execute(
                             WidgetSyncExecutionCoordinator.Mode.MANUAL,
                             requestedWidgetId,
@@ -583,7 +487,7 @@ public class WidgetSyncServlet extends HttpServlet {
             }
 
             JsonObject payload = Json.createObjectBuilder()
-                    .add("status", "ok")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
                     .add("widgetStatus", arr)
                     .build();
 
@@ -659,8 +563,8 @@ public class WidgetSyncServlet extends HttpServlet {
             finishSyncProgress(success, message);
 
             JsonObject payload = Json.createObjectBuilder()
-                    .add("status", success ? "ok" : "error")
-                    .add("message", message)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, success ? "ok" : com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, message)
                     .add("summaryAutoPaused", STATE.summaryAutoPausedUntilManualSuccess)
                 .add("summaryLastRunAt", STATE.summaryLastRun.get() == null ? "" : STATE.summaryLastRun.get().toInstant().toString())
                 .add("summaryNextRunAt", computeNextSummaryRunAtIso())
@@ -686,13 +590,13 @@ public class WidgetSyncServlet extends HttpServlet {
         long runningSeconds = computeRunningSeconds(running);
 
         JsonObject payload = Json.createObjectBuilder()
-                .add("status", "ok")
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
                 .add("intervalSeconds", STATE.syncIntervalSeconds)
             .add("syncRunning", running)
                 .add("lastSynced", STATE.lastSynced == null ? "" : STATE.lastSynced.toInstant().toString())
             .add("syncStartedAt", startedAt)
             .add("syncFinishedAt", finishedAt)
-            .add("syncPhase", defaultIfBlank(STATE.syncPhase, running ? "running" : "idle"))
+            .add("syncPhase", defaultIfBlank(STATE.syncPhase, running ? com.sim.chatserver.util.CommonLiteralConstants.STATUS_RUNNING : com.sim.chatserver.util.CommonLiteralConstants.STATUS_IDLE))
             .add("syncMessage", defaultIfBlank(STATE.syncStatusMessage, ""))
             .add("widgetsTotal", totalWidgets)
             .add("widgetsCompleted", completedWidgets)
@@ -796,7 +700,7 @@ public class WidgetSyncServlet extends HttpServlet {
         persistSyncSettings();
 
         JsonObject payload = Json.createObjectBuilder()
-                .add("status", "ok")
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
                 .add("intervalSeconds", STATE.syncIntervalSeconds)
             .add("lastSynced", STATE.lastSynced == null ? "" : STATE.lastSynced.toInstant().toString())
             .add("summaryIntervalSeconds", STATE.summaryIntervalSeconds.get())
@@ -849,7 +753,7 @@ public class WidgetSyncServlet extends HttpServlet {
         }
         beginSyncProgress("scheduled_sync", "Scheduled sync started.");
         try {
-            WidgetSyncExecutionCoordinator.OrchestrationResult<WidgetSyncStatus> execution =
+                OrchestrationResult<WidgetSyncStatus> execution =
                     WidgetSyncExecutionCoordinator.execute(
                             WidgetSyncExecutionCoordinator.Mode.SCHEDULED,
                             null,
@@ -891,11 +795,11 @@ public class WidgetSyncServlet extends HttpServlet {
             new Object[]{context, errorRef});
 
         ServerDiagnosticsLog.write(
-                "widget-sync",
+                CommonLiteralConstants.COMPONENT_WIDGET_SYNC,
                 errorRef,
                 "daily-summary-failed",
                 "context=" + context
-                + LS + "message=" + (failure == null ? "" : String.valueOf(failure.getMessage())),
+                + LS + com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_MESSAGE + (failure == null ? "" : String.valueOf(failure.getMessage())),
                 failure
         );
     }
@@ -907,9 +811,9 @@ public class WidgetSyncServlet extends HttpServlet {
                 new Object[]{defaultIfBlank(summary, "Operation failed"), errorRef});
 
         ServerDiagnosticsLog.write(
-                "widget-sync",
+            CommonLiteralConstants.COMPONENT_WIDGET_SYNC,
                 errorRef,
-                defaultIfBlank(event, "error"),
+                defaultIfBlank(event, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR),
                 "summary=" + defaultString(summary)
                 + (details == null || details.isBlank() ? "" : com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED + details),
                 failure
@@ -946,7 +850,7 @@ public class WidgetSyncServlet extends HttpServlet {
         RecentChatIdCache recentCache = recentChatIdCacheForWidget(tableName);
 
         try {
-            WidgetSyncSingleWidgetService.WidgetSyncResult result = WidgetSyncSingleWidgetService.execute(
+            WidgetSyncResult result = WidgetSyncSingleWidgetService.execute(
                     () -> STATE.jdbcStore.ensureWidgetTable(dataSourceHolder(), tableName, ensuredTables),
                     step -> updateSyncProgress(
                             "syncing_widgets",
@@ -991,7 +895,7 @@ public class WidgetSyncServlet extends HttpServlet {
     private String currentWidgetStepMessage(String widgetId, String action) {
         int index = Math.max(1, STATE.syncCurrentWidgetIndex);
         int total = Math.max(index, STATE.syncTotalWidgets);
-        String safeWidget = defaultIfBlank(widgetId, "unknown");
+        String safeWidget = defaultIfBlank(widgetId, com.sim.chatserver.util.CommonLiteralConstants.VALUE_UNKNOWN_LOWER);
         return "Widget " + index + '/' + total + " (" + safeWidget + "): " + defaultIfBlank(action, "processing...");
     }
 
@@ -1004,7 +908,7 @@ public class WidgetSyncServlet extends HttpServlet {
     private void beginSyncProgressLocked(String phase, String message) {
         STATE.syncStartedAt = Instant.now();
         STATE.syncFinishedAt = null;
-        STATE.syncPhase = defaultIfBlank(phase, "running");
+        STATE.syncPhase = defaultIfBlank(phase, com.sim.chatserver.util.CommonLiteralConstants.STATUS_RUNNING);
         STATE.syncStatusMessage = defaultIfBlank(message, "Sync running.");
         STATE.syncTotalWidgets = 0;
         syncCompletedWidgets.set(0);
@@ -1117,7 +1021,7 @@ public class WidgetSyncServlet extends HttpServlet {
 
     private void finishSyncProgressLocked(boolean success, String message) {
         STATE.syncFinishedAt = Instant.now();
-        STATE.syncPhase = success ? "completed" : "failed";
+        STATE.syncPhase = success ? "completed" : com.sim.chatserver.util.CommonLiteralConstants.STATUS_FAILED;
         STATE.syncStatusMessage = defaultIfBlank(message, success ? "Sync completed." : "Sync failed.");
         STATE.syncCurrentWidgetId = "";
         STATE.syncCurrentWidgetTable = "";
@@ -1181,20 +1085,20 @@ public class WidgetSyncServlet extends HttpServlet {
             String startMessage = manualTrigger
                     ? "Manual summary generation started..."
                     : "Preparing daily summary context...";
-            summaryStore.upsertProgress(day, slot, "running", 5, startMessage, 0, true, false);
+            summaryStore.upsertProgress(day, slot, com.sim.chatserver.util.CommonLiteralConstants.STATUS_RUNNING, 5, startMessage, 0, true, false);
 
             int effectiveMaxRows = clampSummaryMaxRows(STATE.summaryMaxRows);
             List<SelectedEntry> entries = loadEntriesForDay(day, effectiveMaxRows);
             entryCount = entries.size();
 
             if (entries.isEmpty()) {
-                summaryStore.upsertSummary(day, slot, "success", 100, "No entries available for this day yet.",
-                        "No entries available for this day yet.", "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â", "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â", "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â", 0, false, true);
+                summaryStore.upsertSummary(day, slot, com.sim.chatserver.util.CommonLiteralConstants.FIELD_SUCCESS, 100, "No entries available for this day yet.",
+                    "No entries available for this day yet.", CommonLiteralConstants.VALUE_NA, CommonLiteralConstants.VALUE_NA, CommonLiteralConstants.VALUE_NA, 0, false, true);
                 resumeAutomaticSummaryGeneration("No entries available; automatic summary generation remains enabled.");
                 return true;
             }
 
-            summaryStore.upsertProgress(day, slot, "running", 25, "Analyzing entries...", entries.size(), false, false);
+            summaryStore.upsertProgress(day, slot, com.sim.chatserver.util.CommonLiteralConstants.STATUS_RUNNING, 25, "Analyzing entries...", entries.size(), false, false);
 
             SummaryRequestContext requestContext = prepareSummaryRequestContext(day, slot, entryCount);
             if (requestContext == null) {
@@ -1203,10 +1107,10 @@ public class WidgetSyncServlet extends HttpServlet {
             String workspaceSlug = requestContext.workspaceSlug;
             String apiKey = requestContext.apiKey;
             String canonicalTargetUrl = requestContext.canonicalTargetUrl;
-            ApiAuthResolver.ResolvedApiAuth resolvedSummaryAuth = requestContext.resolvedSummaryAuth;
+            ResolvedApiAuth resolvedSummaryAuth = requestContext.resolvedSummaryAuth;
             String resolvedSummaryPrompt = resolveSummaryPrompt();
 
-            summaryStore.upsertProgress(day, slot, "running", 45, "Sending compact summary request...", entries.size(), false, false);
+            summaryStore.upsertProgress(day, slot, com.sim.chatserver.util.CommonLiteralConstants.STATUS_RUNNING, 45, "Sending compact summary request...", entries.size(), false, false);
 
             List<TermDefinition> termDefinitions = loadSummaryTerms();
             List<SelectedEntry> upstreamEntries = limitSummaryEntriesForUpstream(entries);
@@ -1218,7 +1122,7 @@ public class WidgetSyncServlet extends HttpServlet {
             String summaryRequestId = "daily-summary-" + day + "-slot-" + slot;
 
             ServerDiagnosticsLog.write(
-                    "widget-sync",
+                    com.sim.chatserver.util.CommonLiteralConstants.COMPONENT_WIDGET_SYNC,
                     summaryRequestId,
                     "summary-request",
                     "targetUrl=" + canonicalTargetUrl
@@ -1310,10 +1214,10 @@ public class WidgetSyncServlet extends HttpServlet {
 
         if (finalResp != null) {
             ServerDiagnosticsLog.write(
-                    "widget-sync",
+                    com.sim.chatserver.util.CommonLiteralConstants.COMPONENT_WIDGET_SYNC,
                     summaryRequestId,
                     "summary-response-single-pass",
-                    "status=" + finalResp.statusCode()
+                    com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_STATUS + finalResp.statusCode()
                         + LS + "contentType=" + defaultString(finalResp.contentType())
                         + LS + "bodySnippet=" + summarizeBodyForDiagnostics(finalResp.body())
             );
@@ -1350,10 +1254,10 @@ public class WidgetSyncServlet extends HttpServlet {
 
             if (directFallback != null) {
                 ServerDiagnosticsLog.write(
-                        "widget-sync",
+                        com.sim.chatserver.util.CommonLiteralConstants.COMPONENT_WIDGET_SYNC,
                         summaryRequestId,
                         "summary-response-direct-fallback",
-                        "status=" + directFallback.statusCode()
+                        com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_STATUS + directFallback.statusCode()
                         + LS + "contentType=" + defaultString(directFallback.contentType())
                         + LS + "bodySnippet=" + summarizeBodyForDiagnostics(directFallback.body())
                 );
@@ -1463,7 +1367,7 @@ public class WidgetSyncServlet extends HttpServlet {
             usage = "No specific usage notes generated.";
         }
 
-        STATE.summaryStore.upsertSummary(day, slot, "success", 100, "Summary generated.",
+        STATE.summaryStore.upsertSummary(day, slot, com.sim.chatserver.util.CommonLiteralConstants.FIELD_SUCCESS, 100, "Summary generated.",
                 overall, quality, response, usage, entries.size(), false, true);
         resumeAutomaticSummaryGeneration("Summary generated successfully.");
         return true;
@@ -1485,7 +1389,7 @@ public class WidgetSyncServlet extends HttpServlet {
         String workspaceSlug = buildSlug(cfg.getWorkspaceName());
         String baseUrl = sanitizeBaseUrl(buildBaseUrl(cfg));
         String apiKey = defaultIfBlank(cfg.getApiKey(), null);
-        ApiAuthResolver.ResolvedApiAuth resolvedSummaryAuth = ApiAuthResolver.resolveForServerConfigOutbound(apiKey);
+        ResolvedApiAuth resolvedSummaryAuth = ApiAuthResolver.resolveForServerConfigOutbound(apiKey);
 
         if (workspaceSlug == null || workspaceSlug.isBlank() || baseUrl == null || baseUrl.isBlank()) {
             failDailySummary(
@@ -1542,7 +1446,7 @@ public class WidgetSyncServlet extends HttpServlet {
                     + REQUIRE_HTTPS_WITH_AUTH_ENV + " is disabled. url=" + canonicalTargetUrl);
         }
 
-        TrustedUrlValidator.ValidationResult trust = STATE.trustedUrlValidator.validate(canonicalTargetUrl);
+        ValidationResult trust = STATE.trustedUrlValidator.validate(canonicalTargetUrl);
         if (!trust.isValid()) {
             String trustReason = defaultIfBlank(trust.getReason(), "unspecified trust validation failure.");
             if (!isSummaryTargetFromConfiguredServer(canonicalTargetUrl, cfg)) {
@@ -1566,29 +1470,6 @@ public class WidgetSyncServlet extends HttpServlet {
         return new SummaryRequestContext(cfg, workspaceSlug, apiKey, canonicalTargetUrl, resolvedSummaryAuth);
     }
 
-    private static final class SummaryRequestContext {
-
-        private final ServerConfig config;
-        private final String workspaceSlug;
-        private final String apiKey;
-        private final String canonicalTargetUrl;
-        private final ApiAuthResolver.ResolvedApiAuth resolvedSummaryAuth;
-
-        private SummaryRequestContext(
-                ServerConfig config,
-                String workspaceSlug,
-                String apiKey,
-                String canonicalTargetUrl,
-                ApiAuthResolver.ResolvedApiAuth resolvedSummaryAuth
-        ) {
-            this.config = config;
-            this.workspaceSlug = workspaceSlug;
-            this.apiKey = apiKey;
-            this.canonicalTargetUrl = canonicalTargetUrl;
-            this.resolvedSummaryAuth = resolvedSummaryAuth;
-        }
-    }
-
     private boolean failDailySummary(
             LocalDate day,
             int slot,
@@ -1603,7 +1484,7 @@ public class WidgetSyncServlet extends HttpServlet {
             STATE.summaryStore.upsertSummary(
                 day,
                 slot,
-                "error",
+                com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR,
                 100,
                 pausedMessage,
                 defaultIfBlank(overall, "Summary generation failed. Manual summary generation is required to continue."),
@@ -1701,7 +1582,7 @@ public class WidgetSyncServlet extends HttpServlet {
         }
 
         String reason = defaultString(upstreamReason).toLowerCase(Locale.ROOT);
-        if (reason.contains("not a valid workspace") || reason.contains("no valid api key")) {
+        if (reason.contains("not a valid workspace") || reason.contains(com.sim.chatserver.util.CommonLiteralConstants.TEXT_NO_VALID_API_KEY)) {
             return false;
         }
 
@@ -1719,8 +1600,8 @@ public class WidgetSyncServlet extends HttpServlet {
         String workspace = defaultIfBlank(workspaceSlug, "(blank)");
 
         if (statusCode == HttpServletResponse.SC_UNAUTHORIZED || statusCode == HttpServletResponse.SC_FORBIDDEN
-                || lower.contains("no valid api key")
-                || lower.contains("unauthorized")
+                || lower.contains(com.sim.chatserver.util.CommonLiteralConstants.TEXT_NO_VALID_API_KEY)
+                || lower.contains(com.sim.chatserver.util.CommonLiteralConstants.TEXT_UNAUTHORIZED)
                 || lower.contains("forbidden")) {
             return "Summary failed: API key was rejected by the workspace server. "
                     + "Verify API key in Server and Workspace for workspace '" + workspace + "'.";
@@ -1778,7 +1659,7 @@ public class WidgetSyncServlet extends HttpServlet {
         STATE.summaryStore.upsertSummary(
                 day,
                 slot,
-                "success",
+                com.sim.chatserver.util.CommonLiteralConstants.FIELD_SUCCESS,
                 100,
             "Summary generated using local fallback because upstream returned HTTP " + upstreamStatus + '.',
                 defaultIfBlank(overall, markdown),
@@ -1791,7 +1672,7 @@ public class WidgetSyncServlet extends HttpServlet {
         );
 
         ServerDiagnosticsLog.write(
-                "widget-sync",
+                com.sim.chatserver.util.CommonLiteralConstants.COMPONENT_WIDGET_SYNC,
                 "daily-summary-local-fallback-" + day + "-slot-" + slot,
                 "summary-response-local-fallback",
                 "upstreamStatus=" + upstreamStatus
@@ -1992,7 +1873,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 }
 
                 out.append("- ").append(name)
-                        .append(" | type=").append(defaultIfBlank(type, "WILDCARD"))
+                        .append(" | type=").append(defaultIfBlank(type, com.sim.chatserver.util.CommonLiteralConstants.MATCH_TYPE_WILDCARD))
                         .append(" | pattern=").append(defaultIfBlank(pattern, name))
                     .append(System.lineSeparator());
                 appended++;
@@ -2120,7 +2001,7 @@ public class WidgetSyncServlet extends HttpServlet {
             score = score.subtract(BigDecimal.valueOf(8L, 1));
         } else if ("medium".equals(level)) {
             score = score.subtract(BigDecimal.valueOf(5L, 1));
-        } else if ("low".equals(level)) {
+        } else if (com.sim.chatserver.util.CommonLiteralConstants.VALUE_LOW.equals(level)) {
             score = score.subtract(BigDecimal.valueOf(2L, 1));
         }
 
@@ -2219,11 +2100,11 @@ public class WidgetSyncServlet extends HttpServlet {
 
         signals += registerFrustrationPoint(combinedLower, frustrationPointCounts,
                 "Authentication or access problems",
-                "401", "403", "no valid api key", "authorization", "auth", "forbidden", "unauthorized");
+                "401", "403", com.sim.chatserver.util.CommonLiteralConstants.TEXT_NO_VALID_API_KEY, com.sim.chatserver.util.CommonLiteralConstants.HEADER_AUTHORIZATION_LOWER, "auth", "forbidden", com.sim.chatserver.util.CommonLiteralConstants.TEXT_UNAUTHORIZED);
 
         signals += registerFrustrationPoint(combinedLower, frustrationPointCounts,
                 "Connectivity or platform failures",
-                "400", "error", "failed", "cannot", "can't", "unable", "timeout", "not working", "issue", "problem", "retry");
+                "400", com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR, com.sim.chatserver.util.CommonLiteralConstants.STATUS_FAILED, "cannot", "can't", "unable", "timeout", "not working", "issue", "problem", "retry");
 
         signals += registerFrustrationPoint(combinedLower, frustrationPointCounts,
                 "Answer quality or clarity gaps",
@@ -2258,7 +2139,7 @@ public class WidgetSyncServlet extends HttpServlet {
         if (ratio >= 0.30d || frustrationSignals >= 2) {
             return "medium";
         }
-        return "low";
+        return com.sim.chatserver.util.CommonLiteralConstants.VALUE_LOW;
     }
 
     private String topCategory(Map<String, Integer> counts) {
@@ -2373,7 +2254,7 @@ public class WidgetSyncServlet extends HttpServlet {
 
         String[] words = text.toLowerCase(Locale.ROOT)
                 .replaceAll("[^a-z0-9\\s]", " ")
-                .split("\\s+");
+                .split(com.sim.chatserver.util.CommonLiteralConstants.REGEX_WHITESPACE);
 
         for (String word : words) {
             if (word == null || word.isBlank() || word.length() < 4) {
@@ -2388,10 +2269,10 @@ public class WidgetSyncServlet extends HttpServlet {
 
     private boolean isStopKeyword(String word) {
         return switch (word) {
-            case "this", "that", "with", "from", "your", "have", "will", "what", "when", "where", "which",
+            case "this", "that", "with", com.sim.chatserver.util.CommonLiteralConstants.FIELD_FROM, "your", "have", "will", "what", "when", "where", "which",
                  "could", "should", "would", "into", "then", "them", "they", "their", "there", "about", "after",
                  "before", "because", "while", "using", "used", "need", "needs", "help", "please", "also", "only",
-                 "today", "chat", "chats", "response", "prompt", "summary", "section", "sections" -> true;
+                 "today", com.sim.chatserver.util.CommonLiteralConstants.DEFAULT_MODE_CHAT, "chats", com.sim.chatserver.util.CommonLiteralConstants.FIELD_RESPONSE, com.sim.chatserver.util.CommonLiteralConstants.FIELD_PROMPT, CommonLiteralConstants.LABEL_SUMMARY, "section", "sections" -> true;
             default -> false;
         };
     }
@@ -2482,10 +2363,10 @@ public class WidgetSyncServlet extends HttpServlet {
 
         String requestId = UUID.randomUUID().toString();
         ServerDiagnosticsLog.write(
-                "widget-sync",
+                com.sim.chatserver.util.CommonLiteralConstants.COMPONENT_WIDGET_SYNC,
                 requestId,
                 "sync-request",
-            "method=GET" + LS + "url=" + uri + LS + "widgetId=" + defaultString(widgetId)
+            "method=GET" + LS + com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_URL + uri + LS + "widgetId=" + defaultString(widgetId)
         );
 
         String apiKey = config.getApiKey();
@@ -2503,14 +2384,14 @@ public class WidgetSyncServlet extends HttpServlet {
             SyncHttpResult result = sendSyncRequest(uri, apiKey);
             HttpResponse<InputStream> response = result.response;
             try (InputStream bodyStream = response.body()) {
-                String contentType = response.headers().firstValue("Content-Type").orElse("");
+                String contentType = response.headers().firstValue(com.sim.chatserver.util.CommonLiteralConstants.HEADER_CONTENT_TYPE).orElse("");
                 int statusCode = response.statusCode();
 
                 ServerDiagnosticsLog.write(
-                        "widget-sync",
+                        com.sim.chatserver.util.CommonLiteralConstants.COMPONENT_WIDGET_SYNC,
                         requestId,
                         "sync-response",
-                    "status=" + statusCode + LS + "contentType=" + contentType + LS + "widgetId=" + defaultString(widgetId)
+                    com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_STATUS + statusCode + LS + "contentType=" + contentType + LS + "widgetId=" + defaultString(widgetId)
                         + LS + "authSource=" + defaultString(result.authSource)
                         + LS + "authMode=" + (result.authMode == null ? "" : result.authMode.name())
                 );
@@ -2519,10 +2400,10 @@ public class WidgetSyncServlet extends HttpServlet {
                     String upstreamBody = readUpstreamBodySnippet(bodyStream);
                     if (!upstreamBody.isBlank()) {
                     ServerDiagnosticsLog.write(
-                        "widget-sync",
+                        com.sim.chatserver.util.CommonLiteralConstants.COMPONENT_WIDGET_SYNC,
                         requestId,
                         "sync-response-body",
-                        "status=" + statusCode + LS + "widgetId=" + defaultString(widgetId) + LS + "body=" + upstreamBody
+                        com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_STATUS + statusCode + LS + "widgetId=" + defaultString(widgetId) + LS + com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_BODY + upstreamBody
                     );
                     }
                     throw new IllegalStateException("Sync API transient server error " + statusCode
@@ -2532,17 +2413,17 @@ public class WidgetSyncServlet extends HttpServlet {
                     String upstreamBody = readUpstreamBodySnippet(bodyStream);
                     if (!upstreamBody.isBlank()) {
                     ServerDiagnosticsLog.write(
-                        "widget-sync",
+                        com.sim.chatserver.util.CommonLiteralConstants.COMPONENT_WIDGET_SYNC,
                         requestId,
                         "sync-response-body",
-                        "status=" + statusCode + LS + "widgetId=" + defaultString(widgetId) + LS + "body=" + upstreamBody
+                        com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_STATUS + statusCode + LS + "widgetId=" + defaultString(widgetId) + LS + com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_BODY + upstreamBody
                     );
                     }
                     throw new IllegalStateException("Sync API returned " + statusCode
                         + " (contentType=" + contentType + ", upstreamBody=" + upstreamBody + ')');
                 }
 
-                if (!contentType.toLowerCase(Locale.ROOT).contains("application/json")) {
+                if (!contentType.toLowerCase(Locale.ROOT).contains(com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON)) {
                     throw new IllegalStateException(String.format("Unexpected content type '%s'", contentType));
                 }
 
@@ -2558,10 +2439,10 @@ public class WidgetSyncServlet extends HttpServlet {
                 Thread.currentThread().interrupt();
             }
             ServerDiagnosticsLog.write(
-                    "widget-sync",
+                    com.sim.chatserver.util.CommonLiteralConstants.COMPONENT_WIDGET_SYNC,
                     requestId,
                     "sync-error",
-                    "url=" + uri + LS + "widgetId=" + defaultString(widgetId) + LS + "message=" + defaultString(e.getMessage()),
+                    com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_URL + uri + LS + "widgetId=" + defaultString(widgetId) + LS + com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_MESSAGE + defaultString(e.getMessage()),
                     e
             );
             throw e;
@@ -2570,10 +2451,10 @@ public class WidgetSyncServlet extends HttpServlet {
                 Thread.currentThread().interrupt();
             }
             ServerDiagnosticsLog.write(
-                    "widget-sync",
+                    com.sim.chatserver.util.CommonLiteralConstants.COMPONENT_WIDGET_SYNC,
                     requestId,
                     "sync-error",
-                    "url=" + uri + LS + "widgetId=" + defaultString(widgetId) + LS + "message=" + defaultString(e.getMessage()),
+                    com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_URL + uri + LS + "widgetId=" + defaultString(widgetId) + LS + com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_MESSAGE + defaultString(e.getMessage()),
                     e
             );
             throw new IllegalStateException("Sync API communication failed", e);
@@ -2581,16 +2462,16 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private SyncHttpResult sendSyncRequest(URI uri, String apiKey) {
-        ApiAuthResolver.ResolvedApiAuth primaryAuth = ApiAuthResolver.resolveForOutbound(apiKey);
-        ApiAuthResolver.ResolvedApiAuth secondaryAuth = ApiAuthResolver.resolveForOutbound(null);
-        List<ApiAuthResolver.ResolvedApiAuth> candidates = buildAuthCandidates(primaryAuth, secondaryAuth);
+        ResolvedApiAuth primaryAuth = ApiAuthResolver.resolveForOutbound(apiKey);
+        ResolvedApiAuth secondaryAuth = ApiAuthResolver.resolveForOutbound(null);
+        List<ResolvedApiAuth> candidates = buildAuthCandidates(primaryAuth, secondaryAuth);
         if (candidates.isEmpty()) {
             throw new IllegalStateException("Sync API key is required.");
         }
 
         SyncHttpResult lastResult = null;
         for (int authIndex = 0; authIndex < candidates.size(); authIndex++) {
-            ApiAuthResolver.ResolvedApiAuth auth = candidates.get(authIndex);
+            ResolvedApiAuth auth = candidates.get(authIndex);
             AuthHeaderMode mode = resolvePrimaryAuthMode(auth.preferredHeaderName());
             HttpRequest request = buildSyncRequest(uri, auth, mode);
             HttpResponse<InputStream> response;
@@ -2631,12 +2512,12 @@ public class WidgetSyncServlet extends HttpServlet {
         return lastResult;
     }
 
-    private List<ApiAuthResolver.ResolvedApiAuth> buildAuthCandidates(
-            ApiAuthResolver.ResolvedApiAuth primary,
-            ApiAuthResolver.ResolvedApiAuth secondary
+    private List<ResolvedApiAuth> buildAuthCandidates(
+            ResolvedApiAuth primary,
+            ResolvedApiAuth secondary
     ) {
-        Map<String, ApiAuthResolver.ResolvedApiAuth> unique = new LinkedHashMap<>();
-        for (ApiAuthResolver.ResolvedApiAuth candidate : Arrays.asList(primary, secondary)) {
+        Map<String, ResolvedApiAuth> unique = new LinkedHashMap<>();
+        for (ResolvedApiAuth candidate : Arrays.asList(primary, secondary)) {
             if (candidate == null || !candidate.hasToken()) {
                 continue;
             }
@@ -2702,19 +2583,19 @@ public class WidgetSyncServlet extends HttpServlet {
 
     private AuthHeaderMode resolvePrimaryAuthMode(String preferredHeaderName) {
         String header = preferredHeaderName == null ? "" : preferredHeaderName.trim();
-        if ("x-api-key".equalsIgnoreCase(header)) {
+        if (CommonLiteralConstants.HEADER_X_API_KEY_LOWER.equalsIgnoreCase(header)) {
             return AuthHeaderMode.X_API_KEY;
         }
-        if (!header.isBlank() && !"authorization".equalsIgnoreCase(header)) {
+        if (!header.isBlank() && !CommonLiteralConstants.HEADER_AUTHORIZATION_LOWER.equalsIgnoreCase(header)) {
             return AuthHeaderMode.CUSTOM_HEADER;
         }
         return AuthHeaderMode.AUTH_BEARER;
     }
 
-    private HttpRequest buildSyncRequest(URI uri, ApiAuthResolver.ResolvedApiAuth auth, AuthHeaderMode mode) {
+    private HttpRequest buildSyncRequest(URI uri, ResolvedApiAuth auth, AuthHeaderMode mode) {
         HttpRequest.Builder builder = HttpRequest.newBuilder(uri)
                 .timeout(HTTP_REQUEST_TIMEOUT)
-                .header("Accept", "application/json")
+                .header(com.sim.chatserver.util.CommonLiteralConstants.HEADER_ACCEPT, com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON)
                 .GET();
 
         String token = auth == null ? null : auth.token();
@@ -2724,13 +2605,13 @@ public class WidgetSyncServlet extends HttpServlet {
         if (token != null && !token.isBlank()) {
             switch (mode) {
                 case CUSTOM_HEADER -> applyPreferredHeader(builder, preferredHeader, rawValue, token);
-                case AUTH_RAW -> builder.header("Authorization", normalizeRawAuthorizationValue(rawValue, token));
-                case X_API_KEY -> builder.header("X-API-Key", token);
+                case AUTH_RAW -> builder.header(CommonLiteralConstants.HEADER_AUTHORIZATION, normalizeRawAuthorizationValue(rawValue, token));
+                case X_API_KEY -> builder.header(CommonLiteralConstants.HEADER_X_API_KEY, token);
                 case AUTH_BEARER_AND_X_API_KEY -> builder
-                        .header("Authorization", "Bearer " + token)
-                        .header("X-API-Key", token);
-                case AUTH_BEARER -> builder.header("Authorization", "Bearer " + token);
-                default -> builder.header("Authorization", "Bearer " + token);
+                    .header(CommonLiteralConstants.HEADER_AUTHORIZATION, com.sim.chatserver.util.CommonLiteralConstants.AUTH_BEARER_PREFIX + token)
+                    .header(CommonLiteralConstants.HEADER_X_API_KEY, token);
+                case AUTH_BEARER -> builder.header(CommonLiteralConstants.HEADER_AUTHORIZATION, com.sim.chatserver.util.CommonLiteralConstants.AUTH_BEARER_PREFIX + token);
+                default -> builder.header(CommonLiteralConstants.HEADER_AUTHORIZATION, com.sim.chatserver.util.CommonLiteralConstants.AUTH_BEARER_PREFIX + token);
             }
         }
 
@@ -2743,12 +2624,12 @@ public class WidgetSyncServlet extends HttpServlet {
             return;
         }
 
-        if ("authorization".equalsIgnoreCase(normalizedHeader)) {
-            builder.header("Authorization", "Bearer " + token);
+        if (CommonLiteralConstants.HEADER_AUTHORIZATION_LOWER.equalsIgnoreCase(normalizedHeader)) {
+            builder.header(CommonLiteralConstants.HEADER_AUTHORIZATION, com.sim.chatserver.util.CommonLiteralConstants.AUTH_BEARER_PREFIX + token);
             return;
         }
-        if ("x-api-key".equalsIgnoreCase(normalizedHeader)) {
-            builder.header("X-API-Key", token);
+        if (CommonLiteralConstants.HEADER_X_API_KEY_LOWER.equalsIgnoreCase(normalizedHeader)) {
+            builder.header(CommonLiteralConstants.HEADER_X_API_KEY, token);
             return;
         }
 
@@ -2807,7 +2688,7 @@ public class WidgetSyncServlet extends HttpServlet {
 
     private void loadSyncSettingsLocked() {
         try {
-            WidgetSyncJdbcStore.SyncSettingsData defaults = new WidgetSyncJdbcStore.SyncSettingsData(
+            SyncSettingsData defaults = new SyncSettingsData(
                     STATE.syncIntervalSeconds,
                     STATE.lastSynced,
                     STATE.summaryIntervalSeconds.get(),
@@ -2820,7 +2701,7 @@ public class WidgetSyncServlet extends HttpServlet {
                     STATE.summaryLastRun.get()
             );
 
-            WidgetSyncJdbcStore.SyncSettingsData settings = STATE.jdbcStore.loadOrCreateSyncSettings(dataSourceHolder(), defaults);
+            SyncSettingsData settings = STATE.jdbcStore.loadOrCreateSyncSettings(dataSourceHolder(), defaults);
             if (settings.intervalSeconds > 0) {
                 STATE.syncIntervalSeconds = settings.intervalSeconds;
             }
@@ -2840,7 +2721,7 @@ public class WidgetSyncServlet extends HttpServlet {
 
     private void persistSyncSettings() {
         try {
-            WidgetSyncJdbcStore.SyncSettingsData settings = new WidgetSyncJdbcStore.SyncSettingsData(
+            SyncSettingsData settings = new SyncSettingsData(
                     STATE.syncIntervalSeconds,
                     STATE.lastSynced,
                     STATE.summaryIntervalSeconds.get(),
@@ -2863,12 +2744,12 @@ public class WidgetSyncServlet extends HttpServlet {
         }
     }
 
-    private List<WidgetSyncJdbcStore.ChatUpsertRow> toChatUpsertRows(List<JsonObject> chats) {
+    private List<ChatUpsertRow> toChatUpsertRows(List<JsonObject> chats) {
         if (chats == null || chats.isEmpty()) {
             return List.of();
         }
 
-        List<WidgetSyncJdbcStore.ChatUpsertRow> rows = new ArrayList<>(chats.size());
+        List<ChatUpsertRow> rows = new ArrayList<>(chats.size());
         for (JsonObject chat : chats) {
             if (chat == null) {
                 continue;
@@ -2877,13 +2758,13 @@ public class WidgetSyncServlet extends HttpServlet {
             if (chatId == null || chatId.isBlank()) {
                 continue;
             }
-            String prompt = getString(chat, "prompt");
-            String normalizedResponse = getString(chat, "response_text");
+            String prompt = getString(chat, com.sim.chatserver.util.CommonLiteralConstants.FIELD_PROMPT);
+            String normalizedResponse = getString(chat, com.sim.chatserver.util.CommonLiteralConstants.SQL_COL_RESPONSE_TEXT);
             String responseText = normalizedResponse != null ? normalizedResponse : formatResponseText(chat);
             Timestamp createdAt = parseCreatedAt(chat);
-            String sessionId = getString(chat, "session_id");
-            String username = getString(chat, "username");
-            rows.add(new WidgetSyncJdbcStore.ChatUpsertRow(chatId, prompt, responseText, createdAt, sessionId, username));
+            String sessionId = getString(chat, com.sim.chatserver.util.CommonLiteralConstants.SQL_COL_SESSION_ID);
+            String username = getString(chat, com.sim.chatserver.util.CommonLiteralConstants.KEY_USERNAME);
+            rows.add(new ChatUpsertRow(chatId, prompt, responseText, createdAt, sessionId, username));
         }
         return rows;
     }
@@ -2903,17 +2784,17 @@ public class WidgetSyncServlet extends HttpServlet {
 
     private boolean authorizeAdmin(HttpServletRequest req, HttpServletResponse resp) {
         if (req == null) {
-            jsonError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+            jsonError(resp, HttpServletResponse.SC_UNAUTHORIZED, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED);
             return false;
         }
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            jsonError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+            jsonError(resp, HttpServletResponse.SC_UNAUTHORIZED, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED);
             return false;
         }
-        String role = session.getAttribute("role") == null ? "" : session.getAttribute("role").toString();
-        if (!"ADMIN".equalsIgnoreCase(role)) {
-            jsonError(resp, HttpServletResponse.SC_FORBIDDEN, "Admin role required.");
+        String role = session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.ROLE) == null ? "" : session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.ROLE).toString();
+        if (!com.sim.chatserver.util.CommonLiteralConstants.ROLE_ADMIN.equalsIgnoreCase(role)) {
+            jsonError(resp, HttpServletResponse.SC_FORBIDDEN, com.sim.chatserver.util.CommonLiteralConstants.MSG_ADMIN_ROLE_REQUIRED);
             return false;
         }
         return true;
@@ -2970,11 +2851,11 @@ public class WidgetSyncServlet extends HttpServlet {
 
     private String sanitizeWidgetTableName(String widgetId) {
         if (widgetId == null || widgetId.isBlank()) {
-            return "widget";
+            return com.sim.chatserver.util.CommonLiteralConstants.FIELD_WIDGET;
         }
         String normalized = NON_ALNUM_UNDERSCORE.matcher(widgetId.trim()).replaceAll("_");
         if (normalized.isEmpty()) {
-            normalized = "widget";
+            normalized = com.sim.chatserver.util.CommonLiteralConstants.FIELD_WIDGET;
         }
         if (!Character.isLetter(normalized.charAt(0))) {
             normalized = "w_" + normalized;
@@ -2986,12 +2867,12 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private String formatResponseText(JsonObject chat) {
-        JsonValue responseValue = chat.get("response");
+        JsonValue responseValue = chat.get(com.sim.chatserver.util.CommonLiteralConstants.FIELD_RESPONSE);
         String text = extractText(responseValue);
         if (text == null) {
             JsonValue raw = chat.get("raw_chat");
             if (raw instanceof JsonObject rawObj) {
-                text = extractText(rawObj.get("response"));
+                text = extractText(rawObj.get(com.sim.chatserver.util.CommonLiteralConstants.FIELD_RESPONSE));
             }
         }
         return humanize(normalizeToJsonText(text));
@@ -3002,7 +2883,7 @@ public class WidgetSyncServlet extends HttpServlet {
             return null;
         }
         if (value instanceof JsonObject obj) {
-            return getString(obj, "text");
+            return getString(obj, com.sim.chatserver.util.CommonLiteralConstants.KEY_TEXT);
         }
         if (value instanceof JsonString js) {
             return js.getString();
@@ -3026,7 +2907,7 @@ public class WidgetSyncServlet extends HttpServlet {
         try {
             JsonNode node = OBJECT_MAPPER.readTree(raw);
             if (node != null && node.isObject()) {
-                String text = textValue(node, "text");
+                String text = textValue(node, com.sim.chatserver.util.CommonLiteralConstants.KEY_TEXT);
                 if (text != null && !text.isBlank()) {
                     return text;
                 }
@@ -3047,9 +2928,9 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private Timestamp parseCreatedAt(JsonObject chat) {
-        String created = getString(chat, "createdAt");
+        String created = getString(chat, com.sim.chatserver.util.CommonLiteralConstants.FIELD_CREATED_AT);
         if (created == null) {
-            created = getString(chat, "created_at");
+            created = getString(chat, com.sim.chatserver.util.CommonLiteralConstants.SQL_COL_CREATED_AT);
         }
         if (created == null) {
             return null;
@@ -3078,7 +2959,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 path = path + "/api";
             }
             String apiPath = path + "/v1/embed/" + URLEncoder.encode(widgetId, StandardCharsets.UTF_8) + "/chats";
-            String baseAuthority = base.getScheme() + "://" + base.getAuthority();
+            String baseAuthority = base.getScheme() + com.sim.chatserver.util.CommonLiteralConstants.SCHEME_SEPARATOR + base.getAuthority();
             return URI.create(baseAuthority + apiPath);
         } catch (IllegalArgumentException e) {
             throw new IllegalArgumentException("Invalid base URL for sync endpoint", e);
@@ -3121,20 +3002,20 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private JsonObject toFlatSyncObject(JsonNode node) {
-        String createdAt = textValue(node, "createdAt");
+        String createdAt = textValue(node, com.sim.chatserver.util.CommonLiteralConstants.FIELD_CREATED_AT);
         if (createdAt == null || createdAt.isBlank()) {
-            createdAt = textValue(node, "created_at");
+            createdAt = textValue(node, com.sim.chatserver.util.CommonLiteralConstants.SQL_COL_CREATED_AT);
         }
 
         String responseText = extractResponseText(node);
 
         return Json.createObjectBuilder()
                 .add("id", defaultString(textValue(node, "id")))
-                .add("prompt", defaultString(textValue(node, "prompt")))
-                .add("response_text", defaultString(responseText))
-                .add("created_at", defaultString(createdAt))
-                .add("session_id", defaultString(textValue(node, "session_id")))
-                .add("username", defaultString(textValue(node, "username")))
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_PROMPT, defaultString(textValue(node, com.sim.chatserver.util.CommonLiteralConstants.FIELD_PROMPT)))
+                .add(com.sim.chatserver.util.CommonLiteralConstants.SQL_COL_RESPONSE_TEXT, defaultString(responseText))
+                .add(com.sim.chatserver.util.CommonLiteralConstants.SQL_COL_CREATED_AT, defaultString(createdAt))
+                .add(com.sim.chatserver.util.CommonLiteralConstants.SQL_COL_SESSION_ID, defaultString(textValue(node, com.sim.chatserver.util.CommonLiteralConstants.SQL_COL_SESSION_ID)))
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_USERNAME, defaultString(textValue(node, com.sim.chatserver.util.CommonLiteralConstants.KEY_USERNAME)))
                 .build();
     }
 
@@ -3143,11 +3024,11 @@ public class WidgetSyncServlet extends HttpServlet {
             return null;
         }
 
-        String text = extractText(chatNode.get("response"));
+        String text = extractText(chatNode.get(com.sim.chatserver.util.CommonLiteralConstants.FIELD_RESPONSE));
         if (text == null || text.isBlank()) {
             JsonNode rawChat = chatNode.get("raw_chat");
             if (rawChat != null && rawChat.isObject()) {
-                text = extractText(rawChat.get("response"));
+                text = extractText(rawChat.get(com.sim.chatserver.util.CommonLiteralConstants.FIELD_RESPONSE));
             }
         }
         return humanize(normalizeToJsonText(text));
@@ -3158,7 +3039,7 @@ public class WidgetSyncServlet extends HttpServlet {
             return null;
         }
         if (value.isObject()) {
-            return textValue(value, "text");
+            return textValue(value, com.sim.chatserver.util.CommonLiteralConstants.KEY_TEXT);
         }
         if (value.isTextual()) {
             return value.asText();
@@ -3193,7 +3074,7 @@ public class WidgetSyncServlet extends HttpServlet {
             String text = new String(bytes, StandardCharsets.UTF_8);
             String sanitized = stripControlCharacters(text);
             if (sanitized.length() > 512) {
-                sanitized = safeSlice(sanitized, 0, 512) + "...";
+                sanitized = safeSlice(sanitized, 0, 512) + com.sim.chatserver.util.CommonLiteralConstants.ELLIPSIS;
             }
             return sanitized;
         } catch (IOException e) {
@@ -3220,8 +3101,8 @@ public class WidgetSyncServlet extends HttpServlet {
         try {
             ServletJsonResponseUtil.writeError(resp, status, message);
         } catch (IOException e) {
-            log.log(Level.WARNING, "Unable to write JSON error response", e);
-            sendErrorSafe(resp, status, message == null ? "Request failed." : message);
+            log.log(Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.MSG_UNABLE_TO_WRITE_JSON_ERROR_RESPONSE, e);
+            sendErrorSafe(resp, status, message == null ? com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_FAILED : message);
         }
     }
 
@@ -3229,8 +3110,8 @@ public class WidgetSyncServlet extends HttpServlet {
         try {
             ServletJsonResponseUtil.writeJson(resp, status, payload);
         } catch (IOException e) {
-            log.log(Level.WARNING, "Unable to write JSON response", e);
-            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
+            log.log(Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.MSG_UNABLE_TO_WRITE_JSON_RESPONSE, e);
+            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_UNABLE_TO_WRITE_RESPONSE);
         }
     }
 
@@ -3305,10 +3186,10 @@ public class WidgetSyncServlet extends HttpServlet {
 
         String normalized = host.trim();
         StringBuilder builder = new StringBuilder();
-        if (normalized.contains("://")) {
+        if (normalized.contains(com.sim.chatserver.util.CommonLiteralConstants.SCHEME_SEPARATOR)) {
             builder.append(normalized); 
         }else {
-            builder.append(resolvePreferredScheme(config)).append("://").append(normalized);
+            builder.append(resolvePreferredScheme(config)).append(com.sim.chatserver.util.CommonLiteralConstants.SCHEME_SEPARATOR).append(normalized);
         }
 
         boolean hasPort = normalized.matches(".*:\\d+$");
@@ -3327,13 +3208,13 @@ public class WidgetSyncServlet extends HttpServlet {
 
         int port = config == null ? -1 : config.getServerPort();
         if (port == 80) {
-            return "http";
+            return com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTP;
         }
         if (port == 443) {
-            return "https";
+            return com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTPS;
         }
 
-        return isHttpsRequiredWithAuth() ? "https" : "http";
+        return isHttpsRequiredWithAuth() ? com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTPS : com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTP;
     }
 
     private String extractHttpScheme(String candidateUrl) {
@@ -3347,7 +3228,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 return "";
             }
             String normalized = scheme.toLowerCase(Locale.ROOT);
-            if ("http".equals(normalized) || "https".equals(normalized)) {
+            if (com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTP.equals(normalized) || com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTPS.equals(normalized)) {
                 return normalized;
             }
             return "";
@@ -3364,10 +3245,10 @@ public class WidgetSyncServlet extends HttpServlet {
         String s = raw.trim();
         s = s.replaceFirst("^(https?://)+(https?://)", "$2");
         s = s.replaceFirst("^(https?://)(https?://)+", "$1");
-        s = s.replace("https://https://", "https://")
-                .replace("http://http://", "http://")
-                .replace("http://https://", "https://")
-                .replace("https://http://", "http://");
+        s = s.replace("https://https://", com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTPS)
+                .replace("http://http://", com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTP)
+                .replace("http://https://", com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTPS)
+                .replace("https://http://", com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTP);
         try {
             URI u = URI.create(s);
             String scheme = u.getScheme();
@@ -3376,7 +3257,7 @@ public class WidgetSyncServlet extends HttpServlet {
             if (scheme == null || host == null || host.isBlank()) {
                 return "";
             }
-                String normalized = scheme.toLowerCase(Locale.ROOT) + "://" + host.toLowerCase(Locale.ROOT);
+                String normalized = scheme.toLowerCase(Locale.ROOT) + com.sim.chatserver.util.CommonLiteralConstants.SCHEME_SEPARATOR + host.toLowerCase(Locale.ROOT);
                 return port > 0 ? normalized + (char) 58 + port : normalized;
         } catch (IllegalArgumentException e) {
             log.log(Level.FINE, "Invalid base URL: {0}", s);
@@ -3401,7 +3282,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 targetUrl,
                 apiKey,
                 directMessage,
-                "chat",
+                com.sim.chatserver.util.CommonLiteralConstants.DEFAULT_MODE_CHAT,
                 directSessionId,
                 false,
                 Json.createArrayBuilder().build(),
@@ -3425,7 +3306,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 targetUrl,
                 apiKey,
                 compactMessage,
-                "chat",
+                com.sim.chatserver.util.CommonLiteralConstants.DEFAULT_MODE_CHAT,
                 directSessionId,
                     false,
                 Json.createArrayBuilder().build(),
@@ -3444,7 +3325,7 @@ public class WidgetSyncServlet extends HttpServlet {
                     targetUrl,
                     apiKey,
                     tinyMessage,
-                    "chat",
+                    com.sim.chatserver.util.CommonLiteralConstants.DEFAULT_MODE_CHAT,
                     directSessionId,
                     false,
                     Json.createArrayBuilder().build(),
@@ -3477,7 +3358,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 targetUrl,
                 apiKey,
                 defaultIfBlank(message, "Summarize today's chats."),
-                "chat",
+                com.sim.chatserver.util.CommonLiteralConstants.DEFAULT_MODE_CHAT,
                 sessionId,
                 true,
                 Json.createArrayBuilder().build(),
@@ -3497,7 +3378,7 @@ public class WidgetSyncServlet extends HttpServlet {
             return false;
         }
 
-        if (reason.contains("not a valid workspace") || reason.contains("no valid api key")) {
+        if (reason.contains("not a valid workspace") || reason.contains(com.sim.chatserver.util.CommonLiteralConstants.TEXT_NO_VALID_API_KEY)) {
             return false;
         }
 
@@ -3636,8 +3517,8 @@ public class WidgetSyncServlet extends HttpServlet {
 
                 String prompt = sanitizeTinySummarySnippet(entry.getPrompt(), safePromptChars);
                 String answer = sanitizeTinySummarySnippet(entry.getResponse(), safeResponseChars);
-                String line = "- q=" + defaultIfBlank(prompt, "(empty)")
-                        + " | a=" + defaultIfBlank(answer, "(empty)")
+                String line = "- q=" + defaultIfBlank(prompt, com.sim.chatserver.util.CommonLiteralConstants.MARKER_EMPTY_PARENS)
+                        + " | a=" + defaultIfBlank(answer, com.sim.chatserver.util.CommonLiteralConstants.MARKER_EMPTY_PARENS)
                     + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED;
 
                 if (message.length() + line.length() > safeMaxMessageChars) {
@@ -3733,7 +3614,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 targetUrl,
                 apiKey,
                 "You are preparing a daily chat summary. I will send chat batches. Reply only: OK.",
-                "chat",
+                com.sim.chatserver.util.CommonLiteralConstants.DEFAULT_MODE_CHAT,
                 sessionId,
             false,
                 Json.createArrayBuilder().build(),
@@ -3754,7 +3635,7 @@ public class WidgetSyncServlet extends HttpServlet {
                     targetUrl,
                     apiKey,
                     batchMessage,
-                    "chat",
+                    com.sim.chatserver.util.CommonLiteralConstants.DEFAULT_MODE_CHAT,
                     sessionId,
                     false,
                     Json.createArrayBuilder().build(),
@@ -3776,7 +3657,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 targetUrl,
                 apiKey,
                 finalPrompt,
-                "chat",
+                com.sim.chatserver.util.CommonLiteralConstants.DEFAULT_MODE_CHAT,
                 sessionId,
                 false,
                 Json.createArrayBuilder().build(),
@@ -3799,15 +3680,15 @@ public class WidgetSyncServlet extends HttpServlet {
 
             String id = sanitizeTinySummarySnippet(entry.getChatId(), 64);
             if (id.isBlank()) {
-                id = "unknown";
+                id = com.sim.chatserver.util.CommonLiteralConstants.VALUE_UNKNOWN_LOWER;
             }
 
             String prompt = sanitizeTinySummarySnippet(entry.getPrompt(), SUMMARY_INCREMENTAL_PROMPT_CHARS);
             String response = sanitizeTinySummarySnippet(entry.getResponse(), SUMMARY_INCREMENTAL_RESPONSE_CHARS);
 
             String line = "- id=" + id
-                    + " | q=" + defaultIfBlank(prompt, "(empty)")
-                    + " | a=" + defaultIfBlank(response, "(empty)")
+                    + " | q=" + defaultIfBlank(prompt, com.sim.chatserver.util.CommonLiteralConstants.MARKER_EMPTY_PARENS)
+                    + " | a=" + defaultIfBlank(response, com.sim.chatserver.util.CommonLiteralConstants.MARKER_EMPTY_PARENS)
                     + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED;
 
             if (line.length() > SUMMARY_INCREMENTAL_BATCH_MAX_CHARS) {
@@ -3852,15 +3733,15 @@ public class WidgetSyncServlet extends HttpServlet {
 
                 String chatId = sanitizeTinySummarySnippet(entry.getChatId(), 64);
                 if (chatId.isBlank()) {
-                    chatId = "unknown";
+                    chatId = com.sim.chatserver.util.CommonLiteralConstants.VALUE_UNKNOWN_LOWER;
                 }
 
                 String prompt = sanitizeTinySummarySnippet(entry.getPrompt(), SUMMARY_DIRECT_TINY_PROMPT_CHARS);
                 String response = sanitizeTinySummarySnippet(entry.getResponse(), SUMMARY_DIRECT_TINY_RESPONSE_CHARS);
 
                 String block = "- chat_id=" + chatId
-                        + " | prompt=" + defaultIfBlank(prompt, "(empty)")
-                        + " | response=" + defaultIfBlank(response, "(empty)")
+                        + " | prompt=" + defaultIfBlank(prompt, com.sim.chatserver.util.CommonLiteralConstants.MARKER_EMPTY_PARENS)
+                        + " | response=" + defaultIfBlank(response, com.sim.chatserver.util.CommonLiteralConstants.MARKER_EMPTY_PARENS)
                     + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED;
 
                 if (message.length() + block.length() > SUMMARY_DIRECT_TINY_MAX_MESSAGE_CHARS) {
@@ -3942,7 +3823,7 @@ public class WidgetSyncServlet extends HttpServlet {
 
         String chatId = normalizeSummarySnippet(entry.getChatId(), 128);
         if (chatId.isBlank()) {
-            chatId = "unknown";
+            chatId = com.sim.chatserver.util.CommonLiteralConstants.VALUE_UNKNOWN_LOWER;
         }
 
         String createdAt = normalizeSummarySnippet(entry.getCreatedAt(), 128);
@@ -3952,10 +3833,10 @@ public class WidgetSyncServlet extends HttpServlet {
 
         return LS + "### Chat " + index + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED
                 + "- chat_id: " + chatId + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED
-                + "- created_at: " + defaultIfBlank(createdAt, "unknown") + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED
-                + "- session_id: " + defaultIfBlank(sessionId, "unknown") + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED
-                + "- prompt: " + defaultIfBlank(prompt, "(empty)") + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED
-                + "- response: " + defaultIfBlank(response, "(empty)") + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED;
+                + "- created_at: " + defaultIfBlank(createdAt, com.sim.chatserver.util.CommonLiteralConstants.VALUE_UNKNOWN_LOWER) + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED
+                + "- session_id: " + defaultIfBlank(sessionId, com.sim.chatserver.util.CommonLiteralConstants.VALUE_UNKNOWN_LOWER) + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED
+                + "- prompt: " + defaultIfBlank(prompt, com.sim.chatserver.util.CommonLiteralConstants.MARKER_EMPTY_PARENS) + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED
+                + "- response: " + defaultIfBlank(response, com.sim.chatserver.util.CommonLiteralConstants.MARKER_EMPTY_PARENS) + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED;
     }
 
     private void incrementCount(Map<String, Integer> counts, String key) {
@@ -4039,7 +3920,7 @@ public class WidgetSyncServlet extends HttpServlet {
         // Keep tiny fallback payload ASCII-safe to avoid upstream parser/WAF edge cases.
         normalized = normalized.replaceAll("[^\\x20-\\x7E]", " ")
                 .replaceAll("[\\$\\{\\}<>`|]", " ")
-                .replaceAll("\\s+", " ")
+                .replaceAll(com.sim.chatserver.util.CommonLiteralConstants.REGEX_WHITESPACE, " ")
                 .trim();
 
         if (normalized.length() <= maxChars) {
@@ -4057,7 +3938,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 .replace(System.lineSeparator(), System.lineSeparator())
                 .replace(System.lineSeparator().charAt(0), com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED)
                 .replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), ' ')
-                .replaceAll("\\s+", " ")
+                .replaceAll(com.sim.chatserver.util.CommonLiteralConstants.REGEX_WHITESPACE, " ")
                 .trim();
 
         if (normalized.length() <= maxChars) {
@@ -4107,7 +3988,7 @@ public class WidgetSyncServlet extends HttpServlet {
             if (!"abort".equalsIgnoreCase(type.trim())) {
                 return false;
             }
-            String text = safeJsonText(payload, "textResponse", 4096);
+            String text = safeJsonText(payload, com.sim.chatserver.util.CommonLiteralConstants.FIELD_TEXT_RESPONSE, 4096);
             return text.isBlank();
         } catch (JsonException | ClassCastException ex) {
             log.log(Level.FINE, "Unable to parse abort response payload.", ex);
@@ -4176,10 +4057,10 @@ public class WidgetSyncServlet extends HttpServlet {
         }
 
         String scheme = uri.getScheme();
-        if ("https".equalsIgnoreCase(scheme)) {
+        if (com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTPS.equalsIgnoreCase(scheme)) {
             return 443;
         }
-        if ("http".equalsIgnoreCase(scheme)) {
+        if (com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTP.equalsIgnoreCase(scheme)) {
             return 80;
         }
         return -1;
@@ -4197,7 +4078,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 return "";
             }
             String schemeLower = scheme.toLowerCase(Locale.ROOT);
-            if (!"http".equals(schemeLower) && !"https".equals(schemeLower)) {
+            if (!com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTP.equals(schemeLower) && !com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTPS.equals(schemeLower)) {
                 return "";
             }
             String hostLower = host.toLowerCase(Locale.ROOT);
@@ -4206,7 +4087,7 @@ public class WidgetSyncServlet extends HttpServlet {
             String query = parsed.getQuery();
 
             StringBuilder canonical = new StringBuilder();
-            canonical.append(schemeLower).append("://").append(hostLower);
+            canonical.append(schemeLower).append(com.sim.chatserver.util.CommonLiteralConstants.SCHEME_SEPARATOR).append(hostLower);
             if (port >= 0) {
                 canonical.append((char) 58).append(port);
             }
@@ -4235,7 +4116,7 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private boolean isHttpsUri(URI uri) {
-        return uri != null && "https".equalsIgnoreCase(uri.getScheme());
+        return uri != null && com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTPS.equalsIgnoreCase(uri.getScheme());
     }
 
     private boolean isSummaryRunDueNow() {
@@ -4558,33 +4439,6 @@ public class WidgetSyncServlet extends HttpServlet {
         return value;
     }
 
-    private static final class WidgetSyncStatus {
-
-        final String widgetId;
-        final String tableName;
-        final boolean tableExists;
-        final boolean synced;
-        final String message;
-
-        private WidgetSyncStatus(String widgetId, String tableName, boolean tableExists, boolean synced, String message) {
-            this.widgetId = widgetId;
-            this.tableName = tableName;
-            this.tableExists = tableExists;
-            this.synced = synced;
-            this.message = message;
-        }
-
-        private JsonObject toJson() {
-            return Json.createObjectBuilder()
-                    .add("widgetId", widgetId == null ? "" : widgetId)
-                    .add("tableName", tableName == null ? "" : tableName)
-                    .add("tableExists", tableExists)
-                    .add("synced", synced)
-                    .add("message", message == null ? "" : message)
-                    .build();
-        }
-    }
-
     private String buildSlug(String workspaceName) {
         if (workspaceName == null) {
             return "";
@@ -4630,4 +4484,212 @@ public class WidgetSyncServlet extends HttpServlet {
         return new String(copied);
     }
 
+
+    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException, ClassNotFoundException {
+        throw new java.io.InvalidObjectException(CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
 }
+
+final class WidgetSyncStatus {
+
+    private static final String EMPTY = "";
+
+    final String widgetId;
+    final String tableName;
+    final boolean tableExists;
+    final boolean synced;
+    final String message;
+
+    WidgetSyncStatus(String widgetId, String tableName, boolean tableExists, boolean synced, String message) {
+        this.widgetId = widgetId;
+        this.tableName = tableName;
+        this.tableExists = tableExists;
+        this.synced = synced;
+        this.message = message;
+    }
+
+    JsonObject toJson() {
+        return Json.createObjectBuilder()
+                .add(CommonLiteralConstants.KEY_WIDGET_ID, widgetId == null ? EMPTY : widgetId)
+                .add(CommonLiteralConstants.KEY_TABLE_NAME, tableName == null ? EMPTY : tableName)
+                .add(CommonLiteralConstants.KEY_TABLE_EXISTS, tableExists)
+                .add(CommonLiteralConstants.KEY_SYNCED, synced)
+                .add(CommonLiteralConstants.FIELD_MESSAGE, message == null ? EMPTY : message)
+                .build();
+    }
+}
+
+final class SyncHttpResult {
+    final HttpResponse<InputStream> response;
+    final String authSource;
+    final WidgetSyncServlet.AuthHeaderMode authMode;
+
+    SyncHttpResult(HttpResponse<InputStream> response, String authSource, WidgetSyncServlet.AuthHeaderMode authMode) {
+        this.response = response;
+        this.authSource = authSource;
+        this.authMode = authMode;
+    }
+}
+
+final class SummaryRequestContext {
+
+    final ServerConfig config;
+    final String workspaceSlug;
+    final String apiKey;
+    final String canonicalTargetUrl;
+    final ResolvedApiAuth resolvedSummaryAuth;
+
+    SummaryRequestContext(
+            ServerConfig config,
+            String workspaceSlug,
+            String apiKey,
+            String canonicalTargetUrl,
+            ResolvedApiAuth resolvedSummaryAuth
+    ) {
+        this.config = config;
+        this.workspaceSlug = workspaceSlug;
+        this.apiKey = apiKey;
+        this.canonicalTargetUrl = canonicalTargetUrl;
+        this.resolvedSummaryAuth = resolvedSummaryAuth;
+    }
+}
+
+final class SummaryPayloadPlan {
+    private static final String EMPTY = "";
+    final String message;
+    final int includedEntries;
+    final int requestBytes;
+    final boolean budgetReduced;
+
+    SummaryPayloadPlan(String message, int includedEntries, int requestBytes, boolean budgetReduced) {
+        this.message = message == null ? EMPTY : message;
+        this.includedEntries = Math.max(0, includedEntries);
+        this.requestBytes = Math.max(0, requestBytes);
+        this.budgetReduced = budgetReduced;
+    }
+}
+
+final class RuntimeState {
+    private static final String EMPTY = "";
+    private static final String SYNC_PHASE_IDLE = CommonLiteralConstants.STATUS_IDLE;
+    volatile DashboardDailySummaryStore summaryStore;
+    final Object summaryStoreLock = new Object();
+    final WidgetSyncJdbcStore jdbcStore;
+    ScheduledExecutorService scheduler;
+    final AtomicLong summaryIntervalSeconds;
+    final AtomicReference<String> summaryPromptTemplate;
+    final AtomicReference<Timestamp> summaryLastRun;
+    ScheduledFuture<?> scheduledFuture;
+    long syncIntervalSeconds;
+    boolean summaryAutoEnabled;
+    int summaryMaxRows;
+    int summaryMaxUpstreamEntries;
+    int summaryMaxMessageChars;
+    int summaryMaxRequestBytes;
+    Timestamp lastSynced;
+    Instant syncStartedAt;
+    Instant syncFinishedAt;
+    String syncPhase;
+    String syncStatusMessage;
+    int syncTotalWidgets;
+    String syncCurrentWidgetId;
+    String syncCurrentWidgetTable;
+    int syncCurrentWidgetIndex;
+    int syncProgressPercent;
+    boolean summaryAutoPausedUntilManualSuccess;
+    String summaryAutoPausedReason;
+    MapReduceConfig mrConfig;
+    WorkspaceClient workspaceClient;
+    WidgetReviewMapReduceOrchestrator orchestrator;
+    TrustedUrlValidator trustedUrlValidator;
+    ReviewOutputValidator reviewOutputValidator;
+    AppDataSourceHolder dsHolder;
+
+    RuntimeState(
+            Logger logger,
+            long defaultSummaryIntervalSeconds,
+            boolean defaultSummaryAutoEnabled,
+            int defaultSummaryMaxRows,
+            int defaultSummaryMaxUpstreamEntries,
+            int defaultSummaryMaxMessageChars,
+            int defaultSummaryMaxRequestBytes,
+            int maxSummaryPromptChars,
+            long defaultSyncIntervalSeconds,
+            String defaultSummaryPrompt
+    ) {
+        this.jdbcStore = new WidgetSyncJdbcStore(
+            defaultSummaryIntervalSeconds,
+            defaultSummaryAutoEnabled,
+            defaultSummaryMaxRows,
+            defaultSummaryMaxUpstreamEntries,
+            defaultSummaryMaxMessageChars,
+            defaultSummaryMaxRequestBytes,
+            maxSummaryPromptChars
+        );
+        this.scheduler = WidgetSyncSchedulerManager.createScheduler(logger);
+        this.summaryIntervalSeconds = new AtomicLong(defaultSummaryIntervalSeconds);
+        this.summaryPromptTemplate = new AtomicReference<>(defaultSummaryPrompt);
+        this.summaryLastRun = new AtomicReference<>();
+        this.syncIntervalSeconds = defaultSyncIntervalSeconds;
+        this.summaryAutoEnabled = defaultSummaryAutoEnabled;
+        this.summaryMaxRows = defaultSummaryMaxRows;
+        this.summaryMaxUpstreamEntries = defaultSummaryMaxUpstreamEntries;
+        this.summaryMaxMessageChars = defaultSummaryMaxMessageChars;
+        this.summaryMaxRequestBytes = defaultSummaryMaxRequestBytes;
+        this.syncPhase = SYNC_PHASE_IDLE;
+        this.syncStatusMessage = EMPTY;
+        this.syncCurrentWidgetId = EMPTY;
+        this.syncCurrentWidgetTable = EMPTY;
+        this.summaryAutoPausedReason = EMPTY;
+    }
+}
+
+final class RecentChatIdCache {
+    private final int maxSize;
+    private final Deque<String> order = new ArrayDeque<>();
+    private final Set<String> ids = new HashSet<>();
+
+    RecentChatIdCache(int maxSize) {
+        this.maxSize = Math.max(0, maxSize);
+    }
+
+    synchronized List<String> missingFromCache(List<String> chatIds) {
+        List<String> missing = new ArrayList<>();
+        if (chatIds == null || chatIds.isEmpty()) {
+            return missing;
+        }
+        for (String chatId : chatIds) {
+            if (chatId == null || chatId.isBlank()) {
+                continue;
+            }
+            if (!ids.contains(chatId)) {
+                missing.add(chatId);
+            }
+        }
+        return missing;
+    }
+
+    synchronized void recordAll(List<String> chatIds) {
+        if (maxSize <= 0 || chatIds == null || chatIds.isEmpty()) {
+            return;
+        }
+        for (String chatId : chatIds) {
+            if (chatId == null || chatId.isBlank()) {
+                continue;
+            }
+            if (ids.add(chatId)) {
+                order.addLast(chatId);
+            }
+        }
+
+        while (ids.size() > maxSize) {
+            String evicted = order.pollFirst();
+            if (evicted == null) {
+                break;
+            }
+            ids.remove(evicted);
+        }
+    }
+}
+
+

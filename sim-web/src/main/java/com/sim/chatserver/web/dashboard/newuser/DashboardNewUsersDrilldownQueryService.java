@@ -1,7 +1,6 @@
 package com.sim.chatserver.web.dashboard.newuser;
 
 import java.sql.Connection;
-import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
@@ -9,14 +8,33 @@ import java.sql.Timestamp;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.BiConsumer;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.util.DashboardDbUtil;
 import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 
 final class DashboardNewUsersDrilldownQueryService {
+
+    private static final String SQL_EARLIEST_BY_SESSION_PREFIX = "SELECT session_id, MIN(created_at) AS first_seen FROM ";
+    private static final String SQL_SESSION_GROUP_BY = com.sim.chatserver.util.CommonLiteralConstants.SQL_SESSION_ID_NOT_NULL_NON_EMPTY_GROUP_BY;
+    private static final String MSG_PREPARE_EARLIEST_QUERY_FAILED_PREFIX = "Unable to prepare earliest-session query for table ";
+    private static final String MSG_EXECUTE_EARLIEST_QUERY_FAILED_PREFIX = "Unable to execute earliest-session query for table ";
+    private static final String COL_SESSION_ID = com.sim.chatserver.util.SqlLiteralConstants.COL_SESSION_ID;
+    private static final String COL_FIRST_SEEN = "first_seen";
+    private static final String MSG_QUERY_EARLIEST_SESSIONS_FAILED_PREFIX = "Unable to query earliest sessions for table ";
+    private static final String MSG_LOAD_EARLIEST_SESSIONS_FAILED = "Failed to load earliest sessions for new users drilldown";
+    private static final String SQL_TOTAL_BY_SESSION_PREFIX = "SELECT session_id, COUNT(*) AS c FROM ";
+    private static final String MSG_PREPARE_TOTAL_CHATS_QUERY_FAILED_PREFIX = "Unable to prepare total-chats query for table ";
+    private static final String MSG_EXECUTE_TOTAL_CHATS_QUERY_FAILED_PREFIX = "Unable to execute total-chats query for table ";
+    private static final String COL_CHAT_COUNT = "c";
+    private static final String MSG_QUERY_TOTAL_CHATS_FAILED_PREFIX = "Unable to query total chats for table ";
+    private static final String MSG_LOAD_TOTAL_CHATS_FAILED = "Failed to load total chats for new users drilldown";
+    private static final String QUOTE = "\"";
+    private static final String DOUBLE_QUOTE = com.sim.chatserver.util.CommonLiteralConstants.DOUBLE_QUOTE_ESCAPED;
 
     private final AppDataSourceHolder dataSourceHolder;
     private final Logger log;
@@ -29,24 +47,16 @@ final class DashboardNewUsersDrilldownQueryService {
     Map<String, Timestamp> findEarliestBySession(List<WidgetEntry> widgets) {
         Map<String, Timestamp> earliest = new LinkedHashMap<>();
         try (Connection conn = dataSourceHolder.getDataSource().getConnection()) {
-            for (WidgetEntry widget : widgets) {
-                if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
-                    continue;
-                }
-                String table = sanitizeWidgetTableName(widget.getWidgetId());
-                if (!tableExists(conn, table)) {
-                    continue;
-                }
-
-                String sql = "SELECT session_id, MIN(created_at) AS first_seen FROM " + quoteIdentifier(table)
-                        + " WHERE session_id IS NOT NULL AND session_id <> '' GROUP BY session_id";
+            forEachWidgetTable(conn, widgets, (widgetId, table) -> {
+                String sql = SQL_EARLIEST_BY_SESSION_PREFIX + quoteIdentifier(table)
+                        + SQL_SESSION_GROUP_BY;
 
                 PreparedStatement preparedStatement;
                 try {
                     preparedStatement = conn.prepareStatement(sql);
                 } catch (SQLException ex) {
-                    log.log(Level.FINE, "Unable to prepare earliest-session query for table " + table, ex);
-                    continue;
+                    log.log(Level.FINE, MSG_PREPARE_EARLIEST_QUERY_FAILED_PREFIX + table, ex);
+                    return;
                 }
 
                 try (PreparedStatement ps = preparedStatement) {
@@ -54,14 +64,14 @@ final class DashboardNewUsersDrilldownQueryService {
                     try {
                         queryResult = ps.executeQuery();
                     } catch (SQLException ex) {
-                        log.log(Level.FINE, "Unable to execute earliest-session query for table " + table, ex);
-                        continue;
+                        log.log(Level.FINE, MSG_EXECUTE_EARLIEST_QUERY_FAILED_PREFIX + table, ex);
+                        return;
                     }
 
                     try (ResultSet rs = queryResult) {
                         while (rs.next()) {
-                            String sid = rs.getString("session_id");
-                            Timestamp ts = SqlTimeUtil.safeTimestamp(rs, "first_seen");
+                            String sid = rs.getString(COL_SESSION_ID);
+                            Timestamp ts = SqlTimeUtil.safeTimestamp(rs, COL_FIRST_SEEN);
                             if (sid == null || sid.isBlank() || ts == null) continue;
                             sid = sid.trim();
 
@@ -72,11 +82,11 @@ final class DashboardNewUsersDrilldownQueryService {
                         }
                     }
                 } catch (SQLException ex) {
-                    log.log(Level.FINE, "Unable to query earliest sessions for table " + table, ex);
+                    log.log(Level.FINE, MSG_QUERY_EARLIEST_SESSIONS_FAILED_PREFIX + table, ex);
                 }
-            }
+            });
         } catch (SQLException ex) {
-            log.log(Level.WARNING, "Failed to load earliest sessions for new users drilldown", ex);
+            log.log(Level.WARNING, MSG_LOAD_EARLIEST_SESSIONS_FAILED, ex);
         }
         return earliest;
     }
@@ -84,24 +94,16 @@ final class DashboardNewUsersDrilldownQueryService {
     Map<String, Integer> findTotalChatsBySession(List<WidgetEntry> widgets) {
         Map<String, Integer> totals = new LinkedHashMap<>();
         try (Connection conn = dataSourceHolder.getDataSource().getConnection()) {
-            for (WidgetEntry widget : widgets) {
-                if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
-                    continue;
-                }
-                String table = sanitizeWidgetTableName(widget.getWidgetId());
-                if (!tableExists(conn, table)) {
-                    continue;
-                }
-
-                String sql = "SELECT session_id, COUNT(*) AS c FROM " + quoteIdentifier(table)
-                        + " WHERE session_id IS NOT NULL AND session_id <> '' GROUP BY session_id";
+            forEachWidgetTable(conn, widgets, (widgetId, table) -> {
+                String sql = SQL_TOTAL_BY_SESSION_PREFIX + quoteIdentifier(table)
+                        + SQL_SESSION_GROUP_BY;
 
                 PreparedStatement preparedStatement;
                 try {
                     preparedStatement = conn.prepareStatement(sql);
                 } catch (SQLException ex) {
-                    log.log(Level.FINE, "Unable to prepare total-chats query for table " + table, ex);
-                    continue;
+                    log.log(Level.FINE, MSG_PREPARE_TOTAL_CHATS_QUERY_FAILED_PREFIX + table, ex);
+                    return;
                 }
 
                 try (PreparedStatement ps = preparedStatement) {
@@ -109,64 +111,59 @@ final class DashboardNewUsersDrilldownQueryService {
                     try {
                         queryResult = ps.executeQuery();
                     } catch (SQLException ex) {
-                        log.log(Level.FINE, "Unable to execute total-chats query for table " + table, ex);
-                        continue;
+                        log.log(Level.FINE, MSG_EXECUTE_TOTAL_CHATS_QUERY_FAILED_PREFIX + table, ex);
+                        return;
                     }
 
                     try (ResultSet rs = queryResult) {
                         while (rs.next()) {
-                            String sid = rs.getString("session_id");
+                            String sid = rs.getString(COL_SESSION_ID);
                             if (sid == null || sid.isBlank()) {
                                 continue;
                             }
                             sid = sid.trim();
-                            int count = rs.getInt("c");
+                            int count = rs.getInt(COL_CHAT_COUNT);
                             int existingCount = safeInt(totals.get(sid));
                             totals.put(sid, Integer.valueOf(existingCount + count));
                         }
                     }
                 } catch (SQLException ex) {
-                    log.log(Level.FINE, "Unable to query total chats for table " + table, ex);
+                    log.log(Level.FINE, MSG_QUERY_TOTAL_CHATS_FAILED_PREFIX + table, ex);
                 }
-            }
+            });
         } catch (SQLException ex) {
-            log.log(Level.WARNING, "Failed to load total chats for new users drilldown", ex);
+            log.log(Level.WARNING, MSG_LOAD_TOTAL_CHATS_FAILED, ex);
         }
         return totals;
     }
 
-    private boolean tableExists(Connection conn, String tableName) {
-        try {
-            DatabaseMetaData meta = conn.getMetaData();
-            for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
-                    if (rs.next()) {
-                        return true;
-                    }
-                }
-            }
-        } catch (SQLException ex) {
-            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, ex);
+    private void forEachWidgetTable(
+            Connection conn,
+            List<WidgetEntry> widgets,
+            BiConsumer<String, String> consumer) {
+        if (widgets == null || consumer == null) {
+            return;
         }
-        return false;
+
+        for (WidgetEntry widget : widgets) {
+            if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
+                continue;
+            }
+            String widgetId = widget.getWidgetId();
+            String table = sanitizeWidgetTableName(widgetId);
+            if (!com.sim.chatserver.web.dashboard.sessions.DashboardSessionDataUtil.tableExists(conn, table, log)) {
+                continue;
+            }
+            consumer.accept(widgetId, table);
+        }
     }
 
     private String sanitizeWidgetTableName(String widgetId) {
-        if (widgetId == null || widgetId.isBlank()) {
-            return "widget";
-        }
-        String normalized = widgetId.trim().replaceAll("[^A-Za-z0-9_]", "_");
-        if (!Character.isLetter(normalized.charAt(0))) {
-            normalized = "w_" + normalized;
-        }
-        if (normalized.length() > 60) {
-            normalized = new String(normalized.toCharArray(), 0, 60);
-        }
-        return normalized;
+        return DashboardDbUtil.sanitizeWidgetTableName(widgetId);
     }
 
     private String quoteIdentifier(String identifier) {
-        return '"' + identifier.replace("\"", "\"\"") + '"';
+        return '"' + identifier.replace(QUOTE, DOUBLE_QUOTE) + '"';
     }
 
     private int safeInt(Object value) {
@@ -176,3 +173,4 @@ final class DashboardNewUsersDrilldownQueryService {
         return Integer.parseInt(value.toString());
     }
 }
+

@@ -9,7 +9,7 @@ import java.util.logging.Logger;
 
 import com.sim.chatserver.service.translation.DefaultTranslationService;
 import com.sim.chatserver.service.translation.TranslationService;
-import com.sim.chatserver.service.translation.TranslationService.TranslationResult;
+import com.sim.chatserver.service.translation.TranslationResult;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
@@ -40,8 +40,8 @@ public class ReviewTranslateServlet extends HttpServlet {
         if (!isLoggedIn(req)) {
             resp.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
             writeJson(resp, Json.createObjectBuilder()
-                    .add("status", "error")
-                    .add("message", "Authentication required.")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED)
                     .build());
             return;
         }
@@ -53,20 +53,20 @@ public class ReviewTranslateServlet extends HttpServlet {
             log.log(Level.FINE, "Invalid translate payload", ex);
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             writeJson(resp, Json.createObjectBuilder()
-                    .add("status", "error")
-                    .add("message", "Invalid JSON body.")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Invalid JSON body.")
                     .build());
             return;
         }
 
-        String text = payload.getString("text", "");
+        String text = payload.getString(com.sim.chatserver.util.CommonLiteralConstants.KEY_TEXT, "");
         String targetLang = payload.getString("targetLang", "en");
 
         if (text == null || text.isBlank()) {
             resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
             writeJson(resp, Json.createObjectBuilder()
-                    .add("status", "error")
-                    .add("message", "text is required.")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "text is required.")
                     .build());
             return;
         }
@@ -75,11 +75,11 @@ public class ReviewTranslateServlet extends HttpServlet {
             TranslationResult result = TRANSLATION_SERVICE.detectAndTranslate(text, targetLang);
 
             JsonObjectBuilder out = Json.createObjectBuilder()
-                    .add("status", result.isSuccess() ? "ok" : "error")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, result.isSuccess() ? "ok" : com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
                     .add("sourceLang", nvl(result.getSourceLang()))
                     .add("targetLang", nvl(result.getTargetLang()))
                     .add("translatedText", nvl(result.getTranslatedText()))
-                    .add("message", nvl(result.getMessage()));
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, nvl(result.getMessage()));
 
             if (!result.isSuccess()) {
                 resp.setStatus(HttpServletResponse.SC_BAD_REQUEST);
@@ -90,20 +90,20 @@ public class ReviewTranslateServlet extends HttpServlet {
             log.log(Level.SEVERE, "Translate request failed", ex);
             resp.setStatus(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
             writeJson(resp, Json.createObjectBuilder()
-                    .add("status", "error")
-                    .add("message", "Unable to translate at this time.")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Unable to translate at this time.")
                     .build());
         }
     
         } catch (java.io.UnsupportedEncodingException | IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
-            java.util.logging.Logger.getLogger("OWASP")
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                    .log(java.util.logging.Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_POST, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -115,19 +115,19 @@ public class ReviewTranslateServlet extends HttpServlet {
         req.setCharacterEncoding(StandardCharsets.UTF_8.name());
         resp.setStatus(HttpServletResponse.SC_METHOD_NOT_ALLOWED);
         writeJson(resp, Json.createObjectBuilder()
-                .add("status", "error")
-                .add("message", "POST required.")
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "POST required.")
                 .build());
     
         } catch (java.io.UnsupportedEncodingException | IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
-            java.util.logging.Logger.getLogger("OWASP")
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                    .log(java.util.logging.Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -135,7 +135,7 @@ public class ReviewTranslateServlet extends HttpServlet {
 
     private boolean isLoggedIn(HttpServletRequest req) {
         HttpSession session = req.getSession(false);
-        return session != null && session.getAttribute("user") != null;
+        return session != null && session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) != null;
     }
 
     private void writeJson(HttpServletResponse resp, JsonObject obj) {
@@ -144,7 +144,7 @@ public class ReviewTranslateServlet extends HttpServlet {
             ServletJsonResponseUtil.writeJson(resp, status, obj == null ? Json.createObjectBuilder().build() : obj);
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to write translate response", e);
-            throw new IllegalStateException("Unable to write response", e);
+            throw new IllegalStateException(com.sim.chatserver.util.CommonLiteralConstants.MSG_UNABLE_TO_WRITE_RESPONSE_NO_PERIOD, e);
         }
     }
 
@@ -169,4 +169,9 @@ public class ReviewTranslateServlet extends HttpServlet {
     private String nvl(String v) {
         return v == null ? "" : v;
     }
+
+    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException, ClassNotFoundException {
+        throw new java.io.InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
+
 }

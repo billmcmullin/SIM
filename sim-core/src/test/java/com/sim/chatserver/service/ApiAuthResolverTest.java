@@ -27,7 +27,7 @@ import org.junit.jupiter.api.Test;
 
     @Test
     void resolveForServerConfigOutbound_usesExplicitRequestToken() {
-        ApiAuthResolver.ResolvedApiAuth auth =
+        ResolvedApiAuth auth =
                 ApiAuthResolver.resolveForServerConfigOutbound("Authorization: Bearer req-token");
 
         assertEquals("req-token", auth.token());
@@ -38,7 +38,7 @@ import org.junit.jupiter.api.Test;
 
     @Test
     void resolveForServerConfigOutbound_returnsEmptyWithoutExplicitToken() {
-        ApiAuthResolver.ResolvedApiAuth auth = ApiAuthResolver.resolveForServerConfigOutbound("   ");
+        ResolvedApiAuth auth = ApiAuthResolver.resolveForServerConfigOutbound("   ");
 
         assertEquals("NONE", auth.source());
         assertEquals("Authorization", auth.preferredHeaderName());
@@ -47,7 +47,7 @@ import org.junit.jupiter.api.Test;
 
     @Test
     void resolveForOutbound_prefersExplicitRequestToken() {
-        ApiAuthResolver.ResolvedApiAuth auth =
+        ResolvedApiAuth auth =
                 ApiAuthResolver.resolveForOutbound("Authorization: Bearer req-token");
 
         assertEquals("req-token", auth.token());
@@ -58,7 +58,7 @@ import org.junit.jupiter.api.Test;
 
     @Test
     void resolveForOutbound_returnsEmptyWhenNoSourcesAvailable() {
-        ApiAuthResolver.ResolvedApiAuth auth = ApiAuthResolver.resolveForOutbound(null);
+        ResolvedApiAuth auth = ApiAuthResolver.resolveForOutbound(null);
 
         assertEquals("NONE", auth.source());
         assertEquals("Authorization", auth.preferredHeaderName());

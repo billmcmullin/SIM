@@ -22,6 +22,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "DashboardDailySummaryServlet", urlPatterns = {"/dashboard/daily-summary.json"})
 public class DashboardDailySummaryServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardDailySummaryServlet.class.getCanonicalName());
@@ -31,13 +34,9 @@ public class DashboardDailySummaryServlet extends HttpServlet {
     @Override
     public void init() throws ServletException {
         super.init();
-        try {
-            DashboardDailySummaryStore initializedStore = ensureSummaryStoreInitialized();
-            if (initializedStore == null) {
-                throw new IllegalStateException("Summary store is unavailable");
-            }
-        } catch (IllegalStateException e) {
-            throw new ServletException("Failed to initialize daily summary store", e);
+        DashboardDailySummaryStore initializedStore = ensureSummaryStoreInitialized();
+        if (initializedStore == null) {
+            throw new ServletException("Failed to initialize daily summary store");
         }
     }
 
@@ -49,8 +48,8 @@ public class DashboardDailySummaryServlet extends HttpServlet {
             }
 
             ZoneId zone = ZoneId.systemDefault();
-            LocalDate day = parseDay(ServletRequestParamUtil.firstParamFromValues(req, "day", 256, true, true), zone);
-            int slot = parseSlotOrCurrent(ServletRequestParamUtil.firstParamFromValues(req, "slot", 32, true, true), zone);
+            LocalDate day = parseDay(ServletRequestParamUtil.firstParamFromValues(req, com.sim.chatserver.util.CommonLiteralConstants.KEY_DAY, 256, true, true), zone);
+            int slot = parseSlotOrCurrent(ServletRequestParamUtil.firstParamFromValues(req, com.sim.chatserver.util.CommonLiteralConstants.KEY_SLOT, 32, true, true), zone);
 
             DashboardDailySummaryStore store = ensureSummaryStoreInitialized();
 
@@ -59,22 +58,22 @@ public class DashboardDailySummaryServlet extends HttpServlet {
                 payload = store.fetchExactOrLatest(day, slot);
             } catch (IllegalStateException e) {
                 log.log(Level.WARNING, "Unable to load dashboard daily summary", e);
-                writeJson(resp, HttpServletResponse.SC_OK, errorJson("Unable to load summary."));
+                writeJson(resp, HttpServletResponse.SC_OK, errorJson(DashboardDailySummaryStore.MSG_UNABLE_TO_LOAD_SUMMARY));
                 return;
             }
             writeJson(resp, HttpServletResponse.SC_OK,
-                    payload == null ? errorJson("Unable to load summary.") : payload);
+                    payload == null ? errorJson(DashboardDailySummaryStore.MSG_UNABLE_TO_LOAD_SUMMARY) : payload);
 
         } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
-            log.log(Level.WARNING, "Unhandled exception in doGet", e);
-            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+            log.log(Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
+            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
         }
     }
 
     private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED, errorJson("Authentication required."));
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+            writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED, errorJson(com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED));
             return false;
         }
         return true;
@@ -119,8 +118,8 @@ public class DashboardDailySummaryServlet extends HttpServlet {
 
     private JsonObject errorJson(String message) {
         return Json.createObjectBuilder()
-                .add("status", "error")
-                .add("message", message == null ? "Unable to load summary." : message)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, message == null ? DashboardDailySummaryStore.MSG_UNABLE_TO_LOAD_SUMMARY : message)
                 .build();
     }
 
@@ -147,7 +146,7 @@ public class DashboardDailySummaryServlet extends HttpServlet {
         try {
             resp.sendError(status, message);
         } catch (IOException ioe) {
-            log.log(Level.FINE, "Failed sending fallback server error.", ioe);
+            log.log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
         }
     }
 
@@ -181,6 +180,11 @@ public class DashboardDailySummaryServlet extends HttpServlet {
 
     private AppDataSourceHolder dataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
+    }
+
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
     }
 
 }

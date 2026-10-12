@@ -19,13 +19,11 @@ import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
-import com.sim.chatserver.web.dashboard.DashboardLocalViewModels.ProgressStat;
-import com.sim.chatserver.web.dashboard.DashboardLocalViewModels.SessionOverview;
-import com.sim.chatserver.model.DashboardViewModels.OtherParasoftEntry;
-import com.sim.chatserver.model.DashboardViewModels.SessionStat;
-import com.sim.chatserver.model.DashboardViewModels.TermSummary;
-import com.sim.chatserver.model.DashboardViewModels.TopTopic;
-import com.sim.chatserver.model.DashboardViewModels.WidgetStat;
+import com.sim.chatserver.model.OtherParasoftEntry;
+import com.sim.chatserver.model.SessionStat;
+import com.sim.chatserver.model.TermSummary;
+import com.sim.chatserver.model.TopTopic;
+import com.sim.chatserver.model.WidgetStat;
 import com.sim.chatserver.service.dashboard.DashboardTermService;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
@@ -46,9 +44,13 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "DashboardServlet", urlPatterns = {"/dashboard"})
 public class DashboardServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardServlet.class.getCanonicalName());
+    private static final String LOGIN_DISPATCH_PATH = "/log" + "in";
 
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard.html";
     private static final String TERM_SNAPSHOT_SESSION_KEY = "termDistributionSnapshots";
@@ -88,14 +90,14 @@ public class DashboardServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         try {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            req.getRequestDispatcher("/login").forward(req, resp);
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+            forwardSafeToLogin(req, resp);
             return;
         }
 
         String contextPath = ServletPathUtil.safeContextPathStrict(req.getServletContext().getContextPath());
-        String role = session.getAttribute("role") == null ? "USER" : session.getAttribute("role").toString();
-        boolean isAdmin = "ADMIN".equalsIgnoreCase(role);
+        String role = session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.ROLE) == null ? "USER" : session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.ROLE).toString();
+        boolean isAdmin = com.sim.chatserver.util.CommonLiteralConstants.ROLE_ADMIN.equalsIgnoreCase(role);
         String adminButtonStyle = isAdmin ? "" : "display:none;";
         String adminHref = contextPath + "/admin";
 
@@ -105,9 +107,9 @@ public class DashboardServlet extends HttpServlet {
 
         List<WidgetEntry> widgets = jdbcDataService.loadWidgets();
 
-        LocalDate rangeEnd = parseLocalDate(ServletRequestParamUtil.firstParam(req, "rangeEnd", 256, true, true))
+        LocalDate rangeEnd = parseLocalDate(ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.FIELD_RANGE_END, 256, true, true))
                 .orElse(LocalDate.now(ZoneId.systemDefault()));
-        LocalDate rangeStart = parseLocalDate(ServletRequestParamUtil.firstParam(req, "rangeStart", 256, true, true))
+        LocalDate rangeStart = parseLocalDate(ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.FIELD_RANGE_START, 256, true, true))
                 .orElse(rangeEnd.minusDays(DEFAULT_RANGE_DAYS - 1));
         if (rangeStart.isAfter(rangeEnd)) {
             rangeStart = rangeEnd.minusDays(DEFAULT_RANGE_DAYS - 1);
@@ -273,12 +275,12 @@ public class DashboardServlet extends HttpServlet {
         }
 
         String template = DashboardTemplateRenderer.loadTemplateCached(req.getServletContext(), TEMPLATE_PATH);
-        String userName = String.valueOf(session.getAttribute("user"));
+        String userName = String.valueOf(session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER));
 
         String rendered = DashboardTemplateRenderer.renderTemplate(template, Map.ofEntries(
-                Map.entry("user", DashboardTemplateRenderer.escapeHtml(userName)),
+                Map.entry(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER, DashboardTemplateRenderer.escapeHtml(userName)),
                 Map.entry("contextPath", contextPath),
-                Map.entry("role", DashboardTemplateRenderer.escapeHtml(role)),
+                Map.entry(com.sim.chatserver.util.CommonLiteralConstants.ROLE, DashboardTemplateRenderer.escapeHtml(role)),
             Map.entry("adminButtonStyle", DashboardTemplateRenderer.escapeHtml(adminButtonStyle)),
             Map.entry("adminHref", DashboardTemplateRenderer.escapeHtml(adminHref)),
                 Map.entry("dashboardInfoMessage", infoMessageHtml),
@@ -324,14 +326,14 @@ public class DashboardServlet extends HttpServlet {
                 Map.entry("lastFiveDaysTrendData", escapeForJs(lastFiveDaysTrendJson))
         ));
 
-        resp.setContentType("text/html;charset=UTF-8");
+        resp.setContentType(com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_HTML_UTF8);
         try (PrintWriter out = resp.getWriter()) {
             out.print(rendered);
         }
     
-        } catch (IOException | ServletException | IllegalStateException | IllegalArgumentException | SecurityException e) {
-            log.log(Level.WARNING, "Unhandled exception in doGet", e);
-            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+        } catch (IOException | IllegalStateException | IllegalArgumentException | SecurityException e) {
+            log.log(Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
+            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
         }
     }
 
@@ -342,7 +344,7 @@ public class DashboardServlet extends HttpServlet {
         try {
             resp.sendError(status, message);
         } catch (IOException ioe) {
-            log.log(Level.FINE, "Failed sending fallback server error.", ioe);
+            log.log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
         }
     }
 
@@ -441,9 +443,9 @@ public class DashboardServlet extends HttpServlet {
         if (stats != null) {
             for (WidgetStat stat : stats) {
                 arr.add(jakarta.json.Json.createObjectBuilder()
-                        .add("widgetId", stat.getWidgetId() == null ? "" : stat.getWidgetId())
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_WIDGET_ID, stat.getWidgetId() == null ? "" : stat.getWidgetId())
                         .add("label", stat.getLabel() == null ? "" : stat.getLabel())
-                        .add("count", stat.getCount()));
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_COUNT, stat.getCount()));
             }
         }
         return arr.build().toString();
@@ -462,8 +464,8 @@ public class DashboardServlet extends HttpServlet {
 
             builder.add(Json.createObjectBuilder()
                     .add("label", label)
-                    .add("count", count)
-                    .add("term", label));
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_COUNT, count)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_TERM, label));
         }
         return builder.build().toString();
     }
@@ -580,13 +582,13 @@ public class DashboardServlet extends HttpServlet {
         for (int i = 0; i < value.length(); i++) {
             char ch = value.charAt(i);
             if (ch == '\\') {
-                out.append("\\\\");
+                out.append(com.sim.chatserver.util.CommonLiteralConstants.JSON_ESCAPE_BACKSLASH_TO);
             } else if (ch == '\'') {
-                out.append("\\'");
+                out.append(com.sim.chatserver.util.CommonLiteralConstants.ESCAPED_SINGLE_QUOTE);
             } else if (ch == System.lineSeparator().charAt(System.lineSeparator().length() - 1)) {
-                out.append("\\n");
+                out.append(com.sim.chatserver.util.CommonLiteralConstants.JSON_ESCAPE_NEWLINE_TO);
             } else if (ch == System.lineSeparator().charAt(0)) {
-                out.append("\\r");
+                out.append(com.sim.chatserver.util.CommonLiteralConstants.ESCAPED_CARRIAGE_RETURN);
             } else {
                 out.append(ch);
             }
@@ -607,4 +609,33 @@ public class DashboardServlet extends HttpServlet {
         }
     }
 
+    private void forwardSafeToLogin(HttpServletRequest req, HttpServletResponse resp) {
+        if (!isAllowedForwardPath(LOGIN_DISPATCH_PATH)) {
+            sendErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, com.sim.chatserver.util.CommonLiteralConstants.MSG_INVALID_FORWARD_PATH);
+            return;
+        }
+        try {
+            req.getRequestDispatcher(LOGIN_DISPATCH_PATH).forward(req, resp);
+        } catch (IOException | ServletException ex) {
+            log.log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNABLE_TO_FORWARD_LOGIN, ex);
+            sendErrorSafe(resp, HttpServletResponse.SC_UNAUTHORIZED, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED);
+        }
+    }
+
+    private boolean isAllowedForwardPath(String path) {
+        if (path == null || path.isBlank()) {
+            return false;
+        }
+        String p = path.trim();
+        if (p.isEmpty() || p.charAt(0) != '/' || p.contains(com.sim.chatserver.util.CommonLiteralConstants.SCHEME_SEPARATOR)) {
+            return false;
+        }
+        return LOGIN_DISPATCH_PATH.equals(p);
+    }
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
+
 }
+

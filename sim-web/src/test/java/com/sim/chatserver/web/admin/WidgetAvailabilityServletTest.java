@@ -8,7 +8,7 @@ import java.nio.charset.StandardCharsets;
 import org.junit.jupiter.api.Test;
 
 import com.sim.chatserver.service.widget.WidgetAvailabilityChecker;
-import com.sim.chatserver.service.widget.WidgetAvailabilityChecker.WidgetAvailabilityResult;
+import com.sim.chatserver.service.widget.WidgetAvailabilityResult;
 
 import jakarta.enterprise.inject.Instance;
 import jakarta.enterprise.inject.spi.CDI;

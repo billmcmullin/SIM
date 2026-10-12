@@ -28,6 +28,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "WidgetTableViewServlet", urlPatterns = {"/dashboard/widgets/view"})
 public class WidgetTableViewServlet extends HttpServlet {
 
@@ -40,12 +43,12 @@ public class WidgetTableViewServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         try {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            req.getRequestDispatcher("/login").forward(req, resp);
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+            com.sim.chatserver.web.util.ServletPathUtil.forwardToLogin(req, resp, log);
             return;
         }
 
-        String widgetId = ServletRequestParamUtil.firstParam(req, "widgetId", 128, true, true);
+        String widgetId = ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.KEY_WIDGET_ID, 128, true, true);
         if (widgetId == null || widgetId.isBlank()) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "widgetId required");
             return;
@@ -56,7 +59,7 @@ public class WidgetTableViewServlet extends HttpServlet {
         }
 
         // Optional date filter from dashboard links
-        String dateRaw = ServletRequestParamUtil.firstParam(req, "date", 128, true, true);
+        String dateRaw = ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.PARAM_DATE, 128, true, true);
         LocalDate selectedDate = null;
         if (dateRaw != null && !dateRaw.isBlank()) {
             try {
@@ -78,7 +81,7 @@ public class WidgetTableViewServlet extends HttpServlet {
                 }
             }
         } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
-            log.log(Level.WARNING, "Unable to list widgets", e);
+            log.log(Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.MSG_UNABLE_TO_LIST_WIDGETS, e);
         }
 
         String widgetName = target == null || target.getDisplayName() == null || target.getDisplayName().isBlank()
@@ -106,31 +109,31 @@ public class WidgetTableViewServlet extends HttpServlet {
             return;
         }
 
-        String userName = safeSessionAttribute(session, "user", "");
-        String role = safeSessionAttribute(session, "role", "USER");
+        String userName = safeSessionAttribute(session, com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER, "");
+        String role = safeSessionAttribute(session, com.sim.chatserver.util.CommonLiteralConstants.ROLE, "USER");
 
         String rendered = template
-        .replace("${user}", DashboardTemplateRenderer.escapeHtml(userName))
+        .replace(com.sim.chatserver.util.CommonLiteralConstants.TEMPLATE_USER, DashboardTemplateRenderer.escapeHtml(userName))
         .replace("${role}", DashboardTemplateRenderer.escapeHtml(role))
-        .replace("${contextPath}", DashboardTemplateRenderer.escapeHtml(ServletPathUtil.safeContextPathStrict(req.getContextPath())))
+        .replace(com.sim.chatserver.util.CommonLiteralConstants.TEMPLATE_CONTEXT_PATH, DashboardTemplateRenderer.escapeHtml(ServletPathUtil.safeContextPathStrict(req.getContextPath())))
         .replace("${widgetId}", DashboardTemplateRenderer.escapeHtml(widgetId))
         .replace("${widgetName}", DashboardTemplateRenderer.escapeHtml(widgetName))
         .replace("${selectedDate}", DashboardTemplateRenderer.escapeHtml(selectedDateText)) // raw YYYY-MM-DD for JS/API calls
         .replace("${selectedDateLabel}", DashboardTemplateRenderer.escapeHtml(selectedDateLabel));   // human display label
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType("text/html; charset=UTF-8");
+        resp.setContentType(com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_HTML_UTF8_SPACED);
         resp.getOutputStream().write(rendered.getBytes(StandardCharsets.UTF_8));
     
-        } catch (IOException | ServletException | IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
-            java.util.logging.Logger.getLogger("OWASP")
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+        } catch (IOException | IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                    .log(java.util.logging.Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -173,6 +176,11 @@ public class WidgetTableViewServlet extends HttpServlet {
         }
         String normalized = value.replace(System.lineSeparator().charAt(0), '_').replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), '_');
         return normalized.length() > 120 ? new String(normalized.toCharArray(), 0, 120) : normalized;
+    }
+
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
     }
 
 }

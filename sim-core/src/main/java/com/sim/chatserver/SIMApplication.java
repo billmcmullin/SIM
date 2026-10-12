@@ -7,11 +7,11 @@ import jakarta.ws.rs.core.Application;
  * Registers the Jakarta REST (JAX-RS) application. All resources will be
  * available under /api.
  */
-@ApplicationPath("/api")
+@ApplicationPath(SIMApplication.API_ROOT_PATH)
 public class SIMApplication extends Application {
-    static final String API_ROOT_PATH = "/api";
 
-    @SuppressWarnings("unused")
+    public static final String API_ROOT_PATH = "/api";
+
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }

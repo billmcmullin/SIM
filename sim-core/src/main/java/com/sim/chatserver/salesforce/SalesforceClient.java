@@ -15,7 +15,9 @@ import java.util.logging.Logger;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
+import com.sim.chatserver.security.AuthResult;
 import com.sim.chatserver.security.SalesforceAuthClient;
+import com.sim.chatserver.util.CommonLiteralConstants;
 import com.sim.chatserver.util.ServerDiagnosticsLog;
 
 import jakarta.json.Json;
@@ -35,22 +37,67 @@ import jakarta.json.JsonValue;
  */
 public class SalesforceClient {
 
+    private static final String EMPTY = "";
+
+
     private static final Logger log = Logger.getLogger(SalesforceClient.class.getCanonicalName());
     private static final String API_VERSION = "v61.0";
     private static final int MAX_ERROR_BODY_LEN = 512;
     private static final String LS = System.lineSeparator();
+    private static final String HEADER_AUTHORIZATION = CommonLiteralConstants.HEADER_AUTHORIZATION;
+    private static final String HEADER_ACCEPT = CommonLiteralConstants.HEADER_ACCEPT;
+    private static final String CONTENT_TYPE_JSON = CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON;
+    private static final String AUTH_BEARER_PREFIX = CommonLiteralConstants.AUTH_BEARER_PREFIX;
+    private static final String HTTP_PREFIX = CommonLiteralConstants.URL_PREFIX_HTTP;
+    private static final String HTTPS_PREFIX = CommonLiteralConstants.URL_PREFIX_HTTPS;
+    private static final String TRAILING_SLASH_REGEX = CommonLiteralConstants.REGEX_TRAILING_SLASHES;
+    private static final String PATH_SERVICES_DATA = "/services/data/";
+    private static final String PATH_QUERY_Q = "/query?q=";
+    private static final String SINGLE_QUOTE = "'";
+    private static final String ESCAPED_SINGLE_QUOTE = CommonLiteralConstants.ESCAPED_SINGLE_QUOTE;
+    private static final String ELLIPSIS = CommonLiteralConstants.ELLIPSIS;
+    private static final String SPACE = " ";
+    private static final String DIAG_COMPONENT_SALESFORCE_CLIENT = "salesforce-client";
+    private static final String DIAG_EVENT_QUERY_ERROR = "query-error";
+    private static final String DIAG_EVENT_QUERY_REQUEST = "query-request";
+    private static final String DIAG_EVENT_QUERY_RESPONSE = "query-response";
+    private static final String LOG_KV_STATUS = CommonLiteralConstants.LOG_KV_STATUS;
+    private static final String LOG_KV_BODY = CommonLiteralConstants.LOG_KV_BODY;
+    private static final String LOG_KV_SOQL = "soql=";
+    private static final String LOG_KV_METHOD_GET = "method=GET";
+    private static final String LOG_KV_URL = CommonLiteralConstants.LOG_KV_URL;
+    private static final String LOG_KV_MESSAGE = CommonLiteralConstants.LOG_KV_MESSAGE;
+    private static final String MSG_MISSING_CONFIG = "Salesforce configuration is missing.";
+    private static final String MSG_INVALID_SESSION_REFRESHING = "Salesforce session invalid; attempting token refresh.";
+    private static final String MSG_REFRESH_SUCCESS = "Salesforce access token refreshed successfully.";
+    private static final String MSG_QUERY_FAILED_AFTER_REFRESH_PREFIX = "Salesforce query failed after refresh with status ";
+    private static final String MSG_QUERY_FAILED_PREFIX = "Salesforce query failed with status ";
+    private static final String SOQL_SELECT_CONTACT_PREFIX = "SELECT Id, Name, Email, Phone, Title, Department, AccountId, LastModifiedDate ";
+    private static final String SOQL_FROM_CONTACT = "FROM Contact ";
+    private static final String SOQL_WHERE_NAME = "WHERE Name = ";
+    private static final String SOQL_ORDER_BY_LAST_MODIFIED = "ORDER BY LastModifiedDate DESC ";
+    private static final String SOQL_LIMIT_ONE = "LIMIT 1";
+    private static final String JSON_FIELD_RECORDS = "records";
+    private static final String JSON_FIELD_ID = "Id";
+    private static final String JSON_FIELD_NAME = "Name";
+    private static final String JSON_FIELD_EMAIL = "Email";
+    private static final String JSON_FIELD_PHONE = "Phone";
+    private static final String JSON_FIELD_TITLE = "Title";
+    private static final String JSON_FIELD_DEPARTMENT = "Department";
+    private static final String JSON_FIELD_ACCOUNT_ID = "AccountId";
+    private static final String INVALID_SESSION_ID_TOKEN = "INVALID_SESSION_ID";
+    private static final String INVALID_SESSION_TEXT = "Session expired or invalid";
+    private static final String DESERIALIZATION_NOT_ALLOWED = CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED;
 
     private final HttpClient httpClient;
     private final SalesforceAuthClient authClient;
 
-    @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getCanonicalName());
+        throw new java.io.InvalidObjectException(DESERIALIZATION_NOT_ALLOWED);
     }
 
-    @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-        throw new java.io.NotSerializableException(getClass().getCanonicalName());
+        throw new java.io.InvalidObjectException(DESERIALIZATION_NOT_ALLOWED);
     }
 
     private SalesforceClient() {
@@ -95,7 +142,7 @@ public class SalesforceClient {
 
         Credentials creds = resolveCredentials(instanceUrl, apiKey);
         if (creds == null) {
-            throw new IllegalStateException("Salesforce configuration is missing.");
+            throw new IllegalStateException(MSG_MISSING_CONFIG);
         }
 
         String soql = buildContactByNameSoql(searchName);
@@ -109,9 +156,9 @@ public class SalesforceClient {
 
         // If token/session expired, refresh and retry once
         if (isInvalidSession(first.statusCode(), first.body())) {
-            log.info("Salesforce session invalid; attempting token refresh.");
-            SalesforceAuthClient.AuthResult refreshed = authClient.refreshAccessToken();
-            log.info("Salesforce access token refreshed successfully.");
+            log.info(MSG_INVALID_SESSION_REFRESHING);
+            AuthResult refreshed = authClient.refreshAccessToken();
+            log.info(MSG_REFRESH_SUCCESS);
 
             HttpResponse<String> second = executeQuery(refreshed.instanceUrl, refreshed.accessToken, soql, requestId);
             if (isSuccess(second.statusCode())) {
@@ -121,13 +168,13 @@ public class SalesforceClient {
             String body2 = safeErrorBody(second.body());
             throw new SalesforceClientException(
                     second.statusCode(),
-                    body2 != null ? body2 : ("Salesforce query failed after refresh with status " + second.statusCode()));
+                    body2 != null ? body2 : (MSG_QUERY_FAILED_AFTER_REFRESH_PREFIX + second.statusCode()));
         }
 
         String body = safeErrorBody(first.body());
         throw new SalesforceClientException(
                 first.statusCode(),
-                body != null ? body : ("Salesforce query failed with status " + first.statusCode()));
+            body != null ? body : (MSG_QUERY_FAILED_PREFIX + first.statusCode()));
     }
 
     private HttpResponse<String> executeQuery(String instanceUrl, String apiKey, String soql, String requestId)
@@ -135,45 +182,45 @@ public class SalesforceClient {
         String endpoint = buildQueryEndpoint(instanceUrl, soql);
 
         ServerDiagnosticsLog.write(
-                "salesforce-client",
+                DIAG_COMPONENT_SALESFORCE_CLIENT,
                 requestId,
-                "query-request",
-            "method=GET" + LS + "url=" + endpoint + LS + "soql=" + soql
+                DIAG_EVENT_QUERY_REQUEST,
+            LOG_KV_METHOD_GET + LS + LOG_KV_URL + endpoint + LS + LOG_KV_SOQL + soql
         );
 
         HttpRequest req = HttpRequest.newBuilder()
                 .uri(URI.create(endpoint))
                 .timeout(Duration.ofSeconds(15))
-                .header("Authorization", "Bearer " + apiKey)
-                .header("Accept", "application/json")
+                .header(HEADER_AUTHORIZATION, AUTH_BEARER_PREFIX + apiKey)
+                .header(HEADER_ACCEPT, CONTENT_TYPE_JSON)
                 .GET()
                 .build();
 
         try {
             HttpResponse<String> response = httpClient.send(req, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
             ServerDiagnosticsLog.write(
-                    "salesforce-client",
+                    DIAG_COMPONENT_SALESFORCE_CLIENT,
                     requestId,
-                    "query-response",
-                    "status=" + response.statusCode() + LS + "body=" + safeErrorBody(response.body())
+                    DIAG_EVENT_QUERY_RESPONSE,
+                    LOG_KV_STATUS + response.statusCode() + LS + LOG_KV_BODY + safeErrorBody(response.body())
             );
             return response;
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             ServerDiagnosticsLog.write(
-                    "salesforce-client",
+                    DIAG_COMPONENT_SALESFORCE_CLIENT,
                     requestId,
-                    "query-error",
-                    "url=" + endpoint + LS + "message=" + safe(e.getMessage()),
+                    DIAG_EVENT_QUERY_ERROR,
+                    LOG_KV_URL + endpoint + LS + LOG_KV_MESSAGE + safe(e.getMessage()),
                     e
             );
             throw e;
         } catch (IOException e) {
             ServerDiagnosticsLog.write(
-                    "salesforce-client",
+                    DIAG_COMPONENT_SALESFORCE_CLIENT,
                     requestId,
-                    "query-error",
-                    "url=" + endpoint + LS + "message=" + safe(e.getMessage()),
+                    DIAG_EVENT_QUERY_ERROR,
+                    LOG_KV_URL + endpoint + LS + LOG_KV_MESSAGE + safe(e.getMessage()),
                     e
             );
             throw e;
@@ -204,7 +251,7 @@ public class SalesforceClient {
         // If no current access token is stored, attempt configured auth flows
         // (OAuth refresh or username/password/API token login).
         if (key == null) {
-            SalesforceAuthClient.AuthResult refreshed = authClient.refreshAccessToken();
+            AuthResult refreshed = authClient.refreshAccessToken();
             if (refreshed != null) {
                 key = trimToNull(refreshed.accessToken);
                 if (url == null) {
@@ -222,24 +269,24 @@ public class SalesforceClient {
 
     private String buildQueryEndpoint(String instanceUrl, String soql) {
         String normalized = instanceUrl.trim();
-        if (!normalized.startsWith("http://") && !normalized.startsWith("https://")) {
-            normalized = "https://" + normalized;
+        if (!normalized.startsWith(HTTP_PREFIX) && !normalized.startsWith(HTTPS_PREFIX)) {
+            normalized = HTTPS_PREFIX + normalized;
         }
-        normalized = normalized.replaceAll("/+$", "");
+        normalized = normalized.replaceAll(TRAILING_SLASH_REGEX, EMPTY);
         return normalized
-                + "/services/data/"
+            + PATH_SERVICES_DATA
                 + API_VERSION
-                + "/query?q="
+            + PATH_QUERY_Q
                 + URLEncoder.encode(soql, StandardCharsets.UTF_8);
     }
 
     private String buildContactByNameSoql(String friendlyName) {
-        String safe = friendlyName.replace("'", "\\'");
-        return "SELECT Id, Name, Email, Phone, Title, Department, AccountId, LastModifiedDate "
-                + "FROM Contact "
-                + "WHERE Name = '" + safe + "' "
-                + "ORDER BY LastModifiedDate DESC "
-                + "LIMIT 1";
+        String safe = friendlyName.replace(SINGLE_QUOTE, ESCAPED_SINGLE_QUOTE);
+        return SOQL_SELECT_CONTACT_PREFIX
+                + SOQL_FROM_CONTACT
+            + SOQL_WHERE_NAME + SINGLE_QUOTE + safe + SINGLE_QUOTE + SPACE
+                + SOQL_ORDER_BY_LAST_MODIFIED
+                + SOQL_LIMIT_ONE;
     }
 
     private SalesforceCustomerMatch parseFirstRecord(String body) {
@@ -249,7 +296,7 @@ public class SalesforceClient {
 
         try (JsonReader reader = Json.createReader(new StringReader(body))) {
             JsonObject root = reader.readObject();
-            JsonArray records = root.getJsonArray("records");
+            JsonArray records = root.getJsonArray(JSON_FIELD_RECORDS);
             if (records == null || records.isEmpty()) {
                 return null;
             }
@@ -257,13 +304,13 @@ public class SalesforceClient {
             JsonObject rec = records.getJsonObject(0);
 
             SalesforceCustomerMatch m = new SalesforceCustomerMatch();
-            m.setContactId(getString(rec, "Id"));
-            m.setName(getString(rec, "Name"));
-            m.setEmail(getString(rec, "Email"));
-            m.setPhone(getString(rec, "Phone"));
-            m.setTitle(getString(rec, "Title"));
-            m.setDepartment(getString(rec, "Department"));
-            m.setAccountId(getString(rec, "AccountId"));
+            m.setContactId(getString(rec, JSON_FIELD_ID));
+            m.setName(getString(rec, JSON_FIELD_NAME));
+            m.setEmail(getString(rec, JSON_FIELD_EMAIL));
+            m.setPhone(getString(rec, JSON_FIELD_PHONE));
+            m.setTitle(getString(rec, JSON_FIELD_TITLE));
+            m.setDepartment(getString(rec, JSON_FIELD_DEPARTMENT));
+            m.setAccountId(getString(rec, JSON_FIELD_ACCOUNT_ID));
             m.setRawJson(rec.toString());
 
             return m;
@@ -295,7 +342,7 @@ public class SalesforceClient {
         if (body == null) {
             return false;
         }
-        return body.contains("INVALID_SESSION_ID") || body.contains("Session expired or invalid");
+        return body.contains(INVALID_SESSION_ID_TOKEN) || body.contains(INVALID_SESSION_TEXT);
     }
 
     private String safeErrorBody(String body) {
@@ -303,9 +350,9 @@ public class SalesforceClient {
         if (b == null) {
             return null;
         }
-        b = b.replace(System.lineSeparator(), " ").replace(System.lineSeparator(), " ");
+        b = b.replace(System.lineSeparator(), SPACE).replace(System.lineSeparator(), SPACE);
         if (b.length() > MAX_ERROR_BODY_LEN) {
-            return new String(b.toCharArray(), 0, MAX_ERROR_BODY_LEN) + "...";
+            return new String(b.toCharArray(), 0, MAX_ERROR_BODY_LEN) + ELLIPSIS;
         }
         return b;
     }
@@ -319,35 +366,18 @@ public class SalesforceClient {
     }
 
     private String safe(String value) {
-        return value == null ? "" : value;
-    }
-
-    private static final class Credentials {
-
-        final String instanceUrl;
-        final String apiKey;
-
-        private Credentials(String instanceUrl, String apiKey) {
-            this.instanceUrl = instanceUrl;
-            this.apiKey = apiKey;
-        }
-    }
-
-    public static class SalesforceClientException extends Exception {
-
-        private final transient int statusCode;
-
-        private SalesforceClientException(int statusCode, String message) {
-            super(message);
-            this.statusCode = statusCode;
-        }
-
-        private final int getStatusCode() {
-            return statusCode;
-        }
-
-        public int statusCode() {
-            return getStatusCode();
-        }
+        return value == null ? EMPTY : value;
     }
 }
+
+final class Credentials {
+
+    final String instanceUrl;
+    final String apiKey;
+
+    Credentials(String instanceUrl, String apiKey) {
+        this.instanceUrl = instanceUrl;
+        this.apiKey = apiKey;
+    }
+}
+

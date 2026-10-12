@@ -24,6 +24,19 @@ import jakarta.json.JsonValue;
 public final class JsonRequestParserUtil {
 
     private static final Logger log = Logger.getLogger(JsonRequestParserUtil.class.getCanonicalName());
+    private static final String MSG_BODY_DECLARED_LIMIT_PREFIX = "JSON request body exceeds declared limit: maxBytes=";
+    private static final String MSG_BODY_DECLARED_LIMIT_CONTENT_LENGTH = ", contentLength=";
+    private static final String MSG_READ_JSON_BODY_FAILED = "Failed to read JSON request body";
+    private static final String MSG_PAYLOAD_NOT_OBJECT_PREFIX = "JSON payload is not an object. valueType=";
+    private static final String MSG_BODY_EXCEEDS_LIMIT_PREFIX = "JSON request body exceeds limit: ";
+    private static final String MSG_PARSE_JSON_BODY_FAILED = "Failed to parse JSON request body";
+    private static final String EMPTY = "";
+    private static final String MSG_INVALID_BOOLEAN_FOR_KEY_PREFIX = "Invalid boolean JSON value type for key ";
+    private static final String MSG_INVALID_INTEGER_FOR_KEY_PREFIX = "Invalid integer JSON value for key ";
+    private static final String MSG_MAX_CHARS_PREFIX = "maxChars=";
+    private static final String MSG_ACTUAL_GT_PREFIX = ", actual>";
+    private static final String NULL_CHAR = com.sim.chatserver.util.CommonLiteralConstants.NULL_CHAR_STRING;
+    private static final String CONTROL_CHAR_REGEX = com.sim.chatserver.util.CommonLiteralConstants.REGEX_CTRL_EXCEPT_CRLF_TAB;
 
     /**
      * Default max request body to parse (1 MiB).
@@ -53,7 +66,7 @@ public final class JsonRequestParserUtil {
         int max = Math.max(1, maxBodyBytes);
         long declaredLength = req.getContentLengthLong();
         if (declaredLength > max) {
-            log.warning(() -> "JSON request body exceeds declared limit: maxBytes=" + max + ", contentLength=" + declaredLength);
+            log.warning(() -> MSG_BODY_DECLARED_LIMIT_PREFIX + max + MSG_BODY_DECLARED_LIMIT_CONTENT_LENGTH + declaredLength);
             return emptyObject();
         }
 
@@ -61,7 +74,7 @@ public final class JsonRequestParserUtil {
         try {
             requestReader = req.getReader();
         } catch (IOException | IllegalStateException ex) {
-            log.log(Level.WARNING, "Failed to read JSON request body", ex);
+            log.log(Level.WARNING, MSG_READ_JSON_BODY_FAILED, ex);
             return emptyObject();
         }
 
@@ -89,7 +102,7 @@ public final class JsonRequestParserUtil {
                 }
 
                 if (structure.getValueType() != JsonValue.ValueType.OBJECT) {
-                    log.warning(() -> "JSON payload is not an object. valueType=" + structure.getValueType());
+                    log.warning(() -> MSG_PAYLOAD_NOT_OBJECT_PREFIX + structure.getValueType());
                     return emptyObject();
                 }
 
@@ -97,16 +110,16 @@ public final class JsonRequestParserUtil {
                 return obj == null ? emptyObject() : obj;
             }
         } catch (BodyTooLargeException ex) {
-            log.warning(() -> "JSON request body exceeds limit: " + ex.getMessage());
+            log.warning(() -> MSG_BODY_EXCEEDS_LIMIT_PREFIX + ex.getMessage());
             return emptyObject();
         } catch (IOException | JsonException | IllegalStateException ex) {
-            log.log(Level.WARNING, "Failed to parse JSON request body", ex);
+            log.log(Level.WARNING, MSG_PARSE_JSON_BODY_FAILED, ex);
             return emptyObject();
         }
     }
 
     public static String getString(JsonObject obj, String key, int maxChars) {
-        String value = getString(obj, key, "");
+        String value = getString(obj, key, EMPTY);
         return trimTo(value, maxChars);
     }
 
@@ -147,7 +160,7 @@ public final class JsonRequestParserUtil {
                     defaultValue;
             };
         } catch (ClassCastException ex) {
-            log.log(Level.FINE, "Invalid boolean JSON value type for key " + key, ex);
+            log.log(Level.FINE, MSG_INVALID_BOOLEAN_FOR_KEY_PREFIX + key, ex);
             return defaultValue;
         }
     }
@@ -171,7 +184,7 @@ public final class JsonRequestParserUtil {
                 parsed = Integer.parseInt(s.trim());
             }
         } catch (NumberFormatException | ClassCastException ex) {
-            log.log(Level.FINE, "Invalid integer JSON value for key " + key, ex);
+            log.log(Level.FINE, MSG_INVALID_INTEGER_FOR_KEY_PREFIX + key, ex);
             parsed = defaultValue;
         }
 
@@ -212,7 +225,7 @@ public final class JsonRequestParserUtil {
 
     private static String readAtMost(java.io.Reader reader, int maxChars) throws IOException {
         if (reader == null) {
-            return "";
+            return EMPTY;
         }
         char[] buffer = new char[2048];
         int total = 0;
@@ -222,7 +235,7 @@ public final class JsonRequestParserUtil {
         while ((read = reader.read(buffer)) != -1) {
             total += read;
             if (total > maxChars) {
-                throw new BodyTooLargeException("maxChars=" + maxChars + ", actual>" + maxChars);
+                throw new BodyTooLargeException(MSG_MAX_CHARS_PREFIX + maxChars + MSG_ACTUAL_GT_PREFIX + maxChars);
             }
             payload.append(buffer, 0, read);
         }
@@ -231,17 +244,17 @@ public final class JsonRequestParserUtil {
 
     private static String normalizeBodyText(String body, int maxChars) {
         if (body == null || body.isBlank()) {
-            return "";
+            return EMPTY;
         }
         String normalized = Normalizer.normalize(body, Normalizer.Form.NFKC)
-                .replace("\u0000", "")
-                .replaceAll("[\\p{Cntrl}&&[^\\r\\n\\t]]", "")
+                .replace(NULL_CHAR, EMPTY)
+                .replaceAll(CONTROL_CHAR_REGEX, EMPTY)
                 .trim();
         if (normalized.isEmpty()) {
-            return "";
+            return EMPTY;
         }
         if (maxChars > 0 && normalized.length() > maxChars) {
-            return safeSlice(normalized, 0, maxChars);
+            return TextIoSanitizerUtil.safeSlice(normalized, 0, maxChars);
         }
         return normalized;
     }
@@ -258,31 +271,18 @@ public final class JsonRequestParserUtil {
 
     private static String trimTo(String value, int maxChars) {
         if (value == null || maxChars <= 0) {
-            return "";
+            return EMPTY;
         }
-        return value.length() <= maxChars ? value : safeSlice(value, 0, maxChars);
+        return value.length() <= maxChars ? value : TextIoSanitizerUtil.safeSlice(value, 0, maxChars);
     }
 
-    private static String safeSlice(String value, int beginIndex, int endIndex) {
-        if (value == null) {
-            return "";
-        }
-        int start = Math.max(0, Math.min(beginIndex, value.length()));
-        int end = Math.max(start, Math.min(endIndex, value.length()));
-        int length = end - start;
-        if (length <= 0) {
-            return "";
-        }
-        char[] copied = new char[length];
-        value.getChars(start, end, copied, 0);
-        return new String(copied);
-    }
+}
 
-    @SuppressWarnings("serial")
-    private static final class BodyTooLargeException extends IOException {
+final class BodyTooLargeException extends IOException {
 
-        private BodyTooLargeException(String message) {
-            super(message);
-        }
+    private static final long serialVersionUID = 1L;
+
+    BodyTooLargeException(String message) {
+        super(message);
     }
 }

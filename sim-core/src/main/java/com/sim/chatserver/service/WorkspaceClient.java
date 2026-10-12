@@ -27,7 +27,9 @@ import java.util.logging.Logger;
 
 import javax.net.ssl.HttpsURLConnection;
 
+import com.sim.chatserver.util.CommonLiteralConstants;
 import com.sim.chatserver.util.ServerDiagnosticsLog;
+import com.sim.chatserver.util.TextIoSanitizerUtil;
 
 import jakarta.json.Json;
 import jakarta.json.JsonArray;
@@ -51,6 +53,7 @@ import jakarta.json.JsonObject;
  */
 public class WorkspaceClient {
 
+
     private static final Logger log = Logger.getLogger(WorkspaceClient.class.getCanonicalName());
 
     private static final int DEFAULT_MAX_RETRIES = 1;
@@ -58,6 +61,96 @@ public class WorkspaceClient {
     private static final int MAX_ERROR_LOG_CHARS = 2000;
     private static final int MAX_LOG_MESSAGE_PREVIEW_CHARS = 800;
     private static final String VERBOSE_WILDFLY_ENV = "SIM_WORKSPACECLIENT_VERBOSE_WILDFLY_LOG";
+    private static final String DIAG_COMPONENT = "workspace-client";
+    private static final String HEADER_CONTENT_TYPE = CommonLiteralConstants.HEADER_CONTENT_TYPE;
+    private static final String HEADER_ACCEPT = CommonLiteralConstants.HEADER_ACCEPT;
+    private static final String HEADER_AUTHORIZATION = CommonLiteralConstants.HEADER_AUTHORIZATION;
+    private static final String HEADER_X_API_KEY = CommonLiteralConstants.HEADER_X_API_KEY;
+    private static final String HEADER_AUTHORIZATION_LOWER = CommonLiteralConstants.HEADER_AUTHORIZATION_LOWER;
+    private static final String HEADER_X_API_KEY_LOWER = CommonLiteralConstants.HEADER_X_API_KEY_LOWER;
+    private static final String MIME_APPLICATION_JSON = com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON;
+    private static final String BEARER_PREFIX = com.sim.chatserver.util.CommonLiteralConstants.AUTH_BEARER_PREFIX;
+    private static final String SCHEME_HTTP = CommonLiteralConstants.SCHEME_HTTP;
+    private static final String MODE_CHAT = CommonLiteralConstants.DEFAULT_MODE_CHAT;
+    private static final String JSON_FIELD_MODE = CommonLiteralConstants.FIELD_MODE;
+    private static final String JSON_FIELD_RESET = com.sim.chatserver.util.CommonLiteralConstants.VALUE_RESET;
+    private static final String JSON_FIELD_SESSION_ID = com.sim.chatserver.util.CommonLiteralConstants.FIELD_SESSION_ID;
+    private static final String JSON_FIELD_ATTACHMENTS = CommonLiteralConstants.FIELD_ATTACHMENTS;
+    private static final String SESSION_PREFIX_DASHBOARD_DAILY_SUMMARY = "dashboard-daily-summary";
+    private static final String ARG_HTTP_CLIENT = "httpClient";
+    private static final String AUTH_TRACE_STATUS_SEPARATOR = "=>";
+    private static final String DELIMITER_COMMA_SPACE = ", ";
+    private static final String LOG_FMT_AUTH_FALLBACK_MODE = "[workspace-client][{0}] auth fallback switching mode after status={1} mode={2} source={3}";
+    private static final String LOG_FMT_AUTH_FALLBACK_SOURCE = "[workspace-client][{0}] auth fallback switching source after status={1} source={2}";
+    private static final String LOG_FMT_NETWORK_RETRY = "[workspace-client][{0}] network failure, retrying attempt={1} errorRef={2} reason={3}";
+    private static final String LOG_FMT_SEND_VERBOSE = "[workspace-client][{0}] send mode={1} reset={2} messageChars={3} payloadChars={4} attachments={5} target={6} messagePreview={7}";
+    private static final String LOG_FMT_SEND = "[workspace-client][{0}] send mode={1} reset={2} messageChars={3} payloadChars={4} attachments={5} target={6}";
+    private static final String LOG_FMT_UPSTREAM_4XX_VERBOSE = "[workspace-client][{0}] upstream 4xx status={1} attempt={2} contextTooLarge={3} body={4}";
+    private static final String LOG_FMT_UPSTREAM_4XX = "[workspace-client][{0}] upstream 4xx status={1} attempt={2} contextTooLarge={3}";
+    private static final String LOG_FMT_RETRYABLE_STATUS = "[workspace-client][{0}] retryable status status={1} attempt={2}";
+    private static final String EVENT_SEND = "send";
+    private static final String EVENT_NETWORK_FAILURE = "network-failure";
+    private static final String EVENT_UPSTREAM_4XX = "upstream-4xx";
+    private static final String EVENT_RETRYABLE_STATUS = "retryable-status";
+    private static final String LOG_KV_TARGET = "target=";
+    private static final String LOG_KV_MODE = "mode=";
+    private static final String LOG_KV_RESET = "reset=";
+    private static final String LOG_KV_SESSION_ID_INCLUDED = "sessionIdIncluded=";
+    private static final String LOG_KV_MESSAGE_CHARS = "messageChars=";
+    private static final String LOG_KV_PAYLOAD_CHARS = "payloadChars=";
+    private static final String LOG_KV_ATTACHMENTS = "attachments=";
+    private static final String LOG_KV_AUTH_CANDIDATES = "authCandidates=";
+    private static final String LOG_KV_PAYLOAD = "payload=";
+    private static final String LOG_KV_ERROR_REF = "errorRef=";
+    private static final String LOG_KV_REASON = "reason=";
+    private static final String LOG_KV_AUTH_SOURCE = "authSource=";
+    private static final String LOG_KV_AUTH_MODE = "authMode=";
+    private static final String LOG_KV_AUTH_ATTEMPT_TRACE = "authAttemptTrace=";
+    private static final String LOG_KV_CONTEXT_TOO_LARGE = "contextTooLarge=";
+    private static final String JSON_FIELD_MESSAGE = CommonLiteralConstants.FIELD_MESSAGE;
+    private static final String JSON_FIELD_ERROR = CommonLiteralConstants.KEY_ERROR;
+    private static final String JSON_FIELD_DETAIL = "detail";
+    private static final String JSON_FIELD_CODE = "code";
+    private static final String JSON_FIELD_TYPE = "type";
+    private static final String JSON_FIELD_REASON = "reason";
+    private static final String LOG_KV_STATUS = CommonLiteralConstants.LOG_KV_STATUS;
+    private static final String LOG_KV_ATTEMPT = "attempt=";
+    private static final String LOG_KV_CONTENT_TYPE = "contentType=";
+    private static final String LOG_KV_RESPONSE_BODY = "responseBody=";
+    private static final String LOG_KV_MESSAGE = CommonLiteralConstants.LOG_KV_MESSAGE;
+    private static final String ERR_WORKSPACE_TARGET_REQUIRED = "Workspace target URL is required.";
+    private static final String ERR_WORKSPACE_API_KEY_REQUIRED = "Workspace API key is required.";
+    private static final String ERR_WORKSPACE_CALL_FAILED_NO_RESPONSE = "Workspace call failed before receiving a response.";
+    private static final String ERR_CONNECTION_NOT_AVAILABLE = "Connection is not available.";
+    private static final String ERR_EXPECTED_HTTPS_CONNECTION = "Expected HTTPS connection for secure target URI.";
+    private static final String ERR_UNSUPPORTED_URL_CONNECTION_TYPE = "Unsupported URL connection type.";
+    private static final String ERR_WORKSPACE_TARGET_HTTP_SCHEME = "Workspace target URL must be http/https with a host.";
+    private static final String ERR_WORKSPACE_TARGET_INVALID = "Workspace target URL is invalid.";
+    private static final String ERR_PARSE_JSON = "Unable to parse workspace response as JSON.";
+    private static final String ERR_INVALID_TARGET_SAFE_TEXT = "Invalid target URL while preparing safe target text.";
+    private static final String INVALID_TARGET = "(invalid-target)";
+    private static final String HTTP_METHOD_POST = CommonLiteralConstants.HTTP_METHOD_POST;
+    private static final String CONTEXT_LIMIT_MAXIMUM_CONTEXT_LENGTH = "maximum context length";
+    private static final String CONTEXT_LIMIT_CONTEXT_LENGTH_EXCEEDED = "context length exceeded";
+    private static final String CONTEXT_LIMIT_CONTEXT_WINDOW = "context window";
+    private static final String CONTEXT_LIMIT_TOKEN_LIMIT = "token limit";
+    private static final String CONTEXT_LIMIT_TOO_MANY_TOKENS = "too many tokens";
+    private static final String CONTEXT_LIMIT_MAX_TOKENS = "max tokens";
+    private static final String CONTEXT_LIMIT_PROMPT_TOO_LONG = "prompt is too long";
+    private static final String CONTEXT_LIMIT_INPUT_TOO_LONG = "input is too long";
+    private static final String CONTEXT_LIMIT_PAYLOAD_TOO_LARGE = "payload too large";
+    private static final String CONTEXT_LIMIT_REQUEST_ENTITY_TOO_LARGE = "request entity too large";
+    private static final String CONTEXT_LIMIT_FAILED_TO_EMBED = "failed_to_embed";
+    private static final String CONTEXT_LIMIT_EMBEDDING_INPUT_TOO_LONG = "embedding input too long";
+    private static final String CONTEXT_LIMIT_TOO_LARGE = "too large";
+    private static final String BOOL_TRUE = CommonLiteralConstants.VALUE_TRUE;
+    private static final String BOOL_ONE = "1";
+    private static final String BOOL_YES = CommonLiteralConstants.VALUE_YES;
+    private static final String BOOL_Y = "y";
+    private static final String BOOL_ON = "on";
+    private static final String SUFFIX_TRUNCATED = "...(truncated)";
+    private static final String SCHEME_HTTPS = CommonLiteralConstants.SCHEME_HTTPS;
+    private static final String EMPTY = "";
     private static final Map<String, String> ENV = new ProcessBuilder().environment();
     private static final boolean VERBOSE_WILDFLY_LOGS = isTruthy(readEnvSanitized(VERBOSE_WILDFLY_ENV));
     private static final String LINE_SEPARATOR = System.lineSeparator();
@@ -83,17 +176,15 @@ public class WorkspaceClient {
     }
 
     public WorkspaceClient(HttpClient httpClient, int maxRetries, Duration requestTimeout) {
-        this.httpClient = Objects.requireNonNull(httpClient, "httpClient");
+        this.httpClient = Objects.requireNonNull(httpClient, ARG_HTTP_CLIENT);
         this.maxRetries = Math.max(0, maxRetries);
         this.requestTimeout = requestTimeout == null ? DEFAULT_REQUEST_TIMEOUT : requestTimeout;
     }
 
-    @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
@@ -141,22 +232,22 @@ public class WorkspaceClient {
         ) throws IOException, InterruptedException {
 
         // FULL message as-is (no truncation here)
-        final String safeMessage = message == null ? "" : message;
-        final String safeMode = (mode == null || mode.isBlank()) ? "chat" : mode;
+        final String safeMessage = message == null ? EMPTY : message;
+        final String safeMode = (mode == null || mode.isBlank()) ? MODE_CHAT : mode;
         final JsonArray safeAttachments = attachments == null ? Json.createArrayBuilder().build() : attachments;
         final URI targetUri = toSafeHttpUri(targetUrl);
         final String safeRequestId = safe(requestId);
         final boolean hasExplicitApiKey = ApiAuthResolver.normalizeApiKeyToken(apiKey) != null;
-        final ApiAuthResolver.ResolvedApiAuth primaryAuth = hasExplicitApiKey
+        final ResolvedApiAuth primaryAuth = hasExplicitApiKey
             ? ApiAuthResolver.resolveForServerConfigOutbound(apiKey)
             : ApiAuthResolver.resolveForOutbound(apiKey);
-        final ApiAuthResolver.ResolvedApiAuth secondaryAuth = hasExplicitApiKey
+        final ResolvedApiAuth secondaryAuth = hasExplicitApiKey
             ? ApiAuthResolver.emptyResolvedApiAuth()
             : ApiAuthResolver.resolveForOutbound(null);
-        final List<ApiAuthResolver.ResolvedApiAuth> authCandidates = buildAuthCandidates(primaryAuth, secondaryAuth);
+        final List<ResolvedApiAuth> authCandidates = buildAuthCandidates(primaryAuth, secondaryAuth);
 
         if (authCandidates.isEmpty()) {
-            throw new IOException("Workspace API key is required.");
+            throw new IOException(ERR_WORKSPACE_API_KEY_REQUIRED);
         }
 
         boolean includeSessionId = shouldIncludeSessionId(sessionId);
@@ -187,10 +278,10 @@ public class WorkspaceClient {
 
                 HttpResponse<String> response = null;
                 AuthHeaderMode usedMode = AuthHeaderMode.AUTH_BEARER;
-                String usedAuthSource = "";
+                String usedAuthSource = EMPTY;
 
                 if (bearerCompatOnly) {
-                    ApiAuthResolver.ResolvedApiAuth auth = authCandidates.get(0);
+                    ResolvedApiAuth auth = authCandidates.get(0);
                     usedAuthSource = safe(auth.source());
                     usedMode = AuthHeaderMode.AUTH_BEARER;
                     authAttemptTrace.append(usedAuthSource)
@@ -199,10 +290,10 @@ public class WorkspaceClient {
 
                     WorkspaceResponse wrapped = sendBearerCompatViaHttpURLConnection(targetUri, body, auth);
                     int status = wrapped.statusCode();
-                    String responseBody = wrapped.body() == null ? "" : wrapped.body();
-                    String contentType = wrapped.contentType() == null ? "" : wrapped.contentType();
+                    String responseBody = wrapped.body() == null ? EMPTY : wrapped.body();
+                    String contentType = wrapped.contentType() == null ? EMPTY : wrapped.contentType();
 
-                    authAttemptTrace.append("=>").append(status);
+                    authAttemptTrace.append(AUTH_TRACE_STATUS_SEPARATOR).append(status);
 
                     logUpstream4xxIfNeeded(
                             safeRequestId,
@@ -224,7 +315,7 @@ public class WorkspaceClient {
                 }
 
                 for (int authIndex = 0; authIndex < authCandidates.size(); authIndex++) {
-                    ApiAuthResolver.ResolvedApiAuth auth = authCandidates.get(authIndex);
+                    ResolvedApiAuth auth = authCandidates.get(authIndex);
                         List<AuthHeaderMode> modeCandidates = bearerCompatOnly
                             ? List.of(AuthHeaderMode.AUTH_BEARER)
                             : resolveModeCandidates(auth.preferredHeaderName());
@@ -239,12 +330,12 @@ public class WorkspaceClient {
                         int candidateStatus = candidate.statusCode();
 
                         if (authAttemptTrace.length() > 0) {
-                            authAttemptTrace.append(", ");
+                            authAttemptTrace.append(DELIMITER_COMMA_SPACE);
                         }
                         authAttemptTrace.append(safe(auth.source()))
                             .append('|')
                             .append(authModeCandidate.name())
-                            .append("=>")
+                            .append(AUTH_TRACE_STATUS_SEPARATOR)
                             .append(candidateStatus);
 
                         response = candidate;
@@ -261,13 +352,13 @@ public class WorkspaceClient {
                         if (isAuthModeRetryableStatus(candidateStatus) && (hasMoreModes || hasMoreAuth)) {
                             if (hasMoreModes) {
                                 log.log(Level.INFO,
-                                        "[workspace-client][{0}] auth fallback switching mode after status={1} mode={2} source={3}",
+                                    LOG_FMT_AUTH_FALLBACK_MODE,
                                         new Object[]{safeRequestId, candidateStatus, authModeCandidate.name(), safe(auth.source())});
                                 continue;
                             }
                             if (hasMoreAuth) {
                                 log.log(Level.INFO,
-                                        "[workspace-client][{0}] auth fallback switching source after status={1} source={2}",
+                                    LOG_FMT_AUTH_FALLBACK_SOURCE,
                                         new Object[]{safeRequestId, candidateStatus, safe(auth.source())});
                                 break;
                             }
@@ -282,12 +373,12 @@ public class WorkspaceClient {
                 }
 
                 if (response == null) {
-                    throw new IOException("Workspace call failed before receiving a response.");
+                    throw new IOException(ERR_WORKSPACE_CALL_FAILED_NO_RESPONSE);
                 }
 
                 int status = response.statusCode();
-                String responseBody = response.body() == null ? "" : response.body();
-                String contentType = response.headers().firstValue("Content-Type").orElse("");
+                String responseBody = response.body() == null ? EMPTY : response.body();
+                String contentType = response.headers().firstValue(HEADER_CONTENT_TYPE).orElse(EMPTY);
 
                 WorkspaceResponse wrapped = new WorkspaceResponse(status, responseBody, contentType);
 
@@ -312,7 +403,7 @@ public class WorkspaceClient {
                 if (attempt <= (maxRetries + 1)) {
                     String errorRef = UUID.randomUUID().toString();
                     log.log(Level.WARNING,
-                            "[workspace-client][{0}] network failure, retrying attempt={1} errorRef={2} reason={3}",
+                            LOG_FMT_NETWORK_RETRY,
                             new Object[]{
                                 safeRequestId,
                                 attempt,
@@ -321,12 +412,12 @@ public class WorkspaceClient {
                             });
 
                     ServerDiagnosticsLog.write(
-                            "workspace-client",
+                            DIAG_COMPONENT,
                             safeRequestId,
-                            "network-failure",
-                            "attempt=" + attempt
-                                + LINE_SEPARATOR + "errorRef=" + errorRef
-                                + LINE_SEPARATOR + "reason=" + safe(ex.getMessage()),
+                            EVENT_NETWORK_FAILURE,
+                            LOG_KV_ATTEMPT + attempt
+                                + LINE_SEPARATOR + LOG_KV_ERROR_REF + errorRef
+                                + LINE_SEPARATOR + LOG_KV_REASON + safe(ex.getMessage()),
                             ex
                     );
                     continue;
@@ -345,12 +436,12 @@ public class WorkspaceClient {
             String targetUrl,
             URI targetUri,
             boolean includeSessionId,
-            List<ApiAuthResolver.ResolvedApiAuth> authCandidates,
+            List<ResolvedApiAuth> authCandidates,
             String body
     ) {
         if (VERBOSE_WILDFLY_LOGS) {
             log.log(Level.INFO,
-                    "[workspace-client][{0}] send mode={1} reset={2} messageChars={3} payloadChars={4} attachments={5} target={6} messagePreview={7}",
+                    LOG_FMT_SEND_VERBOSE,
                     new Object[]{
                         safeRequestId,
                         safeMode,
@@ -363,7 +454,7 @@ public class WorkspaceClient {
                     });
         } else {
             log.log(Level.INFO,
-                    "[workspace-client][{0}] send mode={1} reset={2} messageChars={3} payloadChars={4} attachments={5} target={6}",
+                    LOG_FMT_SEND,
                     new Object[]{
                         safeRequestId,
                         safeMode,
@@ -376,19 +467,19 @@ public class WorkspaceClient {
         }
 
         ServerDiagnosticsLog.write(
-                "workspace-client",
+            DIAG_COMPONENT,
                 safeRequestId,
-                "send",
-                "target=" + targetUri
-                    + LINE_SEPARATOR + "mode=" + safeMode
-                    + LINE_SEPARATOR + "reset=" + reset
-                    + LINE_SEPARATOR + "sessionIdIncluded=" + includeSessionId
-                    + LINE_SEPARATOR + "messageChars=" + safeMessage.length()
-                    + LINE_SEPARATOR + "payloadChars=" + body.length()
-                    + LINE_SEPARATOR + "attachments=" + safeAttachments.size()
-                    + LINE_SEPARATOR + "authCandidates=" + summarizeAuthCandidates(authCandidates)
-                    + LINE_SEPARATOR + "message=" + safeMessage
-                    + LINE_SEPARATOR + "payload=" + body
+                EVENT_SEND,
+                LOG_KV_TARGET + targetUri
+                    + LINE_SEPARATOR + LOG_KV_MODE + safeMode
+                    + LINE_SEPARATOR + LOG_KV_RESET + reset
+                    + LINE_SEPARATOR + LOG_KV_SESSION_ID_INCLUDED + includeSessionId
+                    + LINE_SEPARATOR + LOG_KV_MESSAGE_CHARS + safeMessage.length()
+                    + LINE_SEPARATOR + LOG_KV_PAYLOAD_CHARS + body.length()
+                    + LINE_SEPARATOR + LOG_KV_ATTACHMENTS + safeAttachments.size()
+                    + LINE_SEPARATOR + LOG_KV_AUTH_CANDIDATES + summarizeAuthCandidates(authCandidates)
+                    + LINE_SEPARATOR + LOG_KV_MESSAGE + safeMessage
+                    + LINE_SEPARATOR + LOG_KV_PAYLOAD + body
         );
     }
 
@@ -409,7 +500,7 @@ public class WorkspaceClient {
 
         if (VERBOSE_WILDFLY_LOGS) {
             log.log(Level.WARNING,
-                    "[workspace-client][{0}] upstream 4xx status={1} attempt={2} contextTooLarge={3} body={4}",
+                    LOG_FMT_UPSTREAM_4XX_VERBOSE,
                     new Object[]{
                         safeRequestId,
                         status,
@@ -419,7 +510,7 @@ public class WorkspaceClient {
                     });
         } else {
             log.log(Level.WARNING,
-                    "[workspace-client][{0}] upstream 4xx status={1} attempt={2} contextTooLarge={3}",
+                    LOG_FMT_UPSTREAM_4XX,
                     new Object[]{
                         safeRequestId,
                         status,
@@ -429,17 +520,17 @@ public class WorkspaceClient {
         }
 
         ServerDiagnosticsLog.write(
-                "workspace-client",
+            DIAG_COMPONENT,
                 safeRequestId,
-                "upstream-4xx",
-                "status=" + status
-                    + LINE_SEPARATOR + "attempt=" + attempt
-                    + LINE_SEPARATOR + "authSource=" + authSource
-                    + LINE_SEPARATOR + "authMode=" + authMode.name()
-                    + LINE_SEPARATOR + "authAttemptTrace=" + authAttemptTrace
-                    + LINE_SEPARATOR + "contextTooLarge=" + isLikelyContextTooLarge(response)
-                    + LINE_SEPARATOR + "contentType=" + contentType
-                    + LINE_SEPARATOR + "responseBody=" + responseBody
+                EVENT_UPSTREAM_4XX,
+                LOG_KV_STATUS + status
+                    + LINE_SEPARATOR + LOG_KV_ATTEMPT + attempt
+                    + LINE_SEPARATOR + LOG_KV_AUTH_SOURCE + authSource
+                    + LINE_SEPARATOR + LOG_KV_AUTH_MODE + authMode.name()
+                    + LINE_SEPARATOR + LOG_KV_AUTH_ATTEMPT_TRACE + authAttemptTrace
+                    + LINE_SEPARATOR + LOG_KV_CONTEXT_TOO_LARGE + isLikelyContextTooLarge(response)
+                    + LINE_SEPARATOR + LOG_KV_CONTENT_TYPE + contentType
+                    + LINE_SEPARATOR + LOG_KV_RESPONSE_BODY + responseBody
         );
     }
 
@@ -450,17 +541,17 @@ public class WorkspaceClient {
         }
 
         log.log(Level.WARNING,
-                "[workspace-client][{0}] retryable status status={1} attempt={2}",
+            LOG_FMT_RETRYABLE_STATUS,
                 new Object[]{safeRequestId, status, attempt});
 
         ServerDiagnosticsLog.write(
-                "workspace-client",
+            DIAG_COMPONENT,
                 safeRequestId,
-                "retryable-status",
-                "status=" + status
-                    + LINE_SEPARATOR + "attempt=" + attempt
-                    + LINE_SEPARATOR + "contentType=" + contentType
-                    + LINE_SEPARATOR + "responseBody=" + responseBody
+                EVENT_RETRYABLE_STATUS,
+                LOG_KV_STATUS + status
+                    + LINE_SEPARATOR + LOG_KV_ATTEMPT + attempt
+                    + LINE_SEPARATOR + LOG_KV_CONTENT_TYPE + contentType
+                    + LINE_SEPARATOR + LOG_KV_RESPONSE_BODY + responseBody
         );
         return true;
     }
@@ -478,7 +569,7 @@ public class WorkspaceClient {
         }
 
         int status = response.statusCode();
-        String body = response.body() == null ? "" : response.body();
+        String body = response.body() == null ? EMPTY : response.body();
         String lower = body.toLowerCase(Locale.ROOT);
 
         if (status == 413) {
@@ -491,12 +582,12 @@ public class WorkspaceClient {
 
         JsonObject json = parseJsonObject(body);
         String merged = new StringBuilder(256)
-                .append(safeLower(json.getString("message", ""))).append(' ')
-                .append(safeLower(json.getString("error", ""))).append(' ')
-                .append(safeLower(json.getString("detail", ""))).append(' ')
-                .append(safeLower(json.getString("code", ""))).append(' ')
-                .append(safeLower(json.getString("type", ""))).append(' ')
-                .append(safeLower(json.getString("reason", "")))
+            .append(safeLower(json.getString(JSON_FIELD_MESSAGE, EMPTY))).append(' ')
+            .append(safeLower(json.getString(JSON_FIELD_ERROR, EMPTY))).append(' ')
+            .append(safeLower(json.getString(JSON_FIELD_DETAIL, EMPTY))).append(' ')
+            .append(safeLower(json.getString(JSON_FIELD_CODE, EMPTY))).append(' ')
+            .append(safeLower(json.getString(JSON_FIELD_TYPE, EMPTY))).append(' ')
+            .append(safeLower(json.getString(JSON_FIELD_REASON, EMPTY)))
                 .toString()
                 .trim();
 
@@ -516,15 +607,15 @@ public class WorkspaceClient {
             JsonArray attachments
     ) {
         var b = Json.createObjectBuilder()
-                .add("message", message == null ? "" : message)
-                .add("mode", (mode == null || mode.isBlank()) ? "chat" : mode)
-                .add("reset", reset);
+                .add(JSON_FIELD_MESSAGE, message == null ? EMPTY : message)
+            .add(JSON_FIELD_MODE, (mode == null || mode.isBlank()) ? MODE_CHAT : mode)
+                .add(JSON_FIELD_RESET, reset);
 
         if (includeSessionId && sessionId != null && !sessionId.isBlank()) {
-            b.add("sessionId", sessionId);
+            b.add(JSON_FIELD_SESSION_ID, sessionId);
         }
         if (attachments != null && !attachments.isEmpty()) {
-            b.add("attachments", attachments);
+            b.add(JSON_FIELD_ATTACHMENTS, attachments);
         }
 
         return b.build();
@@ -536,7 +627,7 @@ public class WorkspaceClient {
         }
 
         String normalizedSession = sessionId.trim().toLowerCase(Locale.ROOT);
-        if (normalizedSession.startsWith("dashboard-daily-summary")) {
+        if (normalizedSession.startsWith(SESSION_PREFIX_DASHBOARD_DAILY_SUMMARY)) {
             return false;
         }
 
@@ -544,11 +635,11 @@ public class WorkspaceClient {
     }
 
     private AuthHeaderMode resolvePrimaryAuthMode(String preferredHeaderName) {
-        String header = preferredHeaderName == null ? "" : preferredHeaderName.trim();
-        if ("x-api-key".equalsIgnoreCase(header)) {
+        String header = preferredHeaderName == null ? EMPTY : preferredHeaderName.trim();
+        if (HEADER_X_API_KEY_LOWER.equalsIgnoreCase(header)) {
             return AuthHeaderMode.X_API_KEY;
         }
-        if (!header.isBlank() && !"authorization".equalsIgnoreCase(header)) {
+        if (!header.isBlank() && !HEADER_AUTHORIZATION_LOWER.equalsIgnoreCase(header)) {
             return AuthHeaderMode.CUSTOM_HEADER;
         }
         return AuthHeaderMode.AUTH_BEARER;
@@ -574,12 +665,12 @@ public class WorkspaceClient {
         return status == 401 || status == 403;
     }
 
-    private List<ApiAuthResolver.ResolvedApiAuth> buildAuthCandidates(
-            ApiAuthResolver.ResolvedApiAuth primary,
-            ApiAuthResolver.ResolvedApiAuth secondary
+    private List<ResolvedApiAuth> buildAuthCandidates(
+            ResolvedApiAuth primary,
+            ResolvedApiAuth secondary
     ) {
-        Map<String, ApiAuthResolver.ResolvedApiAuth> unique = new LinkedHashMap<>();
-        for (ApiAuthResolver.ResolvedApiAuth candidate : Arrays.asList(primary, secondary)) {
+        Map<String, ResolvedApiAuth> unique = new LinkedHashMap<>();
+        for (ResolvedApiAuth candidate : Arrays.asList(primary, secondary)) {
             if (candidate == null || !candidate.hasToken()) {
                 continue;
             }
@@ -593,12 +684,12 @@ public class WorkspaceClient {
         return new ArrayList<>(unique.values());
     }
 
-    private String summarizeAuthCandidates(List<ApiAuthResolver.ResolvedApiAuth> authCandidates) {
+    private String summarizeAuthCandidates(List<ResolvedApiAuth> authCandidates) {
         if (authCandidates == null || authCandidates.isEmpty()) {
-            return "";
+            return EMPTY;
         }
         StringBuilder sb = new StringBuilder();
-        for (ApiAuthResolver.ResolvedApiAuth auth : authCandidates) {
+        for (ResolvedApiAuth auth : authCandidates) {
             if (sb.length() > 0) {
                 sb.append(',');
             }
@@ -612,25 +703,25 @@ public class WorkspaceClient {
     private WorkspaceResponse sendBearerCompatViaHttpURLConnection(
             URI targetUri,
             String body,
-            ApiAuthResolver.ResolvedApiAuth auth
+            ResolvedApiAuth auth
     ) throws IOException {
         if (targetUri == null) {
-            throw new IOException("Workspace target URL is required.");
+            throw new IOException(ERR_WORKSPACE_TARGET_REQUIRED);
         }
         if (auth == null || auth.token() == null || auth.token().isBlank()) {
-            throw new IOException("Workspace API key is required.");
+            throw new IOException(ERR_WORKSPACE_API_KEY_REQUIRED);
         }
 
         URLConnection rawConn = targetUri.toURL().openConnection();
-        String scheme = targetUri.getScheme() == null ? "" : targetUri.getScheme().toLowerCase(Locale.ROOT);
-        if ("https".equals(scheme)) {
+        String scheme = targetUri.getScheme() == null ? EMPTY : targetUri.getScheme().toLowerCase(Locale.ROOT);
+        if (SCHEME_HTTPS.equals(scheme)) {
             if (!(rawConn instanceof HttpsURLConnection httpsConn)) {
-                throw new IOException("Expected HTTPS connection for secure target URI.");
+                throw new IOException(ERR_EXPECTED_HTTPS_CONNECTION);
             }
             return sendViaHttpConnection(httpsConn, body, auth);
         } else {
             if (!(rawConn instanceof HttpURLConnection)) {
-                throw new IOException("Unsupported URL connection type.");
+                throw new IOException(ERR_UNSUPPORTED_URL_CONNECTION_TYPE);
             }
             return sendViaHttpConnection((HttpURLConnection) rawConn, body, auth);
         }
@@ -639,17 +730,17 @@ public class WorkspaceClient {
     private WorkspaceResponse sendViaHttpConnection(
             HttpURLConnection conn,
             String body,
-            ApiAuthResolver.ResolvedApiAuth auth
+            ResolvedApiAuth auth
     ) throws IOException {
-        byte[] bytes = (body == null ? "" : body).getBytes(StandardCharsets.UTF_8);
+        byte[] bytes = (body == null ? EMPTY : body).getBytes(StandardCharsets.UTF_8);
         try {
-            conn.setRequestMethod("POST");
+            conn.setRequestMethod(HTTP_METHOD_POST);
             conn.setConnectTimeout(toSafeInt(Duration.ofSeconds(20).toMillis()));
             conn.setReadTimeout(toSafeInt(requestTimeout.toMillis()));
             conn.setDoOutput(true);
-            conn.setRequestProperty("Content-Type", "application/json");
-            conn.setRequestProperty("Accept", "application/json");
-            conn.setRequestProperty("Authorization", "Bearer " + auth.token());
+            conn.setRequestProperty(HEADER_CONTENT_TYPE, MIME_APPLICATION_JSON);
+            conn.setRequestProperty(HEADER_ACCEPT, MIME_APPLICATION_JSON);
+            conn.setRequestProperty(HEADER_AUTHORIZATION, BEARER_PREFIX + auth.token());
             conn.setFixedLengthStreamingMode(bytes.length);
 
             conn.getOutputStream().write(bytes);
@@ -658,7 +749,7 @@ public class WorkspaceClient {
             String contentType = safeContentType(conn);
 
             InputStream stream = selectResponseStream(conn, status);
-            String responseBody = "";
+            String responseBody = EMPTY;
             if (stream != null) {
                 try (InputStream in = stream) {
                     responseBody = new String(in.readAllBytes(), StandardCharsets.UTF_8);
@@ -671,12 +762,12 @@ public class WorkspaceClient {
         }
     }
 
-    private HttpRequest buildRequest(URI targetUri, String body, ApiAuthResolver.ResolvedApiAuth auth, AuthHeaderMode mode) {
+    private HttpRequest buildRequest(URI targetUri, String body, ResolvedApiAuth auth, AuthHeaderMode mode) {
         HttpRequest.Builder requestBuilder = HttpRequest.newBuilder()
                 .uri(targetUri)
                 .timeout(requestTimeout)
-                .header("Content-Type", "application/json")
-                .header("Accept", "application/json")
+            .header(HEADER_CONTENT_TYPE, MIME_APPLICATION_JSON)
+            .header(HEADER_ACCEPT, MIME_APPLICATION_JSON)
                 .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8));
 
         String token = auth == null ? null : auth.token();
@@ -689,30 +780,30 @@ public class WorkspaceClient {
 
         switch (mode) {
             case CUSTOM_HEADER -> applyCustomHeader(requestBuilder, preferredHeader, rawValue, token);
-            case AUTH_RAW -> requestBuilder.header("Authorization", normalizeRawAuthorizationValue(rawValue, token));
-            case X_API_KEY -> requestBuilder.header("X-API-Key", token);
+            case AUTH_RAW -> requestBuilder.header(HEADER_AUTHORIZATION, normalizeRawAuthorizationValue(rawValue, token));
+            case X_API_KEY -> requestBuilder.header(HEADER_X_API_KEY, token);
             case AUTH_BEARER_AND_X_API_KEY -> requestBuilder
-                    .header("Authorization", "Bearer " + token)
-                    .header("X-API-Key", token);
-            case AUTH_BEARER -> requestBuilder.header("Authorization", "Bearer " + token);
-            default -> requestBuilder.header("Authorization", "Bearer " + token);
+                .header(HEADER_AUTHORIZATION, BEARER_PREFIX + token)
+                .header(HEADER_X_API_KEY, token);
+            case AUTH_BEARER -> requestBuilder.header(HEADER_AUTHORIZATION, BEARER_PREFIX + token);
+            default -> requestBuilder.header(HEADER_AUTHORIZATION, BEARER_PREFIX + token);
         }
 
         return requestBuilder.build();
     }
 
     private void applyCustomHeader(HttpRequest.Builder requestBuilder, String headerName, String rawValue, String token) {
-        String normalizedHeader = headerName == null ? "" : headerName.trim();
+        String normalizedHeader = headerName == null ? EMPTY : headerName.trim();
         if (normalizedHeader.isBlank()) {
             return;
         }
 
-        if ("authorization".equalsIgnoreCase(normalizedHeader)) {
-            requestBuilder.header("Authorization", "Bearer " + token);
+        if (HEADER_AUTHORIZATION_LOWER.equalsIgnoreCase(normalizedHeader)) {
+            requestBuilder.header(HEADER_AUTHORIZATION, BEARER_PREFIX + token);
             return;
         }
-        if ("x-api-key".equalsIgnoreCase(normalizedHeader)) {
-            requestBuilder.header("X-API-Key", token);
+        if (HEADER_X_API_KEY_LOWER.equalsIgnoreCase(normalizedHeader)) {
+            requestBuilder.header(HEADER_X_API_KEY, token);
             return;
         }
 
@@ -740,19 +831,19 @@ public class WorkspaceClient {
             return false;
         }
 
-        return lower.contains("maximum context length")
-                || lower.contains("context length exceeded")
-                || lower.contains("context window")
-                || lower.contains("token limit")
-                || lower.contains("too many tokens")
-                || lower.contains("max tokens")
-                || lower.contains("prompt is too long")
-                || lower.contains("input is too long")
-                || lower.contains("payload too large")
-                || lower.contains("request entity too large")
-                || lower.contains("failed_to_embed")
-                || lower.contains("embedding input too long")
-                || lower.contains("too large");
+        return lower.contains(CONTEXT_LIMIT_MAXIMUM_CONTEXT_LENGTH)
+            || lower.contains(CONTEXT_LIMIT_CONTEXT_LENGTH_EXCEEDED)
+            || lower.contains(CONTEXT_LIMIT_CONTEXT_WINDOW)
+            || lower.contains(CONTEXT_LIMIT_TOKEN_LIMIT)
+            || lower.contains(CONTEXT_LIMIT_TOO_MANY_TOKENS)
+            || lower.contains(CONTEXT_LIMIT_MAX_TOKENS)
+            || lower.contains(CONTEXT_LIMIT_PROMPT_TOO_LONG)
+            || lower.contains(CONTEXT_LIMIT_INPUT_TOO_LONG)
+            || lower.contains(CONTEXT_LIMIT_PAYLOAD_TOO_LARGE)
+            || lower.contains(CONTEXT_LIMIT_REQUEST_ENTITY_TOO_LARGE)
+            || lower.contains(CONTEXT_LIMIT_FAILED_TO_EMBED)
+            || lower.contains(CONTEXT_LIMIT_EMBEDDING_INPUT_TOO_LONG)
+            || lower.contains(CONTEXT_LIMIT_TOO_LARGE);
     }
 
     private JsonObject parseJsonObject(String body) {
@@ -762,70 +853,55 @@ public class WorkspaceClient {
         try (var reader = Json.createReader(new StringReader(body))) {
             return reader.readObject();
         } catch (JsonException | ClassCastException | IllegalStateException ex) {
-            log.log(Level.FINE, "Unable to parse workspace response as JSON.", ex);
+            log.log(Level.FINE, ERR_PARSE_JSON, ex);
             return EMPTY_JSON_OBJECT;
         }
     }
 
     private URI toSafeHttpUri(String targetUrl) throws IOException {
         if (targetUrl == null || targetUrl.isBlank()) {
-            throw new IOException("Workspace target URL is required.");
+            throw new IOException(ERR_WORKSPACE_TARGET_REQUIRED);
         }
         try {
             URI uri = URI.create(targetUrl.trim()).normalize();
-            String scheme = uri.getScheme() == null ? "" : uri.getScheme().toLowerCase(Locale.ROOT);
+            String scheme = uri.getScheme() == null ? EMPTY : uri.getScheme().toLowerCase(Locale.ROOT);
             String host = uri.getHost();
-            if ((!"http".equals(scheme) && !"https".equals(scheme)) || host == null || host.isBlank()) {
-                throw new IOException("Workspace target URL must be http/https with a host.");
+            if ((!SCHEME_HTTP.equals(scheme) && !SCHEME_HTTPS.equals(scheme)) || host == null || host.isBlank()) {
+                throw new IOException(ERR_WORKSPACE_TARGET_HTTP_SCHEME);
             }
             return uri;
         } catch (IllegalArgumentException ex) {
-            throw new IOException("Workspace target URL is invalid.", ex);
+            throw new IOException(ERR_WORKSPACE_TARGET_INVALID, ex);
         }
     }
 
     private String safeLower(String v) {
-        return v == null ? "" : v.toLowerCase(Locale.ROOT);
+        return v == null ? EMPTY : v.toLowerCase(Locale.ROOT);
     }
 
     private String truncate(String value, int max) {
         if (value == null) {
-            return "";
+            return EMPTY;
         }
         if (value.length() <= max) {
             return value;
         }
-        return safeSlice(value, 0, max) + "...(truncated)";
+        return TextIoSanitizerUtil.safeSlice(value, 0, max) + SUFFIX_TRUNCATED;
     }
 
     private String truncateOneLine(String value, int max) {
         if (value == null) {
-            return "";
+            return EMPTY;
         }
         String oneLine = value.replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), ' ').replace(System.lineSeparator().charAt(0), ' ');
         if (oneLine.length() <= max) {
             return oneLine;
         }
-        return safeSlice(oneLine, 0, max) + "...(truncated)";
-    }
-
-    private static String safeSlice(String value, int beginIndex, int endIndex) {
-        if (value == null) {
-            return "";
-        }
-        int start = Math.max(0, Math.min(beginIndex, value.length()));
-        int end = Math.max(start, Math.min(endIndex, value.length()));
-        int length = end - start;
-        if (length <= 0) {
-            return "";
-        }
-        char[] copied = new char[length];
-        value.getChars(start, end, copied, 0);
-        return new String(copied);
+        return TextIoSanitizerUtil.safeSlice(oneLine, 0, max) + SUFFIX_TRUNCATED;
     }
 
     private String safe(String v) {
-        return v == null ? "" : v.trim();
+        return v == null ? EMPTY : v.trim();
     }
 
     private int toSafeInt(long value) {
@@ -841,12 +917,12 @@ public class WorkspaceClient {
     private String safeTarget(String targetUrl) {
         try {
             URI u = URI.create(targetUrl);
-            String host = u.getHost() == null ? "" : u.getHost();
-            String path = u.getPath() == null ? "" : u.getPath();
+            String host = u.getHost() == null ? EMPTY : u.getHost();
+            String path = u.getPath() == null ? EMPTY : u.getPath();
             return host + path;
         } catch (IllegalArgumentException e) {
-            log.log(Level.FINE, "Invalid target URL while preparing safe target text.", e);
-            return "(invalid-target)";
+            log.log(Level.FINE, ERR_INVALID_TARGET_SAFE_TEXT, e);
+            return INVALID_TARGET;
         }
     }
 
@@ -859,7 +935,7 @@ public class WorkspaceClient {
 
     private int safeResponseCode(HttpURLConnection conn) throws IOException {
         if (conn == null) {
-            throw new IOException("Connection is not available.");
+            throw new IOException(ERR_CONNECTION_NOT_AVAILABLE);
         }
         int rawCode = conn.getResponseCode();
         return validateTaintedStatusCode(rawCode);
@@ -867,10 +943,10 @@ public class WorkspaceClient {
 
     private String safeContentType(HttpURLConnection conn) {
         if (conn == null) {
-            return "";
+            return EMPTY;
         }
-        String raw = conn.getHeaderField("Content-Type");
-        String canonical = raw == null ? "" : Normalizer.normalize(raw, Normalizer.Form.NFKC);
+        String raw = conn.getHeaderField(HEADER_CONTENT_TYPE);
+        String canonical = raw == null ? EMPTY : Normalizer.normalize(raw, Normalizer.Form.NFKC);
         String headerValue = sanitizeHeaderValue(canonical);
         return sanitizeContentTypeValue(headerValue);
     }
@@ -884,7 +960,7 @@ public class WorkspaceClient {
 
     private InputStream selectResponseStream(HttpURLConnection conn, int status) throws IOException {
         if (conn == null) {
-            throw new IOException("Connection is not available.");
+            throw new IOException(ERR_CONNECTION_NOT_AVAILABLE);
         }
         if (status >= 400) {
             return conn.getErrorStream();
@@ -894,34 +970,34 @@ public class WorkspaceClient {
 
     private String sanitizeHeaderValue(String headerValue) {
         if (headerValue == null || headerValue.isBlank()) {
-            return "";
+            return EMPTY;
         }
         String canonical = Normalizer.normalize(headerValue, Normalizer.Form.NFKC);
         String normalized = canonical.replace(System.lineSeparator().charAt(0), ' ').replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), ' ').trim();
-        return normalized.length() > 256 ? safeSlice(normalized, 0, 256) : normalized;
+        return normalized.length() > 256 ? TextIoSanitizerUtil.safeSlice(normalized, 0, 256) : normalized;
     }
 
     private String sanitizeContentTypeValue(String headerValue) {
         String normalized = sanitizeHeaderValue(headerValue);
         if (normalized.isBlank()) {
-            return "";
+            return EMPTY;
         }
 
         int semicolon = normalized.indexOf((char) 59);
-        String mime = semicolon >= 0 ? safeSlice(normalized, 0, semicolon).trim().toLowerCase(Locale.ROOT) : normalized.toLowerCase(Locale.ROOT);
+        String mime = semicolon >= 0 ? TextIoSanitizerUtil.safeSlice(normalized, 0, semicolon).trim().toLowerCase(Locale.ROOT) : normalized.toLowerCase(Locale.ROOT);
         if (mime.isBlank()) {
-            return "";
+            return EMPTY;
         }
 
         int slash = mime.indexOf('/');
         if (slash <= 0 || slash == mime.length() - 1) {
-            return "";
+            return EMPTY;
         }
 
         String type = mime.substring(0, slash);
         String subtype = mime.substring(slash + 1);
         if (!isSafeMimeToken(type) || !isSafeMimeToken(subtype)) {
-            return "";
+            return EMPTY;
         }
 
         return mime;
@@ -965,7 +1041,7 @@ public class WorkspaceClient {
             return null;
         }
         String normalized = raw.replace(System.lineSeparator().charAt(0), ' ').replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), ' ').trim();
-        return normalized.length() > 64 ? safeSlice(normalized, 0, 64) : normalized;
+        return normalized.length() > 64 ? TextIoSanitizerUtil.safeSlice(normalized, 0, 64) : normalized;
     }
 
     private static boolean isTruthy(String value) {
@@ -973,42 +1049,13 @@ public class WorkspaceClient {
             return false;
         }
         String normalized = value.trim().toLowerCase(Locale.ROOT);
-        return "true".equals(normalized)
-                || "1".equals(normalized)
-                || "yes".equals(normalized)
-                || "y".equals(normalized)
-                || "on".equals(normalized);
+        return BOOL_TRUE.equals(normalized)
+            || BOOL_ONE.equals(normalized)
+            || BOOL_YES.equals(normalized)
+            || BOOL_Y.equals(normalized)
+            || BOOL_ON.equals(normalized);
     }
 
-    /**
-     * Lightweight response DTO.
-     */
-    public static final class WorkspaceResponse {
-
-        private final int statusCode;
-        private final String body;
-        private final String contentType;
-
-        WorkspaceResponse(int statusCode, String body, String contentType) {
-            this.statusCode = statusCode;
-            this.body = body == null ? "" : body;
-            this.contentType = contentType == null ? "" : contentType;
-        }
-
-        public int statusCode() {
-            return statusCode;
-        }
-
-        public String body() {
-            return body;
-        }
-
-        public String contentType() {
-            return contentType;
-        }
-
-        boolean isError() {
-            return statusCode >= 400;
-        }
-    }
 }
+
+

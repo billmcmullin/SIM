@@ -2,6 +2,11 @@ package com.sim.chatserver.email;
 
 public final class EmailFactory {
 
+    private static final String MSG_NO_VALID_EMAIL_CONFIG = "No valid email configuration resolved";
+    private static final String MSG_RESOLVED_SMTP_CONFIG_NULL = "Resolved SMTP config is null";
+    private static final String MSG_RESOLVED_PROVIDER_CONFIG_NOT_GRAPH = "Resolved provider config is not GraphEmailConfig";
+    private static final String MSG_UNSUPPORTED_EMAIL_PROVIDER_PREFIX = "Unsupported email provider: ";
+
     private EmailFactory() {
         // utility class
     }
@@ -38,7 +43,7 @@ public final class EmailFactory {
      */
     private static EmailService forProvider(ResolvedEmailConfig resolved) {
         if (resolved == null || !resolved.valid()) {
-            throw new IllegalArgumentException("No valid email configuration resolved");
+            throw new IllegalArgumentException(MSG_NO_VALID_EMAIL_CONFIG);
         }
 
         EmailProviderType provider = resolved.providerType() == null
@@ -49,17 +54,17 @@ public final class EmailFactory {
             case SMTP -> {
                 EmailConfig smtp = resolved.config();
                 if (smtp == null) {
-                    throw new IllegalArgumentException("Resolved SMTP config is null");
+                    throw new IllegalArgumentException(MSG_RESOLVED_SMTP_CONFIG_NULL);
                 }
                 yield smtp(smtp);
             }
             case GRAPH -> {
                 if (!(resolved.providerConfig() instanceof GraphEmailConfig gcfg)) {
-                    throw new IllegalArgumentException("Resolved provider config is not GraphEmailConfig");
+                    throw new IllegalArgumentException(MSG_RESOLVED_PROVIDER_CONFIG_NOT_GRAPH);
                 }
                 yield graph(gcfg);
             }
-            default -> throw new IllegalStateException("Unsupported email provider: " + provider);
+            default -> throw new IllegalStateException(MSG_UNSUPPORTED_EMAIL_PROVIDER_PREFIX + provider);
         };
     }
 

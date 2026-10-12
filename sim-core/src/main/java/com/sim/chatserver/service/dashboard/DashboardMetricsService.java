@@ -12,42 +12,65 @@ import java.util.Comparator;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.function.Supplier;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
-import com.sim.chatserver.model.DashboardViewModels.OtherParasoftEntry;
-import com.sim.chatserver.model.DashboardViewModels.ProgressStat;
-import com.sim.chatserver.model.DashboardViewModels.TermDayCount;
-import com.sim.chatserver.model.DashboardViewModels.TopTopic;
-import com.sim.chatserver.model.DashboardViewModels.WidgetStat;
+import com.sim.chatserver.model.OtherParasoftEntry;
+import com.sim.chatserver.model.ProgressStat;
+import com.sim.chatserver.model.TermDayCount;
+import com.sim.chatserver.model.TopTopic;
+import com.sim.chatserver.model.WidgetStat;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermMatcher;
 import com.sim.chatserver.term.TermsStore;
 import com.sim.chatserver.term.TextSanitizer;
 import com.sim.chatserver.util.DashboardDbUtil;
+import com.sim.chatserver.util.SqlLiteralConstants;
 import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 
 public class DashboardMetricsService {
 
-    private static final Logger LOG = Logger.getLogger(DashboardMetricsService.class.getCanonicalName());
 
-    public static final String OTHER_PARASOFT_LABEL = "Other Parasoft Match";
+    private static final Logger LOG = Logger.getLogger(DashboardMetricsService.class.getCanonicalName());
+    private static final String EMPTY = "";
+    private static final String LOG_SKIP_INVALID_WIDGET_ID = "Skipping widget with invalid id during stats build";
+    private static final String LOG_BUILD_WIDGET_STATS_FALLBACK = "buildWidgetStats fallback to empty list";
+    private static final String LOG_BUILD_CHAT_PROGRESSION_FALLBACK = "buildChatProgression fallback to zeros";
+    private static final String LOG_BUILD_NEW_USER_PROGRESSION_FALLBACK = "buildNewUserProgression fallback to zeros";
+    private static final String LOG_BUILD_DASHBOARD_PROGRESS_FALLBACK = "buildDashboardProgressMetrics fallback to zeros";
+    private static final String LOG_BUILD_TOP_TOPICS_TERM_LOAD_FAILED = "buildTopTopicsTodayVsYesterday term load failed";
+    private static final String LOG_BUILD_TOP_TOPICS_FALLBACK = "buildTopTopicsTodayVsYesterday fallback to empty list";
+    private static final String LOG_BUILD_OTHER_PARASOFT_TERM_LOAD_FAILED = "buildLatestOtherParasoftEntries term load failed";
+    private static final String LOG_BUILD_OTHER_PARASOFT_FALLBACK = "buildLatestOtherParasoftEntries fallback to empty list";
+    private static final String LOG_COUNT_TERM_ASSIGNMENTS_TERM_LOAD_FAILED = "countTermAssignmentsForDays term load failed";
+    private static final String LOG_TOPIC_PATTERN_EVALUATION_FAILED = "Topic pattern evaluation failed";
+    private static final String LOG_OTHER_PARASOFT_MATCHER_EVALUATION_FAILED = "Other Parasoft matcher evaluation failed";
+        private static final String SQL_SELECT_PROMPT_CREATED_PREFIX = "SELECT prompt, created_at FROM ";
+        private static final String SQL_SELECT_SESSION_FIRST_SEEN_PREFIX =
+            "SELECT session_id, MIN(created_at) AS first_seen FROM ";
+        private static final String SQL_SELECT_PROMPT_SESSION_CREATED_PREFIX =
+            "SELECT prompt, session_id, created_at FROM ";
+        private static final String SQL_ORDER_BY_CREATED_DESC_LIMIT_500 = " ORDER BY created_at DESC LIMIT 500";
+
+    public static final String OTHER_PARASOFT_LABEL = TermsStore.OTHER_PARASOFT_LABEL;
+    private static final ProgressStat ZERO_PROGRESS = new ProgressStat(0, 0);
+    private static final DashboardProgressMetrics ZERO_DASHBOARD_PROGRESS = DashboardProgressMetrics.of(0, 0, 0, 0);
+    private static final Supplier<TermDayCount> TERM_DAY_COUNT_FACTORY = TermDayCount::new;
 
     private final AppDataSourceHolder dsHolder;
     private final TermsStore termsStore;
     private final int topTopicLimit;
 
-    @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
@@ -66,71 +89,6 @@ public class DashboardMetricsService {
         return create(dsHolder, termsStore, topTopicLimit);
     }
 
-    public static final class DashboardProgressMetrics {
-
-        private final int chatsToday;
-        private final int chatsYesterday;
-        private final ProgressStat chatsProgression;
-
-        private final int termsToday;
-        private final int termsYesterday;
-        private final ProgressStat termsProgression;
-
-        private DashboardProgressMetrics(int chatsToday, int chatsYesterday, int termsTodayCount, int termsYesterdayCount) {
-            this.chatsToday = chatsToday;
-            this.chatsYesterday = chatsYesterday;
-            this.chatsProgression = new ProgressStat(chatsToday, chatsYesterday);
-
-            this.termsToday = termsTodayCount;
-            this.termsYesterday = termsYesterdayCount;
-            this.termsProgression = new ProgressStat(termsTodayCount, termsYesterdayCount);
-        }
-
-        static DashboardProgressMetrics of(int chatsToday, int chatsYesterday, int termsTodayCount, int termsYesterdayCount) {
-            return new DashboardProgressMetrics(chatsToday, chatsYesterday, termsTodayCount, termsYesterdayCount);
-        }
-
-        private final int getChatsToday() {
-            return chatsToday;
-        }
-
-        private final int getChatsYesterday() {
-            return chatsYesterday;
-        }
-
-        ProgressStat getChatsProgression() {
-            return chatsProgression;
-        }
-
-        private final int getTermsToday() {
-            return termsToday;
-        }
-
-        private final int getTermsYesterday() {
-            return termsYesterday;
-        }
-
-        public int chatsToday() {
-            return getChatsToday();
-        }
-
-        public int chatsYesterday() {
-            return getChatsYesterday();
-        }
-
-        public int termsToday() {
-            return getTermsToday();
-        }
-
-        public int termsYesterday() {
-            return getTermsYesterday();
-        }
-
-        ProgressStat getTermsProgression() {
-            return termsProgression;
-        }
-    }
-
     private final List<WidgetStat> buildWidgetStats(List<WidgetEntry> widgets) {
         List<WidgetStat> stats = new ArrayList<>();
         if (widgets == null || widgets.isEmpty()) {
@@ -147,7 +105,7 @@ public class DashboardMetricsService {
         Map<String, Boolean> tableExistsCache = DashboardDbUtil.newRequestTableCache();
         try (Connection conn = dsHolder.getDataSource().getConnection()) {
             for (WidgetEntry widget : widgets) {
-                if (widget == null || widget.getWidgetId() == null) {
+                if (isWidgetMissingId(widget)) {
                     continue;
                 }
 
@@ -159,7 +117,7 @@ public class DashboardMetricsService {
                 try {
                     tableName = DashboardDbUtil.sanitizeWidgetTableName(widgetId);
                 } catch (IllegalArgumentException ex) {
-                    LOG.log(Level.FINE, "Skipping widget with invalid id during stats build", ex);
+                    LOG.log(Level.FINE, LOG_SKIP_INVALID_WIDGET_ID, ex);
                     continue;
                 }
                 if (!DashboardDbUtil.tableExistsCached(conn, tableName, tableExistsCache)) {
@@ -173,7 +131,7 @@ public class DashboardMetricsService {
                 stats.add(new WidgetStat(widgetId, displayName, totalCount, todayCount, yesterdayCount));
             }
         } catch (SQLException | IllegalStateException e) {
-            LOG.log(Level.FINE, "buildWidgetStats fallback to empty list", e);
+            LOG.log(Level.FINE, LOG_BUILD_WIDGET_STATS_FALLBACK, e);
             return List.of();
         }
 
@@ -190,8 +148,8 @@ public class DashboardMetricsService {
             int yesterdayCount = countChatsForDate(conn, widgets, yesterday, tableExistsCache);
             return new ProgressStat(todayCount, yesterdayCount);
         } catch (SQLException e) {
-            LOG.log(Level.FINE, "buildChatProgression fallback to zeros", e);
-            return new ProgressStat(0, 0);
+            LOG.log(Level.FINE, LOG_BUILD_CHAT_PROGRESSION_FALLBACK, e);
+            return ZERO_PROGRESS;
         }
     }
 
@@ -204,8 +162,8 @@ public class DashboardMetricsService {
             int yesterdayCount = countDistinctSessionsFirstSeenOnDate(conn, widgets, yesterday);
             return new ProgressStat(todayCount, yesterdayCount);
         } catch (SQLException e) {
-            LOG.log(Level.FINE, "buildNewUserProgression fallback to zeros", e);
-            return new ProgressStat(0, 0);
+            LOG.log(Level.FINE, LOG_BUILD_NEW_USER_PROGRESSION_FALLBACK, e);
+            return ZERO_PROGRESS;
         }
     }
 
@@ -233,8 +191,8 @@ public class DashboardMetricsService {
                     termCounts.getYesterday()
             );
         } catch (SQLException e) {
-            LOG.log(Level.FINE, "buildDashboardProgressMetrics fallback to zeros", e);
-            return new DashboardProgressMetrics(0, 0, 0, 0);
+            LOG.log(Level.FINE, LOG_BUILD_DASHBOARD_PROGRESS_FALLBACK, e);
+            return ZERO_DASHBOARD_PROGRESS;
         }
     }
 
@@ -250,7 +208,7 @@ public class DashboardMetricsService {
         try {
             terms = termsStore.listAll();
         } catch (SQLException | IllegalStateException e) {
-            LOG.log(Level.FINE, "buildTopTopicsTodayVsYesterday term load failed", e);
+            LOG.log(Level.FINE, LOG_BUILD_TOP_TOPICS_TERM_LOAD_FAILED, e);
             return List.of();
         }
 
@@ -284,7 +242,7 @@ public class DashboardMetricsService {
         for (TermDefinition t : activeTerms) {
             String name = t.getName();
             if (name != null && !name.isBlank() && !OTHER_PARASOFT_LABEL.equalsIgnoreCase(name)) {
-                counts.put(name, new TermDayCount());
+                counts.put(name, newTermDayCount());
             }
         }
 
@@ -312,7 +270,7 @@ public class DashboardMetricsService {
                 );
             }
         } catch (SQLException e) {
-            LOG.log(Level.FINE, "buildTopTopicsTodayVsYesterday fallback to empty list", e);
+            LOG.log(Level.FINE, LOG_BUILD_TOP_TOPICS_FALLBACK, e);
             return List.of();
         }
 
@@ -336,7 +294,7 @@ public class DashboardMetricsService {
         try {
             terms = termsStore.listAll();
         } catch (SQLException | IllegalStateException e) {
-            LOG.log(Level.FINE, "buildLatestOtherParasoftEntries term load failed", e);
+            LOG.log(Level.FINE, LOG_BUILD_OTHER_PARASOFT_TERM_LOAD_FAILED, e);
             return List.of();
         }
 
@@ -360,7 +318,7 @@ public class DashboardMetricsService {
                 collectOtherParasoftForWidget(conn, widget, tableExistsCache, compiledPatterns, all);
             }
         } catch (SQLException e) {
-            LOG.log(Level.FINE, "buildLatestOtherParasoftEntries fallback to empty list", e);
+            LOG.log(Level.FINE, LOG_BUILD_OTHER_PARASOFT_FALLBACK, e);
             return List.of();
         }
 
@@ -393,7 +351,7 @@ public class DashboardMetricsService {
     }
 
     private int countRows(Connection conn, String tableName) throws SQLException {
-        String sql = "SELECT COUNT(*) FROM " + DashboardDbUtil.quoteIdentifier(tableName);
+        String sql = SqlLiteralConstants.SQL_SELECT_COUNT_FROM + DashboardDbUtil.quoteIdentifier(tableName);
         try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             return rs.next() ? rs.getInt(1) : 0;
         }
@@ -422,7 +380,7 @@ public class DashboardMetricsService {
             Timestamp end,
             Map<String, Boolean> tableExistsCache
     ) throws SQLException {
-        if (widget == null || widget.getWidgetId() == null) {
+        if (isWidgetMissingId(widget)) {
             return 0;
         }
 
@@ -444,7 +402,7 @@ public class DashboardMetricsService {
             LocalDate today,
             LocalDate yesterday,
             Map<String, Boolean> tableExistsCache) throws SQLException {
-        TermDayCount out = new TermDayCount();
+        TermDayCount out = newTermDayCount();
         if (widgets == null || widgets.isEmpty()) {
             return out;
         }
@@ -453,7 +411,7 @@ public class DashboardMetricsService {
         try {
             terms = termsStore.listAll();
         } catch (IllegalStateException e) {
-            LOG.log(Level.FINE, "countTermAssignmentsForDays term load failed", e);
+            LOG.log(Level.FINE, LOG_COUNT_TERM_ASSIGNMENTS_TERM_LOAD_FAILED, e);
             return out;
         }
 
@@ -496,6 +454,10 @@ public class DashboardMetricsService {
         return out;
     }
 
+    private TermDayCount newTermDayCount() {
+        return TERM_DAY_COUNT_FACTORY.get();
+    }
+
     private void collectTopTopicDayCountsForWidget(
             Connection conn,
             WidgetEntry widget,
@@ -508,7 +470,7 @@ public class DashboardMetricsService {
             List<Pattern> compiledPatterns,
             Map<String, TermDayCount> counts
     ) throws SQLException {
-        if (widget == null || widget.getWidgetId() == null) {
+        if (isWidgetMissingId(widget)) {
             return;
         }
 
@@ -517,15 +479,15 @@ public class DashboardMetricsService {
             return;
         }
 
-        String sql = "SELECT prompt, created_at FROM " + DashboardDbUtil.quoteIdentifier(tableName)
-                + " WHERE created_at >= ? AND created_at < ?";
+        String sql = SQL_SELECT_PROMPT_CREATED_PREFIX + DashboardDbUtil.quoteIdentifier(tableName)
+                + SqlLiteralConstants.SQL_WHERE_CREATED_AT_RANGE;
 
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setTimestamp(1, startTs);
             ps.setTimestamp(2, endTs);
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                    Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, SqlLiteralConstants.COL_CREATED_AT);
                     if (createdAt == null) {
                         continue;
                     }
@@ -535,7 +497,10 @@ public class DashboardMetricsService {
                         continue;
                     }
 
-                    String label = resolveBestMatchingLabel(rs.getString("prompt"), activeTerms, compiledPatterns);
+                    String label = resolveBestMatchingLabel(
+                            rs.getString(SqlLiteralConstants.COL_PROMPT),
+                            activeTerms,
+                            compiledPatterns);
                     if (label == null || label.isBlank() || OTHER_PARASOFT_LABEL.equalsIgnoreCase(label)) {
                         continue;
                     }
@@ -555,7 +520,7 @@ public class DashboardMetricsService {
     }
 
     private String resolveBestMatchingLabel(String promptRaw, List<TermDefinition> activeTerms, List<Pattern> compiledPatterns) {
-        String sanitizedPrompt = TextSanitizer.sanitizeForMatching(promptRaw == null ? "" : promptRaw);
+        String sanitizedPrompt = TextSanitizer.sanitizeForMatching(promptRaw == null ? EMPTY : promptRaw);
         int bestStart = Integer.MAX_VALUE;
         String bestTermName = null;
 
@@ -586,7 +551,7 @@ public class DashboardMetricsService {
             Matcher matcher = pattern.matcher(text);
             return matcher.find() ? matcher.start() : Integer.MAX_VALUE;
         } catch (IllegalStateException ex) {
-            LOG.log(Level.FINE, "Topic pattern evaluation failed", ex);
+            LOG.log(Level.FINE, LOG_TOPIC_PATTERN_EVALUATION_FAILED, ex);
             return Integer.MAX_VALUE;
         }
     }
@@ -598,7 +563,7 @@ public class DashboardMetricsService {
             List<Pattern> compiledPatterns,
             List<OtherParasoftEntry> out
     ) throws SQLException {
-        if (widget == null || widget.getWidgetId() == null) {
+        if (isWidgetMissingId(widget)) {
             return;
         }
 
@@ -612,14 +577,14 @@ public class DashboardMetricsService {
             return;
         }
 
-        String sql = "SELECT prompt, session_id, created_at FROM "
+        String sql = SQL_SELECT_PROMPT_SESSION_CREATED_PREFIX
                 + DashboardDbUtil.quoteIdentifier(tableName)
-                + " ORDER BY created_at DESC LIMIT 500";
+                + SQL_ORDER_BY_CREATED_DESC_LIMIT_500;
 
         try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                String prompt = rs.getString("prompt");
-                Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                String prompt = rs.getString(SqlLiteralConstants.COL_PROMPT);
+                Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, SqlLiteralConstants.COL_CREATED_AT);
                 if (createdAt == null) {
                     continue;
                 }
@@ -627,12 +592,12 @@ public class DashboardMetricsService {
                     continue;
                 }
 
-                String sessionId = rs.getString("session_id");
+                String sessionId = rs.getString(SqlLiteralConstants.COL_SESSION_ID);
                 out.add(new OtherParasoftEntry(
                         widgetId,
                         widgetName,
-                        prompt == null ? "" : prompt,
-                        sessionId == null ? "" : sessionId,
+                        prompt == null ? EMPTY : prompt,
+                        sessionId == null ? EMPTY : sessionId,
                         createdAt
                 ));
             }
@@ -640,7 +605,7 @@ public class DashboardMetricsService {
     }
 
     private boolean matchesAnyPattern(String promptRaw, List<Pattern> patterns) {
-        String sanitized = TextSanitizer.sanitizeForMatching(promptRaw == null ? "" : promptRaw);
+        String sanitized = TextSanitizer.sanitizeForMatching(promptRaw == null ? EMPTY : promptRaw);
         for (Pattern pattern : patterns) {
             try {
                 Matcher matcher = pattern.matcher(sanitized);
@@ -648,7 +613,7 @@ public class DashboardMetricsService {
                     return true;
                 }
             } catch (IllegalStateException ex) {
-                LOG.log(Level.FINE, "Other Parasoft matcher evaluation failed", ex);
+                LOG.log(Level.FINE, LOG_OTHER_PARASOFT_MATCHER_EVALUATION_FAILED, ex);
             }
         }
         return false;
@@ -665,7 +630,7 @@ public class DashboardMetricsService {
             List<Pattern> patterns,
             TermDayCount out
     ) throws SQLException {
-        if (widget == null || widget.getWidgetId() == null) {
+        if (isWidgetMissingId(widget)) {
             return;
         }
 
@@ -674,8 +639,8 @@ public class DashboardMetricsService {
             return;
         }
 
-        String sql = "SELECT prompt, created_at FROM " + DashboardDbUtil.quoteIdentifier(tableName)
-                + " WHERE created_at >= ? AND created_at < ?";
+        String sql = SQL_SELECT_PROMPT_CREATED_PREFIX + DashboardDbUtil.quoteIdentifier(tableName)
+                + SqlLiteralConstants.SQL_WHERE_CREATED_AT_RANGE;
 
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setTimestamp(1, startTs);
@@ -683,7 +648,7 @@ public class DashboardMetricsService {
 
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                    Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, SqlLiteralConstants.COL_CREATED_AT);
                     if (createdAt == null) {
                         continue;
                     }
@@ -693,7 +658,7 @@ public class DashboardMetricsService {
                         continue;
                     }
 
-                    if (!matchesAnyPattern(rs.getString("prompt"), patterns)) {
+                    if (!matchesAnyPattern(rs.getString(SqlLiteralConstants.COL_PROMPT), patterns)) {
                         continue;
                     }
 
@@ -705,6 +670,10 @@ public class DashboardMetricsService {
                 }
             }
         }
+    }
+
+    private boolean isWidgetMissingId(WidgetEntry widget) {
+        return widget == null || widget.getWidgetId() == null;
     }
 
     private int countDistinctSessionsFirstSeenOnDate(Connection conn, List<WidgetEntry> widgets, LocalDate date) throws SQLException {
@@ -745,13 +714,16 @@ public class DashboardMetricsService {
             return;
         }
 
-        String sql = "SELECT session_id, MIN(created_at) AS first_seen FROM "
+        String sql = SQL_SELECT_SESSION_FIRST_SEEN_PREFIX
                 + DashboardDbUtil.quoteIdentifier(tableName)
-                + " WHERE session_id IS NOT NULL AND session_id <> '' GROUP BY session_id";
+                + SqlLiteralConstants.SQL_SESSION_ID_NOT_NULL_NON_EMPTY_GROUP_BY;
 
         try (PreparedStatement ps = conn.prepareStatement(sql); ResultSet rs = ps.executeQuery()) {
             while (rs.next()) {
-                mergeEarliestSession(earliestBySession, rs.getString("session_id"), SqlTimeUtil.safeTimestamp(rs, "first_seen"));
+                mergeEarliestSession(
+                        earliestBySession,
+                        rs.getString(SqlLiteralConstants.COL_SESSION_ID),
+                        SqlTimeUtil.safeTimestamp(rs, SqlLiteralConstants.COL_FIRST_SEEN));
             }
         }
     }
@@ -769,8 +741,8 @@ public class DashboardMetricsService {
     }
 
     private int countRowsBetween(Connection conn, String tableName, Timestamp start, Timestamp end) throws SQLException {
-        String sql = "SELECT COUNT(*) FROM " + DashboardDbUtil.quoteIdentifier(tableName)
-                + " WHERE created_at >= ? AND created_at < ?";
+        String sql = SqlLiteralConstants.SQL_SELECT_COUNT_FROM + DashboardDbUtil.quoteIdentifier(tableName)
+            + SqlLiteralConstants.SQL_WHERE_CREATED_AT_RANGE;
 
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setTimestamp(1, start);
@@ -781,3 +753,4 @@ public class DashboardMetricsService {
         }
     }
 }
+

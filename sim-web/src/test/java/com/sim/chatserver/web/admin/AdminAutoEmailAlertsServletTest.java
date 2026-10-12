@@ -24,7 +24,7 @@ import java.time.Instant;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConfig;
+import com.sim.chatserver.web.admin.AutoEmailAlertConfig;
 
 import jakarta.json.Json;
 import jakarta.json.JsonObject;

@@ -16,11 +16,11 @@ import java.util.function.BooleanSupplier;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.model.DashboardViewModels.SessionStat;
-import com.sim.chatserver.model.DashboardViewModels.SessionTimeline;
-import com.sim.chatserver.model.DashboardViewModels.TermSummary;
-import com.sim.chatserver.model.DashboardViewModels.WidgetStat;
-import com.sim.chatserver.web.dashboard.DashboardMetricsService.DashboardProgressMetrics;
+import com.sim.chatserver.model.SessionStat;
+import com.sim.chatserver.model.SessionTimeline;
+import com.sim.chatserver.model.TermSummary;
+import com.sim.chatserver.model.WidgetStat;
+import com.sim.chatserver.web.dashboard.DashboardProgressMetrics;
 
 class DashboardCacheRegistryTest {
 
@@ -77,7 +77,7 @@ class DashboardCacheRegistryTest {
             registry.getSessionOverview("k" + marker, () -> overview("k" + marker, marker));
         }
 
-        DashboardLocalViewModels.SessionOverview reloaded = registry.getSessionOverview("k0", () -> {
+        SessionOverview reloaded = registry.getSessionOverview("k0", () -> {
             key0Loads.incrementAndGet();
             return overview("k0", 99);
         });
@@ -109,7 +109,7 @@ class DashboardCacheRegistryTest {
     void getSessionOverview_returnsFallbackWhenLoaderThrowsAfterExpiry() {
         DashboardCacheRegistry registry = new DashboardCacheRegistry();
 
-        DashboardLocalViewModels.SessionOverview initial = registry.getSessionOverview("key", () -> overview("key", 1));
+        SessionOverview initial = registry.getSessionOverview("key", () -> overview("key", 1));
 
         @SuppressWarnings("unchecked")
         LinkedHashMap<String, Object> map = (LinkedHashMap<String, Object>) getPrivateField(
@@ -120,7 +120,7 @@ class DashboardCacheRegistryTest {
         setPrivateField(entry, entry.getClass(), "expiresAt", System.currentTimeMillis() - 5000L);
         setPrivateField(entry, entry.getClass(), "staleUntil", System.currentTimeMillis() - 1000L);
 
-        DashboardLocalViewModels.SessionOverview fallback = registry.getSessionOverview("key", () -> {
+        SessionOverview fallback = registry.getSessionOverview("key", () -> {
             throw new RuntimeException("loader failure");
         });
 
@@ -179,7 +179,7 @@ class DashboardCacheRegistryTest {
         DashboardCacheRegistry registry = new DashboardCacheRegistry();
         AtomicInteger refreshLoads = new AtomicInteger(0);
 
-        DashboardLocalViewModels.SessionOverview initial = registry.getSessionOverview("key", () -> overview("key", 1));
+        SessionOverview initial = registry.getSessionOverview("key", () -> overview("key", 1));
 
         @SuppressWarnings("unchecked")
         LinkedHashMap<String, Object> map = (LinkedHashMap<String, Object>) getPrivateField(
@@ -192,7 +192,7 @@ class DashboardCacheRegistryTest {
         setPrivateField(entry, entry.getClass(), "staleUntil", now + 30_000L);
         setPrivateField(entry, entry.getClass(), "refreshing", false);
 
-        DashboardLocalViewModels.SessionOverview stale = registry.getSessionOverview("key", () -> {
+        SessionOverview stale = registry.getSessionOverview("key", () -> {
             refreshLoads.incrementAndGet();
             return overview("key", 2);
         });
@@ -200,7 +200,7 @@ class DashboardCacheRegistryTest {
 
         assertTrue(waitForCondition(() -> refreshLoads.get() >= 1, 2500L));
 
-        DashboardLocalViewModels.SessionOverview refreshed = registry.getSessionOverview("key", () -> overview("key", 3));
+        SessionOverview refreshed = registry.getSessionOverview("key", () -> overview("key", 3));
         assertNotSame(initial, refreshed);
         assertEquals("key-2", refreshed.getTopSessions().get(0).getSessionId());
     }
@@ -220,8 +220,8 @@ class DashboardCacheRegistryTest {
         assertTrue(writeFailure.getCause() instanceof java.io.NotSerializableException);
     }
 
-    private static DashboardLocalViewModels.SessionOverview overview(String key, int marker) {
-        return new DashboardLocalViewModels.SessionOverview(
+    private static SessionOverview overview(String key, int marker) {
+        return new SessionOverview(
                 List.of(new SessionStat(key + "-" + marker, marker, "last")),
                 new SessionTimeline(List.of("day-1"), Map.of(key, List.of(marker))),
                 10,
@@ -230,9 +230,9 @@ class DashboardCacheRegistryTest {
                 2,
                 2,
                 1,
-                new DashboardLocalViewModels.ProgressStat(2, 1),
+                new ProgressStat(2, 1),
                 5,
-                new DashboardLocalViewModels.ProgressStat(6, 5));
+                new ProgressStat(6, 5));
     }
 
     private static void setPrivateField(Object object, Class<?> fieldClass, String fieldName, Object value) {
@@ -271,3 +271,4 @@ class DashboardCacheRegistryTest {
         return condition.getAsBoolean();
     }
 }
+

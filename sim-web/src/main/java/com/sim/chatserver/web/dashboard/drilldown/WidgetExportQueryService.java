@@ -18,13 +18,32 @@ import java.util.stream.Collectors;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
+import com.sim.chatserver.util.DashboardDbUtil;
 import com.sim.chatserver.web.dashboard.sessions.DashboardSessionDataUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 final class WidgetExportQueryService {
 
     private static final int DB_ID_CHUNK_SIZE = 500;
-    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
+    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile(com.sim.chatserver.util.CommonLiteralConstants.SQL_IDENTIFIER_REGEX);
+    private static final String SQL_PLACEHOLDER = "?";
+    private static final String SQL_JOIN_DELIMITER = ",";
+    private static final String SQL_SELECT_ROWS_PREFIX = com.sim.chatserver.util.CommonLiteralConstants.SQL_SELECT_WIDGET_CHAT_PREFIX;
+    private static final String SQL_SELECT_ROWS_SUFFIX = " WHERE widget_chat_id IN (";
+    private static final String COL_WIDGET_CHAT_ID = com.sim.chatserver.util.CommonLiteralConstants.SQL_COL_WIDGET_CHAT_ID;
+    private static final String COL_CREATED_AT = com.sim.chatserver.util.CommonLiteralConstants.SQL_COL_CREATED_AT;
+    private static final String COL_PROMPT = com.sim.chatserver.util.CommonLiteralConstants.FIELD_PROMPT;
+    private static final String COL_RESPONSE_TEXT = com.sim.chatserver.util.CommonLiteralConstants.SQL_COL_RESPONSE_TEXT;
+    private static final String COL_SESSION_ID = com.sim.chatserver.util.SqlLiteralConstants.COL_SESSION_ID;
+    private static final String MSG_RESOLVE_EXPORT_ROWS_FAILED = "Unable to resolve export rows";
+    private static final String MSG_OPEN_EXPORT_DB_CONNECTION_FAILED = "Unable to open export database connection";
+    private static final String MSG_INVALID_SQL_IDENTIFIER = com.sim.chatserver.util.CommonLiteralConstants.MSG_INVALID_SQL_IDENTIFIER;
+    private static final String QUOTE = "\"";
+    private static final String DOUBLE_QUOTE = com.sim.chatserver.util.CommonLiteralConstants.DOUBLE_QUOTE_ESCAPED;
+    private static final String EMPTY = "";
+    private static final String MSG_TYPED_DB_TEXT_READ_FAILED_PREFIX = "Typed DB text read failed for column ";
+    private static final String MSG_TYPED_DB_TIMESTAMP_READ_FAILED_PREFIX = "Typed DB timestamp read failed for column ";
+    private static final String MSG_SQL_TIMESTAMP_PARSE_FALLBACK = "Falling back to SQL timestamp parsing";
 
     private final AppDataSourceHolder dataSourceHolder;
     private final Logger log;
@@ -40,7 +59,7 @@ final class WidgetExportQueryService {
             return exportRows;
         }
 
-        String tableName = sanitizeWidgetTableName(widgetId);
+        String tableName = DashboardDbUtil.sanitizeWidgetTableName(widgetId);
         Connection conn = openConnectionSafe();
         try (conn) {
             if (!DashboardSessionDataUtil.tableExists(conn, tableName, log)) {
@@ -52,10 +71,10 @@ final class WidgetExportQueryService {
                     continue;
                 }
 
-                String placeholders = chunk.stream().map(x -> "?").collect(Collectors.joining(","));
-                String sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
+                String placeholders = chunk.stream().map(x -> SQL_PLACEHOLDER).collect(Collectors.joining(SQL_JOIN_DELIMITER));
+                String sql = SQL_SELECT_ROWS_PREFIX
                         + quoteIdentifier(tableName)
-                        + " WHERE widget_chat_id IN (" + placeholders + ')';
+                    + SQL_SELECT_ROWS_SUFFIX + placeholders + ')';
 
                 try (PreparedStatement ps = conn.prepareStatement(sql)) {
                     int idx = 1;
@@ -65,11 +84,11 @@ final class WidgetExportQueryService {
 
                     try (ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
-                            String chatId = readDbText(rs, "widget_chat_id", 512);
-                            Timestamp created = readDbTimestamp(rs, "created_at");
-                            String prompt = readDbText(rs, "prompt", 32000);
-                            String responseText = readDbText(rs, "response_text", 32000);
-                            String sessionId = readDbText(rs, "session_id", 256);
+                            String chatId = readDbText(rs, COL_WIDGET_CHAT_ID, 512);
+                            Timestamp created = readDbTimestamp(rs, COL_CREATED_AT);
+                            String prompt = readDbText(rs, COL_PROMPT, 32000);
+                            String responseText = readDbText(rs, COL_RESPONSE_TEXT, 32000);
+                            String sessionId = readDbText(rs, COL_SESSION_ID, 256);
 
                             exportRows.add(new TermChatSnapshot(
                                     sessionId,
@@ -85,7 +104,7 @@ final class WidgetExportQueryService {
                 }
             }
         } catch (SQLException ex) {
-            throw new IllegalStateException("Unable to resolve export rows", ex);
+            throw new IllegalStateException(MSG_RESOLVE_EXPORT_ROWS_FAILED, ex);
         }
 
         return exportRows;
@@ -95,32 +114,15 @@ final class WidgetExportQueryService {
         try {
             return dataSourceHolder.getDataSource().getConnection();
         } catch (SQLException ex) {
-            throw new IllegalStateException("Unable to open export database connection", ex);
+            throw new IllegalStateException(MSG_OPEN_EXPORT_DB_CONNECTION_FAILED, ex);
         }
     }
 
     private String quoteIdentifier(String identifier) {
         if (identifier == null || !SAFE_SQL_IDENTIFIER.matcher(identifier).matches()) {
-            throw new IllegalArgumentException("Invalid SQL identifier");
+            throw new IllegalArgumentException(MSG_INVALID_SQL_IDENTIFIER);
         }
-        return '"' + identifier.replace("\"", "\"\"") + '"';
-    }
-
-    private String sanitizeWidgetTableName(String widgetId) {
-        if (widgetId == null || widgetId.isBlank()) {
-            return "widget";
-        }
-        String normalized = widgetId.trim().replaceAll("[^A-Za-z0-9_]", "_");
-        if (normalized.isEmpty()) {
-            normalized = "widget";
-        }
-        if (!Character.isLetter(normalized.charAt(0))) {
-            normalized = "w_" + normalized;
-        }
-        if (normalized.length() > 60) {
-            normalized = new String(normalized.toCharArray(), 0, 60);
-        }
-        return normalized;
+        return '"' + identifier.replace(QUOTE, DOUBLE_QUOTE) + '"';
     }
 
     private List<List<String>> chunk(List<String> input, int size) {
@@ -137,11 +139,11 @@ final class WidgetExportQueryService {
 
     private String readDbText(ResultSet rs, String columnName, int maxLen) {
         if (rs == null || columnName == null || columnName.isBlank()) {
-            return "";
+            return EMPTY;
         }
         try (Reader reader = rs.getCharacterStream(columnName)) {
             if (reader == null) {
-                return "";
+                return EMPTY;
             }
             char[] buffer = new char[256];
             StringBuilder value = new StringBuilder(Math.max(64, Math.min(maxLen, 512)));
@@ -160,8 +162,8 @@ final class WidgetExportQueryService {
             }
             return ServletRequestParamUtil.normalizeBodyText(value.toString(), maxLen, true);
         } catch (SQLException | IOException ex) {
-            log.log(Level.FINE, "Typed DB text read failed for column " + columnName, ex);
-            return "";
+            log.log(Level.FINE, MSG_TYPED_DB_TEXT_READ_FAILED_PREFIX + columnName, ex);
+            return EMPTY;
         }
     }
 
@@ -173,7 +175,7 @@ final class WidgetExportQueryService {
         try {
             ts = rs.getTimestamp(columnName);
         } catch (SQLException ex) {
-            log.log(Level.FINE, "Typed DB timestamp read failed for column " + columnName, ex);
+            log.log(Level.FINE, MSG_TYPED_DB_TIMESTAMP_READ_FAILED_PREFIX + columnName, ex);
             ts = null;
         }
         if (ts != null) {
@@ -187,8 +189,9 @@ final class WidgetExportQueryService {
         try {
             return Timestamp.from(Instant.parse(text));
         } catch (DateTimeException | IllegalArgumentException ex) {
-            log.log(Level.FINE, "Falling back to SQL timestamp parsing", ex);
+            log.log(Level.FINE, MSG_SQL_TIMESTAMP_PARSE_FALLBACK, ex);
             return Timestamp.valueOf(text.replace('T', ' '));
         }
     }
 }
+

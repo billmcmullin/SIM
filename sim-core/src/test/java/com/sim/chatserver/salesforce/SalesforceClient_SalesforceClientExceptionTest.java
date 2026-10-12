@@ -4,7 +4,7 @@ import java.lang.reflect.Constructor;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.salesforce.SalesforceClient.SalesforceClientException;
+import com.sim.chatserver.salesforce.SalesforceClientException;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 /**

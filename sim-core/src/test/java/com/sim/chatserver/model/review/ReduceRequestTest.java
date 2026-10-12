@@ -125,7 +125,7 @@ class ReduceRequestTest {
         assertThrows(UnsupportedOperationException.class, () -> request.getFailedBatchIndexes().add(3));
     }
 
-    private static ReduceRequest.Builder baseBuilder() {
+        private static ReduceRequestBuilder baseBuilder() {
         return ReduceRequest.builder()
                 .requestId("req")
                 .targetUrl("http://localhost/reduce")

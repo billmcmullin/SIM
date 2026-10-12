@@ -20,9 +20,9 @@ import java.util.Map;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.model.DashboardViewModels.SessionOverview;
-import com.sim.chatserver.model.DashboardViewModels.SessionStat;
-import com.sim.chatserver.model.DashboardViewModels.SessionTimeline;
+import com.sim.chatserver.model.SessionOverview;
+import com.sim.chatserver.model.SessionStat;
+import com.sim.chatserver.model.SessionTimeline;
 import com.sim.chatserver.widget.WidgetEntry;
 
 import static org.mockito.ArgumentMatchers.anyLong;
@@ -162,3 +162,4 @@ public class DashboardSessionServiceTest
         return method.invoke(target, args);
     }
 }
+

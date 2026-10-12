@@ -26,6 +26,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.Part;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 /**
  * CSV import/export for terms. Export (GET) returns CSV, Import (POST) accepts
  * CSV upload.
@@ -42,7 +45,7 @@ import jakarta.servlet.http.Part;
 public class TermsCsvServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(TermsCsvServlet.class.getCanonicalName());
 
-    private static final String[] CSV_HEADER = new String[]{"name", "description", "match_pattern", "match_type", "system_flag"};
+    private static final String[] CSV_HEADER = new String[]{com.sim.chatserver.util.CommonLiteralConstants.FIELD_NAME, com.sim.chatserver.util.CommonLiteralConstants.KEY_DESCRIPTION, "match_pattern", "match_type", "system_flag"};
     private static final String[] EMPTY_STRING_ARRAY = new String[0];
 
     @Override
@@ -90,12 +93,12 @@ public class TermsCsvServlet extends HttpServlet {
         }
 
         } catch (IOException | IllegalArgumentException | IllegalStateException e) {
-            log.log(Level.WARNING, "Unhandled exception in doGet", e);
+            log.log(Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    log.log(Level.FINE, "Failed sending fallback server error.", ioe);
+                    log.log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -131,12 +134,12 @@ public class TermsCsvServlet extends HttpServlet {
         forwardToAdminTerms(req, resp);
 
         } catch (ServletException | IOException | IllegalArgumentException | IllegalStateException e) {
-            log.log(Level.WARNING, "Unhandled exception in doPost", e);
+            log.log(Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_POST, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    log.log(Level.FINE, "Failed sending fallback server error.", ioe);
+                    log.log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -202,17 +205,6 @@ public class TermsCsvServlet extends HttpServlet {
         }
     }
 
-    private static final class ImportCounters {
-
-        final int created;
-        final int updated;
-
-        ImportCounters(int created, int updated) {
-            this.created = created;
-            this.updated = updated;
-        }
-    }
-
     /**
      * Return true = created new term, false = updated existing or skipped
      * (system term).
@@ -241,8 +233,8 @@ public class TermsCsvServlet extends HttpServlet {
         String matchType = cols.length > 3 ? cols[3].trim() : "";
         // Read system_flag column for compatibility even though current store API
         // does not expose changing system-ness via CSV import.
-        String systemFlagStr = cols.length > 4 ? cols[4].trim().toLowerCase(Locale.ROOT) : "false";
-        boolean ignoredSystemFlag = "true".equals(systemFlagStr) || "1".equals(systemFlagStr);
+        String systemFlagStr = cols.length > 4 ? cols[4].trim().toLowerCase(Locale.ROOT) : com.sim.chatserver.util.CommonLiteralConstants.VALUE_FALSE;
+        boolean ignoredSystemFlag = com.sim.chatserver.util.CommonLiteralConstants.VALUE_TRUE.equals(systemFlagStr) || "1".equals(systemFlagStr);
         if (ignoredSystemFlag) {
             // Intentional no-op: existing API does not apply system_flag from CSV rows.
         }
@@ -301,7 +293,7 @@ public class TermsCsvServlet extends HttpServlet {
             // If you need to set system-flag on existing rows, add a TermsStore API to do so and call it here.
             return false; // existing updated
         } else {
-            // No existing term found ÃƒÆ’Ã†â€™Ãƒâ€šÃ‚Â¢ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â€šÂ¬Ã…Â¡Ãƒâ€šÃ‚Â¬ÃƒÆ’Ã‚Â¢ÃƒÂ¢Ã¢â‚¬Å¡Ã‚Â¬Ãƒâ€šÃ‚Â create new term using CSV columns.
+            // No existing term found - create new term using CSV columns.
             TermDefinition created;
             try {
                 created = termsStore().createTerm(name, description, matchPattern, matchType);
@@ -334,7 +326,7 @@ public class TermsCsvServlet extends HttpServlet {
             return "";
         }
         boolean needsQuote = s.contains(",") || s.contains("\"") || s.contains(System.lineSeparator()) || s.contains(System.lineSeparator());
-        String escaped = s.replace("\"", "\"\"");
+        String escaped = s.replace("\"", com.sim.chatserver.util.CommonLiteralConstants.DOUBLE_QUOTE_ESCAPED);
         if (needsQuote) {
             return '"' + escaped + '"';
         } else {
@@ -413,11 +405,30 @@ public class TermsCsvServlet extends HttpServlet {
         if (req == null) {
             return false;
         }
-        Object role = req.getSession(false) == null ? null : req.getSession(false).getAttribute("role");
-        return role != null && "ADMIN".equalsIgnoreCase(String.valueOf(role));
+        Object role = req.getSession(false) == null ? null : req.getSession(false).getAttribute(com.sim.chatserver.util.CommonLiteralConstants.ROLE);
+        return role != null && com.sim.chatserver.util.CommonLiteralConstants.ROLE_ADMIN.equalsIgnoreCase(String.valueOf(role));
     }
 
     private TermsStore termsStore() {
         return CDI.current().select(TermsStore.class).get();
     }
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
+
+
+
 }
+
+final class ImportCounters {
+
+    final int created;
+    final int updated;
+
+    ImportCounters(int created, int updated) {
+        this.created = created;
+        this.updated = updated;
+    }
+}
+

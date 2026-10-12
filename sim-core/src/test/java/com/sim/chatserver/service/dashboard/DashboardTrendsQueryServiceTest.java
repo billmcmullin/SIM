@@ -72,7 +72,7 @@ class DashboardTrendsQueryServiceTest {
             dbUtil.when(() -> DashboardDbUtil.tableExistsCached(any(Connection.class), anyString(), any()))
                     .thenReturn(true);
 
-            DashboardTrendsQueryService.TrendResult result = service.loadTrendData(start, end);
+            TrendResult result = service.loadTrendData(start, end);
 
             assertEquals(Integer.valueOf(1), result.totalDaily.get(start));
             assertEquals(Integer.valueOf(1), result.totalDaily.get(end));

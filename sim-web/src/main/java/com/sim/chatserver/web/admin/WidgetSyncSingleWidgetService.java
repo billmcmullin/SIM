@@ -13,17 +13,32 @@ import java.util.function.Supplier;
 
 final class WidgetSyncSingleWidgetService {
 
-    static final class WidgetSyncResult {
-        private final String message;
+    private static final String ARG_TABLE_ENSURER = "tableEnsurer";
+    private static final String ARG_PROGRESS_UPDATER = "progressUpdater";
+    private static final String ARG_CHAT_FETCHER = "chatFetcher";
+    private static final String ARG_CHAT_ID_COLLECTOR = "chatIdCollector";
+    private static final String ARG_MISSING_CHAT_ID_RESOLVER = "missingChatIdResolver";
+    private static final String ARG_CHAT_FILTER = "chatFilter";
+    private static final String ARG_CHAT_UPSERTER = "chatUpserter";
+    private static final String ARG_CACHE_RECORDER = "cacheRecorder";
 
-        private WidgetSyncResult(String message) {
-            this.message = defaultString(message);
-        }
-
-        String message() {
-            return message;
-        }
-    }
+    private static final String MSG_CALLING_API = "Calling API for chat messages...";
+    private static final String MSG_PAYLOAD_UNCHANGED = "Payload unchanged from recent syncs. Skipping DB upsert.";
+    private static final String MSG_FILTERED_PREFIX = "Filtered ";
+    private static final String MSG_FILTERED_SUFFIX = " known chat(s) before DB upsert.";
+    private static final String MSG_API_RETURNED_PREFIX = "API returned ";
+    private static final String MSG_API_RETURNED_SUFFIX = " chat(s). Checking for new entries...";
+    private static final String MSG_UPSERTING = "Upserting chat(s) into database...";
+    private static final String MSG_ADDED_PREFIX = "Added ";
+    private static final String MSG_ADDED_SUFFIX = " new chat(s) to database.";
+    private static final String MSG_NO_NEW_CHATS = "No new chats detected. Database unchanged.";
+    private static final String MSG_NO_CHAT_ROWS = "No chat rows returned from server.";
+    private static final String MSG_FETCHED_PREFIX = "Fetched ";
+    private static final String MSG_FETCHED_PAYLOAD_UNCHANGED_SUFFIX = " chat(s), payload unchanged from recent sync cache. Table unchanged.";
+    private static final String MSG_FETCHED_NO_NEW_SUFFIX = " chat(s), no new chat entries detected. Table unchanged.";
+    private static final String MSG_FETCHED_INSERTED_MID = " chat(s), inserted ";
+    private static final String MSG_FETCHED_INSERTED_SUFFIX = " new chat(s).";
+    private static final String EMPTY = "";
 
     private WidgetSyncSingleWidgetService() {
     }
@@ -38,18 +53,18 @@ final class WidgetSyncSingleWidgetService {
             Function<List<JsonObject>, Integer> chatUpserter,
             Consumer<List<String>> cacheRecorder
     ) {
-        tableEnsurer = Objects.requireNonNull(tableEnsurer, "tableEnsurer");
-        progressUpdater = Objects.requireNonNull(progressUpdater, "progressUpdater");
-        chatFetcher = Objects.requireNonNull(chatFetcher, "chatFetcher");
-        chatIdCollector = Objects.requireNonNull(chatIdCollector, "chatIdCollector");
-        missingChatIdResolver = Objects.requireNonNull(missingChatIdResolver, "missingChatIdResolver");
-        chatFilter = Objects.requireNonNull(chatFilter, "chatFilter");
-        chatUpserter = Objects.requireNonNull(chatUpserter, "chatUpserter");
-        cacheRecorder = Objects.requireNonNull(cacheRecorder, "cacheRecorder");
+        tableEnsurer = Objects.requireNonNull(tableEnsurer, ARG_TABLE_ENSURER);
+        progressUpdater = Objects.requireNonNull(progressUpdater, ARG_PROGRESS_UPDATER);
+        chatFetcher = Objects.requireNonNull(chatFetcher, ARG_CHAT_FETCHER);
+        chatIdCollector = Objects.requireNonNull(chatIdCollector, ARG_CHAT_ID_COLLECTOR);
+        missingChatIdResolver = Objects.requireNonNull(missingChatIdResolver, ARG_MISSING_CHAT_ID_RESOLVER);
+        chatFilter = Objects.requireNonNull(chatFilter, ARG_CHAT_FILTER);
+        chatUpserter = Objects.requireNonNull(chatUpserter, ARG_CHAT_UPSERTER);
+        cacheRecorder = Objects.requireNonNull(cacheRecorder, ARG_CACHE_RECORDER);
 
         tableEnsurer.run();
 
-        progressUpdater.accept("Calling API for chat messages...");
+        progressUpdater.accept(MSG_CALLING_API);
 
         List<JsonObject> chats = chatFetcher.get();
         List<String> candidateChatIds = chatIdCollector.apply(chats);
@@ -63,23 +78,23 @@ final class WidgetSyncSingleWidgetService {
         if (missingChatIds != null) {
             if (missingChatIds.isEmpty()) {
                 skippedByRecentCache = true;
-                progressUpdater.accept("Payload unchanged from recent syncs. Skipping DB upsert.");
+                progressUpdater.accept(MSG_PAYLOAD_UNCHANGED);
             } else if (missingChatIds.size() < candidateChatIds.size()) {
                 chatsForUpsert = chatFilter.filter(chats, new LinkedHashSet<>(missingChatIds));
                 int filteredCount = Math.max(0, candidateChatIds.size() - missingChatIds.size());
-                progressUpdater.accept("Filtered " + filteredCount + " known chat(s) before DB upsert.");
+                progressUpdater.accept(MSG_FILTERED_PREFIX + filteredCount + MSG_FILTERED_SUFFIX);
             }
         }
 
-        progressUpdater.accept("API returned " + chats.size() + " chat(s). Checking for new entries...");
+        progressUpdater.accept(MSG_API_RETURNED_PREFIX + chats.size() + MSG_API_RETURNED_SUFFIX);
 
         int inserted = 0;
         if (!skippedByRecentCache && !chatsForUpsert.isEmpty()) {
-            progressUpdater.accept("Upserting chat(s) into database...");
+            progressUpdater.accept(MSG_UPSERTING);
             inserted = safeInt(chatUpserter.apply(chatsForUpsert));
-            progressUpdater.accept("Added " + inserted + " new chat(s) to database.");
+            progressUpdater.accept(MSG_ADDED_PREFIX + inserted + MSG_ADDED_SUFFIX);
         } else {
-            progressUpdater.accept("No new chats detected. Database unchanged.");
+            progressUpdater.accept(MSG_NO_NEW_CHATS);
         }
 
         if (!candidateChatIds.isEmpty()) {
@@ -87,12 +102,12 @@ final class WidgetSyncSingleWidgetService {
         }
 
         String message = chats.isEmpty()
-                ? "No chat rows returned from server."
+        ? MSG_NO_CHAT_ROWS
                 : (skippedByRecentCache
-                ? "Fetched " + chats.size() + " chat(s), payload unchanged from recent sync cache. Table unchanged."
+        ? MSG_FETCHED_PREFIX + chats.size() + MSG_FETCHED_PAYLOAD_UNCHANGED_SUFFIX
                 : (inserted <= 0
-                ? "Fetched " + chats.size() + " chat(s), no new chat entries detected. Table unchanged."
-                : "Fetched " + chats.size() + " chat(s), inserted " + inserted + " new chat(s)."));
+        ? MSG_FETCHED_PREFIX + chats.size() + MSG_FETCHED_NO_NEW_SUFFIX
+        : MSG_FETCHED_PREFIX + chats.size() + MSG_FETCHED_INSERTED_MID + inserted + MSG_FETCHED_INSERTED_SUFFIX));
 
         return new WidgetSyncResult(message);
     }
@@ -109,7 +124,18 @@ final class WidgetSyncSingleWidgetService {
         return Integer.parseInt(value.toString());
     }
 
-    private static String defaultString(String value) {
-        return value == null ? "" : value;
+}
+
+final class WidgetSyncResult {
+    private static final String EMPTY = "";
+    private final String message;
+
+    WidgetSyncResult(String message) {
+        this.message = message == null ? EMPTY : message;
+    }
+
+    String message() {
+        return message;
     }
 }
+

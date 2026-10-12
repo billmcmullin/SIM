@@ -28,15 +28,28 @@ import javax.crypto.spec.SecretKeySpec;
 import javax.sql.DataSource;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.util.SqlLiteralConstants;
 
 import jakarta.enterprise.inject.spi.CDI;
 
 public final class CustomerProfileStore {
 
+    private static final String EMPTY = "";
+
     private static final Logger LOG = Logger.getLogger(CustomerProfileStore.class.getCanonicalName());
     private static final Map<String, String> ENV = new ProcessBuilder().environment();
 
     private static final String TABLE_NAME = "customer_profile_cache";
+    private static final String COL_SESSION_ID = SqlLiteralConstants.COL_SESSION_ID;
+    private static final String COL_FRIENDLY_NAME = "friendly_name";
+    private static final String COL_SALESFORCE_CONTACT_ID = "salesforce_contact_id";
+    private static final String COL_SALESFORCE_ACCOUNT_ID = "salesforce_account_id";
+    private static final String COL_EMAIL_ENC = "email_enc";
+    private static final String COL_PHONE_ENC = "phone_enc";
+    private static final String COL_TITLE_ENC = "title_enc";
+    private static final String COL_DEPARTMENT_ENC = "department_enc";
+    private static final String COL_RAW_JSON_ENC = "raw_json_enc";
+    private static final String COL_LAST_SYNCED_AT = "last_synced_at";
 
     private static final String CREATE_TABLE_SQL
             = "CREATE TABLE IF NOT EXISTS " + TABLE_NAME + " ("
@@ -79,14 +92,35 @@ public final class CustomerProfileStore {
     private static final String ENC_KEY_ENV = "CONFIG_ENCRYPTION_KEY";
     private static final String ENC_SALT_ENV = "CONFIG_ENCRYPTION_SALT";
     private static final String ENC_TRANSFORM_ENV = "CONFIG_ENCRYPTION_TRANSFORMATION";
+    private static final String ENC_KEY_ENV_LOG = "CONFIG_ENCRYPTION_KEY is not Base64, deriving key from UTF-8 value";
     private static final String ENC_PREFIX = "ENCv1:";
+    private static final String COLUMN_TYPE_TEXT = "TEXT";
+    private static final String COLUMN_TYPE_TIMESTAMPTZ = "TIMESTAMPTZ";
+    private static final String CRYPTO_ALGORITHM_AES = "AES";
+    private static final String CIPHER_MODE_GCM_NO_PADDING = "/GCM/NoPadding";
     private static final String DEFAULT_AES_MODE = buildDefaultCipherTransformation();
-    private static final Pattern CONTROL_CHARS = Pattern.compile("[\\u0000-\\u001F\\u007F]");
+    private static final Pattern CONTROL_CHARS = Pattern.compile(com.sim.chatserver.util.CommonLiteralConstants.REGEX_CONTROL_CHARS);
     private static final int GCM_TAG_BITS = 128;
     private static final int GCM_IV_BYTES = 12;
     private static final int AES_KEY_BYTES = 32;
     private static final int PBKDF2_ITERATIONS = 120_000;
     private static final SecureRandom SECURE_RANDOM = new SecureRandom();
+    private static final String MSG_PROFILE_SESSION_ID_REQUIRED = "profile.sessionId is required";
+    private static final String MSG_ENCRYPTION_FAILED = "Unable to encrypt customer profile value";
+    private static final String MSG_INVALID_ENCRYPTED_FORMAT = "Invalid encrypted value format";
+    private static final String MSG_DECRYPTION_FAILED = "Unable to decrypt customer profile value";
+    private static final String MSG_ENV_VAR_PREFIX = "Environment variable ";
+    private static final String MSG_PROFILE_ENCRYPTION_REQUIRED_SUFFIX = " is required for profile encryption.";
+    private static final String PBKDF2_HMAC_SHA256 = "PBKDF2WithHmacSHA256";
+    private static final String MSG_DERIVE_KEY_FAILED = "Unable to derive profile encryption key";
+    private static final String DEFAULT_KDF_SALT = "sim-customer-profile-kdf-salt-v1";
+    private static final String MSG_ENV_VAR_TOO_LONG = "Environment variable too long: ";
+    private static final String MSG_ENV_VAR_INVALID_CHARS = "Environment variable contains invalid control characters: ";
+    private static final String MSG_TYPED_DB_TEXT_READ_FAILED = "Typed DB text read failed for column ";
+    private static final String MSG_TYPED_DB_TIMESTAMP_READ_FAILED = "Typed DB timestamp read failed for column ";
+    private static final String MSG_USING_TEXT_PARSING = ", using text parsing";
+    private static final String MSG_PARSE_TIMESTAMP_FAILED = "Unable to parse timestamp for customer profile column ";
+    private static final String MSG_APP_DATASOURCE_HOLDER_NOT_INITIALIZED = "AppDataSourceHolder is not initialized";
 
     private CustomerProfileStore() {
     }
@@ -102,15 +136,15 @@ public final class CustomerProfileStore {
 
         // Safe column migrations if table existed from older version
         try (Connection conn = getDataSource().getConnection()) {
-            ensureColumn(conn, "friendly_name", "TEXT");
-            ensureColumn(conn, "salesforce_contact_id", "TEXT");
-            ensureColumn(conn, "salesforce_account_id", "TEXT");
-            ensureColumn(conn, "email_enc", "TEXT");
-            ensureColumn(conn, "phone_enc", "TEXT");
-            ensureColumn(conn, "title_enc", "TEXT");
-            ensureColumn(conn, "department_enc", "TEXT");
-            ensureColumn(conn, "raw_json_enc", "TEXT");
-            ensureColumn(conn, "last_synced_at", "TIMESTAMPTZ");
+            ensureColumn(conn, COL_FRIENDLY_NAME, COLUMN_TYPE_TEXT);
+            ensureColumn(conn, COL_SALESFORCE_CONTACT_ID, COLUMN_TYPE_TEXT);
+            ensureColumn(conn, COL_SALESFORCE_ACCOUNT_ID, COLUMN_TYPE_TEXT);
+            ensureColumn(conn, COL_EMAIL_ENC, COLUMN_TYPE_TEXT);
+            ensureColumn(conn, COL_PHONE_ENC, COLUMN_TYPE_TEXT);
+            ensureColumn(conn, COL_TITLE_ENC, COLUMN_TYPE_TEXT);
+            ensureColumn(conn, COL_DEPARTMENT_ENC, COLUMN_TYPE_TEXT);
+            ensureColumn(conn, COL_RAW_JSON_ENC, COLUMN_TYPE_TEXT);
+            ensureColumn(conn, COL_LAST_SYNCED_AT, COLUMN_TYPE_TIMESTAMPTZ);
         }
     }
 
@@ -130,17 +164,17 @@ public final class CustomerProfileStore {
                 }
 
                 CustomerProfile p = new CustomerProfile();
-                p.setSessionId(readDbText(rs, "session_id", 256));
-                p.setFriendlyName(readDbText(rs, "friendly_name", 512));
-                p.setSalesforceContactId(readDbText(rs, "salesforce_contact_id", 256));
-                p.setSalesforceAccountId(readDbText(rs, "salesforce_account_id", 256));
-                p.setEmail(decryptIfNeeded(readDbRawText(rs, "email_enc")));
-                p.setPhone(decryptIfNeeded(readDbRawText(rs, "phone_enc")));
-                p.setTitle(decryptIfNeeded(readDbRawText(rs, "title_enc")));
-                p.setDepartment(decryptIfNeeded(readDbRawText(rs, "department_enc")));
-                p.setRawJson(decryptIfNeeded(readDbRawText(rs, "raw_json_enc")));
+                p.setSessionId(readDbText(rs, COL_SESSION_ID, 256));
+                p.setFriendlyName(readDbText(rs, COL_FRIENDLY_NAME, 512));
+                p.setSalesforceContactId(readDbText(rs, COL_SALESFORCE_CONTACT_ID, 256));
+                p.setSalesforceAccountId(readDbText(rs, COL_SALESFORCE_ACCOUNT_ID, 256));
+                p.setEmail(decryptIfNeeded(readDbRawText(rs, COL_EMAIL_ENC)));
+                p.setPhone(decryptIfNeeded(readDbRawText(rs, COL_PHONE_ENC)));
+                p.setTitle(decryptIfNeeded(readDbRawText(rs, COL_TITLE_ENC)));
+                p.setDepartment(decryptIfNeeded(readDbRawText(rs, COL_DEPARTMENT_ENC)));
+                p.setRawJson(decryptIfNeeded(readDbRawText(rs, COL_RAW_JSON_ENC)));
 
-                Timestamp ts = readDbTimestamp(rs, "last_synced_at");
+                Timestamp ts = readDbTimestamp(rs, COL_LAST_SYNCED_AT);
                 if (ts != null) {
                     p.setLastSyncedAt(ts.toInstant().atOffset(ZoneOffset.UTC));
                 }
@@ -154,7 +188,7 @@ public final class CustomerProfileStore {
         ensureTable();
 
         if (profile == null || isBlank(profile.getSessionId())) {
-            throw new IllegalArgumentException("profile.sessionId is required");
+            throw new IllegalArgumentException(MSG_PROFILE_SESSION_ID_REQUIRED);
         }
 
         OffsetDateTime syncedAt = profile.getLastSyncedAt() != null ? profile.getLastSyncedAt() : OffsetDateTime.now(ZoneOffset.UTC);
@@ -201,7 +235,7 @@ public final class CustomerProfileStore {
 
     private static String encryptIfPresent(String plainValue) throws SQLException {
         if (plainValue == null || plainValue.isBlank()) {
-            return plainValue == null ? null : "";
+            return plainValue == null ? null : EMPTY;
         }
         if (plainValue.startsWith(ENC_PREFIX)) {
             return plainValue; // already encrypted
@@ -213,7 +247,7 @@ public final class CustomerProfileStore {
             SECURE_RANDOM.nextBytes(iv);
 
             Cipher cipher = newCipher();
-            cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key, "AES"), new GCMParameterSpec(GCM_TAG_BITS, iv));
+            cipher.init(Cipher.ENCRYPT_MODE, new SecretKeySpec(key, CRYPTO_ALGORITHM_AES), new GCMParameterSpec(GCM_TAG_BITS, iv));
             byte[] encrypted = cipher.doFinal(plainValue.getBytes(StandardCharsets.UTF_8));
 
             return ENC_PREFIX
@@ -221,7 +255,7 @@ public final class CustomerProfileStore {
                     + (char) 58
                     + Base64.getEncoder().encodeToString(encrypted);
         } catch (GeneralSecurityException e) {
-            throw new SQLException("Unable to encrypt customer profile value", e);
+            throw new SQLException(MSG_ENCRYPTION_FAILED, e);
         }
     }
 
@@ -237,25 +271,25 @@ public final class CustomerProfileStore {
             String payload = storedValue.substring(ENC_PREFIX.length());
             String[] parts = payload.split(String.valueOf((char) 58), 2);
             if (parts.length != 2) {
-                throw new SQLException("Invalid encrypted value format");
+                throw new SQLException(MSG_INVALID_ENCRYPTED_FORMAT);
             }
 
             byte[] iv = Base64.getDecoder().decode(parts[0]);
             byte[] enc = Base64.getDecoder().decode(parts[1]);
 
             Cipher cipher = newCipher();
-            cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(getAesKeyBytes(), "AES"), new GCMParameterSpec(GCM_TAG_BITS, iv));
+            cipher.init(Cipher.DECRYPT_MODE, new SecretKeySpec(getAesKeyBytes(), CRYPTO_ALGORITHM_AES), new GCMParameterSpec(GCM_TAG_BITS, iv));
             byte[] plain = cipher.doFinal(enc);
             return new String(plain, StandardCharsets.UTF_8);
         } catch (GeneralSecurityException | IllegalArgumentException e) {
-            throw new SQLException("Unable to decrypt customer profile value", e);
+            throw new SQLException(MSG_DECRYPTION_FAILED, e);
         }
     }
 
     private static byte[] getAesKeyBytes() {
         String secret = readEnvCanonical(ENC_KEY_ENV, 4096);
         if (secret == null) {
-            throw new IllegalStateException("Environment variable " + ENC_KEY_ENV + " is required for profile encryption.");
+            throw new IllegalStateException(MSG_ENV_VAR_PREFIX + ENC_KEY_ENV + MSG_PROFILE_ENCRYPTION_REQUIRED_SUFFIX);
         }
 
         byte[] salt = resolveKdfSalt();
@@ -268,7 +302,7 @@ public final class CustomerProfileStore {
             }
             return deriveAesKey(decoded, salt);
         } catch (IllegalArgumentException notBase64) {
-            LOG.log(Level.FINE, "CONFIG_ENCRYPTION_KEY is not Base64, deriving key from UTF-8 value", notBase64);
+            LOG.log(Level.FINE, ENC_KEY_ENV_LOG, notBase64);
             return deriveAesKey(trimmed.getBytes(StandardCharsets.UTF_8), salt);
         }
     }
@@ -277,10 +311,10 @@ public final class CustomerProfileStore {
         String material = Base64.getEncoder().encodeToString(keyMaterial);
         PBEKeySpec spec = new PBEKeySpec(material.toCharArray(), salt, PBKDF2_ITERATIONS, AES_KEY_BYTES * 8);
         try {
-            SecretKeyFactory factory = SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256");
+            SecretKeyFactory factory = SecretKeyFactory.getInstance(PBKDF2_HMAC_SHA256);
             return factory.generateSecret(spec).getEncoded();
         } catch (NoSuchAlgorithmException | InvalidKeySpecException e) {
-            throw new IllegalStateException("Unable to derive profile encryption key", e);
+            throw new IllegalStateException(MSG_DERIVE_KEY_FAILED, e);
         } finally {
             spec.clearPassword();
         }
@@ -291,7 +325,7 @@ public final class CustomerProfileStore {
         if (configuredSalt != null) {
             return configuredSalt.getBytes(StandardCharsets.UTF_8);
         }
-        return "sim-customer-profile-kdf-salt-v1".getBytes(StandardCharsets.UTF_8);
+        return DEFAULT_KDF_SALT.getBytes(StandardCharsets.UTF_8);
     }
 
     private static Cipher newCipher() throws GeneralSecurityException {
@@ -320,10 +354,10 @@ public final class CustomerProfileStore {
             return null;
         }
         if (normalized.length() > maxChars) {
-            throw new IllegalStateException("Environment variable too long: " + envName);
+            throw new IllegalStateException(MSG_ENV_VAR_TOO_LONG + envName);
         }
         if (CONTROL_CHARS.matcher(normalized).find()) {
-            throw new IllegalStateException("Environment variable contains invalid control characters: " + envName);
+            throw new IllegalStateException(MSG_ENV_VAR_INVALID_CHARS + envName);
         }
         return normalized;
     }
@@ -339,7 +373,7 @@ public final class CustomerProfileStore {
             }
             return String.valueOf(raw);
         } catch (SQLException ex) {
-            LOG.log(Level.FINE, "Typed DB text read failed for column " + column, ex);
+            LOG.log(Level.FINE, MSG_TYPED_DB_TEXT_READ_FAILED + column, ex);
             return null;
         }
     }
@@ -363,7 +397,7 @@ public final class CustomerProfileStore {
                 return typed;
             }
         } catch (SQLException ex) {
-            LOG.log(Level.FINE, "Typed DB timestamp read failed for column " + column + ", using text parsing", ex);
+            LOG.log(Level.FINE, MSG_TYPED_DB_TIMESTAMP_READ_FAILED + column + MSG_USING_TEXT_PARSING, ex);
         }
         String raw = readDbText(rs, column, 128);
         if (raw == null || raw.isBlank()) {
@@ -372,13 +406,13 @@ public final class CustomerProfileStore {
         try {
             return Timestamp.valueOf(raw.trim().replace('T', ' '));
         } catch (IllegalArgumentException ex) {
-            LOG.log(Level.FINE, "Unable to parse timestamp for customer profile column " + column, ex);
+            LOG.log(Level.FINE, MSG_PARSE_TIMESTAMP_FAILED + column, ex);
             return null;
         }
     }
 
     private static String buildDefaultCipherTransformation() {
-        return new StringBuilder(32).append("AES").append("/GCM/NoPadding").toString();
+        return new StringBuilder(32).append(CRYPTO_ALGORITHM_AES).append(CIPHER_MODE_GCM_NO_PADDING).toString();
     }
 
     private static DataSource getDataSource() {
@@ -388,7 +422,7 @@ public final class CustomerProfileStore {
             dsHolder = holder;
         }
         if (holder == null) {
-            throw new IllegalStateException("AppDataSourceHolder is not initialized");
+            throw new IllegalStateException(MSG_APP_DATASOURCE_HOLDER_NOT_INITIALIZED);
         }
         return holder.getDataSource();
     }

@@ -4,7 +4,7 @@ import java.util.List;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.model.review.BatchFailure.Builder;
+import com.sim.chatserver.model.review.BatchFailureBuilder;
 
 import jakarta.json.JsonObject;
 
@@ -28,7 +28,7 @@ public class BatchFailureTest
     public void testBuilder() throws Throwable
     {
         // When
-        Builder result = BatchFailure.builder();
+        BatchFailureBuilder result = BatchFailure.builder();
 
     }
 

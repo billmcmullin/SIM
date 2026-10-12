@@ -18,6 +18,7 @@ import java.util.regex.Pattern;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.SqlTimeUtil;
+import com.sim.chatserver.util.SqlLiteralConstants;
 import com.sim.chatserver.widget.WidgetEntry;
 
 import jakarta.enterprise.context.ApplicationScoped;
@@ -25,10 +26,15 @@ import jakarta.enterprise.inject.spi.CDI;
 
 @ApplicationScoped
 public class DashboardTopicsQueryService {
-    private static final Logger log = Logger.getLogger(DashboardTopicsQueryService.class.getCanonicalName());
-    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
 
-    @SuppressWarnings("unused")
+    private static final Logger log = Logger.getLogger(DashboardTopicsQueryService.class.getCanonicalName());
+    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile(com.sim.chatserver.util.CommonLiteralConstants.SQL_IDENTIFIER_REGEX);
+    private static final String DEFAULT_WIDGET_TABLE = com.sim.chatserver.util.CommonLiteralConstants.FIELD_WIDGET;
+    private static final String TABLE_PREFIX = "w_";
+    private static final String NORMALIZE_NON_IDENTIFIER = com.sim.chatserver.util.CommonLiteralConstants.REGEX_NON_ALNUM_UNDERSCORE;
+    private static final String NORMALIZE_REPLACEMENT = "_";
+    private static final String MSG_UNABLE_INSPECT_TABLE_METADATA = com.sim.chatserver.util.CommonLiteralConstants.MSG_UNABLE_TO_INSPECT_TABLE_METADATA_PREFIX;
+
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
@@ -73,8 +79,8 @@ public class DashboardTopicsQueryService {
         }
 
         Map<String, Integer> widgetMap = byWidgetCounts.computeIfAbsent(widgetName, key -> new LinkedHashMap<>());
-        String sql = "SELECT prompt, created_at FROM " + quoteIdentifier(tableName)
-                + " WHERE created_at >= ? AND created_at < ?";
+        String sql = SqlLiteralConstants.SQL_SELECT_PROMPT_CREATED_AT_FROM + quoteIdentifier(tableName)
+            + SqlLiteralConstants.SQL_WHERE_CREATED_AT_RANGE;
 
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setTimestamp(1, Timestamp.valueOf(startInclusive.atStartOfDay()));
@@ -92,8 +98,8 @@ public class DashboardTopicsQueryService {
             Map<String, Integer> widgetMap
     ) throws SQLException {
         while (rs.next()) {
-            SqlTimeUtil.safeTimestamp(rs, "created_at");
-            String prompt = rs.getString("prompt");
+            SqlTimeUtil.safeTimestamp(rs, SqlLiteralConstants.COL_CREATED_AT);
+            String prompt = rs.getString(SqlLiteralConstants.COL_PROMPT);
             if (prompt == null || prompt.isBlank()) {
                 continue;
             }
@@ -124,25 +130,25 @@ public class DashboardTopicsQueryService {
         try {
             DatabaseMetaData meta = conn.getMetaData();
             for (String candidate : new String[]{tableName, tableName.toUpperCase(), tableName.toLowerCase()}) {
-                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{"TABLE"})) {
+                try (ResultSet rs = meta.getTables(null, null, candidate, new String[]{com.sim.chatserver.util.CommonLiteralConstants.DB_TABLE_TYPE_TABLE})) {
                     if (rs.next()) {
                         return true;
                     }
                 }
             }
         } catch (SQLException e) {
-            log.log(Level.FINE, "Unable to inspect table metadata for " + tableName, e);
+            log.log(Level.FINE, MSG_UNABLE_INSPECT_TABLE_METADATA + tableName, e);
         }
         return false;
     }
 
     private String sanitizeWidgetTableName(String widgetId) {
         if (widgetId == null || widgetId.isBlank()) {
-            return "widget";
+            return DEFAULT_WIDGET_TABLE;
         }
-        String normalized = widgetId.trim().replaceAll("[^A-Za-z0-9_]", "_");
+        String normalized = widgetId.trim().replaceAll(NORMALIZE_NON_IDENTIFIER, NORMALIZE_REPLACEMENT);
         if (!Character.isLetter(normalized.charAt(0))) {
-            normalized = "w_" + normalized;
+            normalized = TABLE_PREFIX + normalized;
         }
         if (normalized.length() > 60) {
             normalized = new String(normalized.toCharArray(), 0, 60);
@@ -152,30 +158,31 @@ public class DashboardTopicsQueryService {
 
     private String quoteIdentifier(String identifier) {
         if (identifier == null || !SAFE_SQL_IDENTIFIER.matcher(identifier).matches()) {
-            throw new IllegalArgumentException("Invalid SQL identifier");
+            throw new IllegalArgumentException(SqlLiteralConstants.SQL_INVALID_IDENTIFIER);
         }
-        return '"' + identifier.replace("\"", "\"\"") + '"';
+        return '"' + identifier.replace(SqlLiteralConstants.DOUBLE_QUOTE, SqlLiteralConstants.DOUBLE_DOUBLE_QUOTE) + '"';
     }
 
     private AppDataSourceHolder dataSourceHolder() {
         return CDI.current().select(AppDataSourceHolder.class).get();
     }
+}
 
-    public static final class TopicCountResult {
-        private final Map<String, Integer> globalCounts;
-        private final Map<String, Map<String, Integer>> byWidgetCounts;
+final class TopicCountResult {
+    private final Map<String, Integer> globalCounts;
+    private final Map<String, Map<String, Integer>> byWidgetCounts;
 
-        private TopicCountResult(Map<String, Integer> globalCounts, Map<String, Map<String, Integer>> byWidgetCounts) {
-            this.globalCounts = globalCounts;
-            this.byWidgetCounts = byWidgetCounts;
-        }
+    TopicCountResult(Map<String, Integer> globalCounts, Map<String, Map<String, Integer>> byWidgetCounts) {
+        this.globalCounts = globalCounts;
+        this.byWidgetCounts = byWidgetCounts;
+    }
 
-        Map<String, Integer> globalCounts() {
-            return globalCounts;
-        }
+    Map<String, Integer> globalCounts() {
+        return globalCounts;
+    }
 
-        Map<String, Map<String, Integer>> byWidgetCounts() {
-            return byWidgetCounts;
-        }
+    Map<String, Map<String, Integer>> byWidgetCounts() {
+        return byWidgetCounts;
     }
 }
+

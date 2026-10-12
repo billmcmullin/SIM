@@ -7,10 +7,12 @@ import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
 import com.sim.chatserver.util.TextIoSanitizerUtil;
 import java.util.List;
+import java.util.Optional;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
+import com.sim.chatserver.util.CommonLiteralConstants;
 import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermsStore;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
@@ -33,6 +35,9 @@ public class AdminTermServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(AdminTermServlet.class.getCanonicalName());
     private static final int MAX_JSON_PAYLOAD_BYTES = 64 * 1024;
     private static final Pattern SAFE_LONG_PARAM = Pattern.compile("^\\d{1,18}$");
+    private static final String FIELD_MATCH_PATTERN = CommonLiteralConstants.FIELD_MATCH_PATTERN;
+    private static final String FIELD_MATCH_TYPE = CommonLiteralConstants.FIELD_MATCH_TYPE;
+    private static final String FIELD_TERM = CommonLiteralConstants.FIELD_TERM;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
@@ -48,15 +53,15 @@ public class AdminTermServlet extends HttpServlet {
                 long termId = safeLong(rawId, 0L);
                 arrayBuilder.add(Json.createObjectBuilder()
                     .add("id", termId)
-                    .add("name", term.getName())
-                    .add("description", term.getDescription())
-                    .add("matchPattern", term.getMatchPattern())
-                    .add("matchType", term.getMatchType())
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_NAME, term.getName())
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_DESCRIPTION, term.getDescription())
+                    .add(FIELD_MATCH_PATTERN, term.getMatchPattern())
+                    .add(FIELD_MATCH_TYPE, term.getMatchType())
                     .add("isSystem", term.isSystemFlag())
                     .build());
             });
             JsonObject response = Json.createObjectBuilder()
-                    .add("status", "ok")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
                     .add("terms", arrayBuilder)
                     .build();
             writeJsonSafe(resp, HttpServletResponse.SC_OK, response);
@@ -72,33 +77,16 @@ public class AdminTermServlet extends HttpServlet {
             return;
         }
 
-        try {
-            req.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        } catch (UnsupportedEncodingException e) {
-            log.log(Level.FINE, "Unable to set request character encoding", e);
-        }
-
-        if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
-            writeErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
+        Optional<JsonObject> payloadOpt = readValidatedPayload(req, resp, "Invalid term create payload");
+        if (payloadOpt.isEmpty()) {
             return;
         }
+        JsonObject payload = payloadOpt.get();
 
-        JsonObject payload;
-        try {
-            String body = readRequestBody(req);
-            try (var reader = Json.createReader(new StringReader(body))) {
-                payload = reader.readObject();
-            }
-        } catch (JsonException e) {
-            log.log(Level.FINE, "Invalid term create payload", e);
-            writeErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
-            return;
-        }
-
-        String name = payload.getString("name", "").trim();
-        String description = payload.getString("description", "").trim();
-        String pattern = payload.getString("matchPattern", "").trim();
-        String type = payload.getString("matchType", "WILDCARD").trim();
+        String name = payload.getString(com.sim.chatserver.util.CommonLiteralConstants.FIELD_NAME, "").trim();
+        String description = payload.getString(com.sim.chatserver.util.CommonLiteralConstants.KEY_DESCRIPTION, "").trim();
+        String pattern = payload.getString(FIELD_MATCH_PATTERN, "").trim();
+        String type = payload.getString(FIELD_MATCH_TYPE, com.sim.chatserver.util.CommonLiteralConstants.MATCH_TYPE_WILDCARD).trim();
 
         if (name.isEmpty() || description.isEmpty()) {
             writeErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "Name and description are required.");
@@ -111,13 +99,13 @@ public class AdminTermServlet extends HttpServlet {
                 throw new SQLException("Insert failed.");
             }
             JsonObject body = Json.createObjectBuilder()
-                    .add("status", "ok")
-                    .add("term", Json.createObjectBuilder()
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
+                        .add(FIELD_TERM, Json.createObjectBuilder()
                         .add("id", safeLong(term.getId(), 0L))
-                            .add("name", term.getName())
-                            .add("description", term.getDescription())
-                            .add("matchPattern", term.getMatchPattern())
-                            .add("matchType", term.getMatchType())
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_NAME, term.getName())
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_DESCRIPTION, term.getDescription())
+                            .add(FIELD_MATCH_PATTERN, term.getMatchPattern())
+                            .add(FIELD_MATCH_TYPE, term.getMatchType())
                             .add("isSystem", term.isSystemFlag()))
                     .build();
             writeJsonSafe(resp, HttpServletResponse.SC_OK, body);
@@ -133,28 +121,11 @@ public class AdminTermServlet extends HttpServlet {
             return;
         }
 
-        try {
-            req.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        } catch (UnsupportedEncodingException e) {
-            log.log(Level.FINE, "Unable to set request character encoding", e);
-        }
-
-        if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
-            writeErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
+        Optional<JsonObject> payloadOpt = readValidatedPayload(req, resp, "Invalid term update payload");
+        if (payloadOpt.isEmpty()) {
             return;
         }
-
-        JsonObject payload;
-        try {
-            String body = readRequestBody(req);
-            try (var reader = Json.createReader(new StringReader(body))) {
-                payload = reader.readObject();
-            }
-        } catch (JsonException e) {
-            log.log(Level.FINE, "Invalid term update payload", e);
-            writeErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
-            return;
-        }
+        JsonObject payload = payloadOpt.get();
 
         long idValue = -1L;
         try {
@@ -166,10 +137,10 @@ public class AdminTermServlet extends HttpServlet {
             writeErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid id.");
             return;
         }
-        String name = payload.getString("name", "").trim();
-        String description = payload.getString("description", "").trim();
-        String pattern = payload.getString("matchPattern", "").trim();
-        String type = payload.getString("matchType", "WILDCARD").trim();
+        String name = payload.getString(com.sim.chatserver.util.CommonLiteralConstants.FIELD_NAME, "").trim();
+        String description = payload.getString(com.sim.chatserver.util.CommonLiteralConstants.KEY_DESCRIPTION, "").trim();
+        String pattern = payload.getString(FIELD_MATCH_PATTERN, "").trim();
+        String type = payload.getString(FIELD_MATCH_TYPE, com.sim.chatserver.util.CommonLiteralConstants.MATCH_TYPE_WILDCARD).trim();
 
         if (idValue <= 0L || name.isEmpty() || description.isEmpty()) {
             writeErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "id, name, and description are required.");
@@ -183,13 +154,13 @@ public class AdminTermServlet extends HttpServlet {
                 return;
             }
             JsonObject body = Json.createObjectBuilder()
-                    .add("status", "ok")
-                    .add("term", Json.createObjectBuilder()
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
+                        .add(FIELD_TERM, Json.createObjectBuilder()
                         .add("id", safeLong(updated.getId(), 0L))
-                            .add("name", updated.getName())
-                            .add("description", updated.getDescription())
-                            .add("matchPattern", updated.getMatchPattern())
-                            .add("matchType", updated.getMatchType())
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_NAME, updated.getName())
+                            .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_DESCRIPTION, updated.getDescription())
+                            .add(FIELD_MATCH_PATTERN, updated.getMatchPattern())
+                            .add(FIELD_MATCH_TYPE, updated.getMatchType())
                             .add("isSystem", updated.isSystemFlag()))
                     .build();
             writeJsonSafe(resp, HttpServletResponse.SC_OK, body);
@@ -220,7 +191,7 @@ public class AdminTermServlet extends HttpServlet {
             writeJsonSafe(
                     resp,
                     HttpServletResponse.SC_OK,
-                    Json.createObjectBuilder().add("status", "ok").build());
+                    Json.createObjectBuilder().add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok").build());
         } catch (NumberFormatException | SQLException e) {
             log.log(Level.WARNING, "Failed to delete term", e);
             writeErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to delete term.");
@@ -229,16 +200,40 @@ public class AdminTermServlet extends HttpServlet {
 
     private boolean isAdmin(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            writeErrorSafe(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+            writeErrorSafe(resp, HttpServletResponse.SC_UNAUTHORIZED, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED);
             return false;
         }
-        String role = session.getAttribute("role") == null ? "" : session.getAttribute("role").toString();
-        if (!"ADMIN".equalsIgnoreCase(role)) {
-            writeErrorSafe(resp, HttpServletResponse.SC_FORBIDDEN, "Admin role required.");
+        String role = session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.ROLE) == null ? "" : session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.ROLE).toString();
+        if (!com.sim.chatserver.util.CommonLiteralConstants.ROLE_ADMIN.equalsIgnoreCase(role)) {
+            writeErrorSafe(resp, HttpServletResponse.SC_FORBIDDEN, com.sim.chatserver.util.CommonLiteralConstants.MSG_ADMIN_ROLE_REQUIRED);
             return false;
         }
         return true;
+    }
+
+    private Optional<JsonObject> readValidatedPayload(HttpServletRequest req, HttpServletResponse resp, String invalidPayloadLogMessage) {
+        try {
+            req.setCharacterEncoding(StandardCharsets.UTF_8.name());
+        } catch (UnsupportedEncodingException e) {
+            log.log(Level.FINE, "Unable to set request character encoding", e);
+        }
+
+        if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
+            writeErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, com.sim.chatserver.util.CommonLiteralConstants.MSG_INVALID_JSON_PAYLOAD);
+            return Optional.empty();
+        }
+
+        try {
+            String body = readRequestBody(req);
+            try (var reader = Json.createReader(new StringReader(body))) {
+                return Optional.of(reader.readObject());
+            }
+        } catch (JsonException e) {
+            log.log(Level.FINE, invalidPayloadLogMessage, e);
+            writeErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, com.sim.chatserver.util.CommonLiteralConstants.MSG_INVALID_JSON_PAYLOAD);
+            return Optional.empty();
+        }
     }
 
     private String readRequestBody(HttpServletRequest req) {
@@ -307,7 +302,7 @@ public class AdminTermServlet extends HttpServlet {
         }
         try {
             resp.reset();
-            resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+            resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
         } catch (IOException ioe) {
             log.log(Level.FINE, "Failed sending fallback server error", ioe);
         }
@@ -331,6 +326,11 @@ public class AdminTermServlet extends HttpServlet {
 
     private TermsStore termsStore() {
         return CDI.current().select(TermsStore.class).get();
+    }
+
+
+    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException, ClassNotFoundException {
+        throw new java.io.InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
     }
 
 }

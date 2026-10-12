@@ -22,7 +22,9 @@ import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
-
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 /**
  * Starts Salesforce OAuth Authorization Code flow.
  *
@@ -38,8 +40,8 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
     private static final long serialVersionUID = 1L;
     private static final Logger log = Logger.getLogger(SalesforceOAuthStartServlet.class.getCanonicalName());
 
-    private static final String SESSION_USER = "user";
-    private static final String SESSION_ROLE = "role";
+    private static final String SESSION_USER = com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER;
+    private static final String SESSION_ROLE = com.sim.chatserver.util.CommonLiteralConstants.ROLE;
 
     private static final String OAUTH_STATE_KEY = "sf_oauth_state";
     private static final String OAUTH_STATE_TS_KEY = "sf_oauth_state_ts";
@@ -61,7 +63,7 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
             cfg = EncryptedDbConfigStore.load();
         } catch (SQLException e) {
             log.log(Level.SEVERE, "Unable to load server configuration for Salesforce OAuth start", e);
-            throw new ServletException("Unable to load server configuration", e);
+            throw new ServletException(com.sim.chatserver.util.CommonLiteralConstants.MSG_LOAD_SERVER_CONFIGURATION, e);
         }
 
         String loginUrl = trimToNull(cfg.getSalesforceLoginUrl());
@@ -108,14 +110,14 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
         safeRedirect(resp, safeAuthorizeUrl);
     
         } catch (IOException | ServletException | IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
-            java.util.logging.Logger.getLogger("OWASP")
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                    .log(java.util.logging.Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -128,7 +130,7 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
         }
         Object roleObj = session.getAttribute(SESSION_ROLE);
         String role = roleObj == null ? "" : String.valueOf(roleObj);
-        return "ADMIN".equalsIgnoreCase(role);
+        return com.sim.chatserver.util.CommonLiteralConstants.ROLE_ADMIN.equalsIgnoreCase(role);
     }
 
     /**
@@ -138,7 +140,7 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
     private String buildExternalRedirectUri(HttpServletRequest req) {
         String scheme = sanitizeScheme(readForwardedHeader(req, "X-Forwarded-Proto"));
         if (isBlank(scheme)) {
-            scheme = "https";
+            scheme = com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTPS;
         }
 
         String hostHeader = readForwardedHeader(req, "X-Forwarded-Host");
@@ -164,7 +166,7 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
                 host = sanitizeHost(h);
             }
         } else {
-            host = "localhost";
+            host = com.sim.chatserver.util.CommonLiteralConstants.HOST_LOCALHOST;
         }
 
         String forwardedPort = readForwardedHeader(req, "X-Forwarded-Port");
@@ -180,14 +182,14 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
         }
 
         if (isBlank(host)) {
-            host = "localhost";
+            host = com.sim.chatserver.util.CommonLiteralConstants.HOST_LOCALHOST;
         }
 
-        boolean defaultPort = ("http".equalsIgnoreCase(scheme) && port == 80)
-                || ("https".equalsIgnoreCase(scheme) && port == 443);
+        boolean defaultPort = (com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTP.equalsIgnoreCase(scheme) && port == 80)
+                || (com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTPS.equalsIgnoreCase(scheme) && port == 443);
 
         StringBuilder sb = new StringBuilder();
-        sb.append(scheme).append("://").append(host);
+        sb.append(scheme).append(com.sim.chatserver.util.CommonLiteralConstants.SCHEME_SEPARATOR).append(host);
         if (port > 0 && !defaultPort) {
             sb.append((char) 58).append(port);
         }
@@ -239,10 +241,10 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
 
     private URI normalizeBaseUri(String url) {
         String x = url == null ? "" : url.trim();
-        if (!x.startsWith("http://") && !x.startsWith("https://")) {
-            x = "https://" + x;
+        if (!x.startsWith(com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTP) && !x.startsWith(com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTPS)) {
+            x = com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTPS + x;
         }
-        x = x.replaceAll("/+$", "");
+        x = x.replaceAll(com.sim.chatserver.util.CommonLiteralConstants.REGEX_TRAILING_SLASHES, "");
         try {
             URI parsed = URI.create(x).normalize();
             String scheme = sanitizeScheme(parsed.getScheme());
@@ -251,7 +253,7 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
                 return null;
             }
             StringBuilder b = new StringBuilder();
-            b.append(scheme).append("://").append(host);
+            b.append(scheme).append(com.sim.chatserver.util.CommonLiteralConstants.SCHEME_SEPARATOR).append(host);
             if (parsed.getPort() > 0) {
                 b.append((char) 58).append(parsed.getPort());
             }
@@ -346,7 +348,7 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
             return null;
         }
         String normalized = scheme.trim().toLowerCase(java.util.Locale.ROOT);
-        if ("http".equals(normalized) || "https".equals(normalized)) {
+        if (com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTP.equals(normalized) || com.sim.chatserver.util.CommonLiteralConstants.SCHEME_HTTPS.equals(normalized)) {
             return normalized;
         }
         return null;
@@ -367,4 +369,10 @@ public class SalesforceOAuthStartServlet extends HttpServlet {
     private boolean isBlank(String s) {
         return s == null || s.isBlank();
     }
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
+
 }
+

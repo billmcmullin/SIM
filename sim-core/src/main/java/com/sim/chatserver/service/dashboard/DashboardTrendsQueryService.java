@@ -18,12 +18,36 @@ import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.util.DashboardDbUtil;
 import com.sim.chatserver.util.SqlTimeUtil;
+import com.sim.chatserver.util.CommonLiteralConstants;
+import com.sim.chatserver.util.SqlLiteralConstants;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
 import jakarta.enterprise.inject.spi.CDI;
 
 public final class DashboardTrendsQueryService {
+
+    private static final String MSG_LOAD_TREND_DATA_FAILED = "Unable to load trend data";
+    private static final String SQL_SELECT_SNAPSHOTS_PREFIX = CommonLiteralConstants.SQL_SELECT_WIDGET_CHAT_PREFIX;
+    private static final String SQL_SELECT_SNAPSHOTS_SUFFIX = " WHERE DATE(created_at) = ? ORDER BY created_at DESC";
+    private static final String COL_WIDGET_CHAT_ID = CommonLiteralConstants.SQL_COL_WIDGET_CHAT_ID;
+    private static final String COL_PROMPT = SqlLiteralConstants.COL_PROMPT;
+    private static final String COL_RESPONSE_TEXT = CommonLiteralConstants.SQL_COL_RESPONSE_TEXT;
+    private static final String COL_CREATED_AT = SqlLiteralConstants.COL_CREATED_AT;
+    private static final String COL_SESSION_ID = com.sim.chatserver.util.SqlLiteralConstants.COL_SESSION_ID;
+    private static final String TERM_ENTRY_TRENDS = "Entry Trends";
+    private static final String EMPTY = "";
+    private static final String MSG_COLLECT_CHATS_FOR_DAY_FAILED = "Unable to collect chats for day";
+    private static final String MSG_VALIDATE_WIDGET_TABLE_FAILED_PREFIX = "Unable to validate widget table ";
+    private static final String SQL_SELECT_CREATED_AT_PREFIX = "SELECT created_at FROM ";
+    private static final String SQL_SELECT_CREATED_AT_SUFFIX = com.sim.chatserver.util.CommonLiteralConstants.SQL_WHERE_CREATED_AT_RANGE;
+    private static final String MSG_COLLECT_TREND_DATA_FAILED_PREFIX = "Unable to collect trend data for widget ";
+    private static final String DEFAULT_ZERO_TEXT = "0";
+    private static final String MSG_PARSE_TREND_COUNT_FALLBACK = "Unable to parse trend count; using zero fallback";
+    private static final String MSG_INVALID_SQL_IDENTIFIER = SqlLiteralConstants.SQL_INVALID_IDENTIFIER;
+    private static final String IDENTIFIER_REGEX = CommonLiteralConstants.SQL_IDENTIFIER_REGEX;
+    private static final String QUOTE = "\"";
+    private static final String DOUBLE_QUOTE = SqlLiteralConstants.DOUBLE_DOUBLE_QUOTE;
 
     private final Logger log;
 
@@ -48,7 +72,7 @@ public final class DashboardTrendsQueryService {
                 collectWidgetTrend(conn, widget, start, end, totalDaily, widgetDaily, widgetNameToId, tableExistsCache);
             }
         } catch (SQLException | IllegalArgumentException | IllegalStateException ex) {
-            throw new IllegalStateException("Unable to load trend data", ex);
+            throw new IllegalStateException(MSG_LOAD_TREND_DATA_FAILED, ex);
         }
 
         return new TrendResult(totalDaily, widgetDaily, widgetNameToId);
@@ -76,24 +100,24 @@ public final class DashboardTrendsQueryService {
                     continue;
                 }
 
-                String sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
+                String sql = SQL_SELECT_SNAPSHOTS_PREFIX
                         + quoteIdentifier(tableName)
-                        + " WHERE DATE(created_at) = ? ORDER BY created_at DESC";
+                    + SQL_SELECT_SNAPSHOTS_SUFFIX;
 
                 try (java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
                     ps.setDate(1, java.sql.Date.valueOf(targetDate));
                     try (ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
-                            String chatId = rs.getString("widget_chat_id");
-                            String prompt = rs.getString("prompt");
-                            String responseText = rs.getString("response_text");
-                            Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                            String sessionId = rs.getString("session_id");
+                            String chatId = rs.getString(COL_WIDGET_CHAT_ID);
+                            String prompt = rs.getString(COL_PROMPT);
+                            String responseText = rs.getString(COL_RESPONSE_TEXT);
+                            Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, COL_CREATED_AT);
+                            String sessionId = rs.getString(COL_SESSION_ID);
 
                             snapshots.add(new TermChatSnapshot(
-                                    "Entry Trends",
+                                    TERM_ENTRY_TRENDS,
                                     widgetId,
-                                    chatId == null ? "" : chatId,
+                                    chatId == null ? EMPTY : chatId,
                                     prompt,
                                     responseText,
                                     createdAt,
@@ -104,7 +128,7 @@ public final class DashboardTrendsQueryService {
                 }
             }
         } catch (SQLException | IllegalStateException ex) {
-            throw new IllegalStateException("Unable to collect chats for day", ex);
+            throw new IllegalStateException(MSG_COLLECT_CHATS_FOR_DAY_FAILED, ex);
         }
 
         return snapshots;
@@ -133,20 +157,20 @@ public final class DashboardTrendsQueryService {
                 return;
             }
         } catch (SQLException ex) {
-            log.log(Level.WARNING, "Unable to validate widget table " + tableName, ex);
+            log.log(Level.WARNING, MSG_VALIDATE_WIDGET_TABLE_FAILED_PREFIX + tableName, ex);
             return;
         }
 
         Map<LocalDate, Integer> series = zeroSeries(totalDaily);
-        String sql = "SELECT created_at FROM " + quoteIdentifier(tableName)
-                + " WHERE created_at >= ? AND created_at < ?";
+        String sql = SQL_SELECT_CREATED_AT_PREFIX + quoteIdentifier(tableName)
+                + SQL_SELECT_CREATED_AT_SUFFIX;
 
         try (java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setTimestamp(1, Timestamp.valueOf(start.atStartOfDay()));
             ps.setTimestamp(2, Timestamp.valueOf(end.plusDays(1).atStartOfDay()));
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    Timestamp ts = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                    Timestamp ts = SqlTimeUtil.safeTimestamp(rs, COL_CREATED_AT);
                     if (ts == null) {
                         continue;
                     }
@@ -159,7 +183,7 @@ public final class DashboardTrendsQueryService {
                 }
             }
         } catch (SQLException ex) {
-            log.log(Level.WARNING, "Unable to collect trend data for widget " + widgetId, ex);
+            log.log(Level.WARNING, MSG_COLLECT_TREND_DATA_FAILED_PREFIX + widgetId, ex);
         }
 
         widgetDaily.put(widgetName, series);
@@ -175,12 +199,12 @@ public final class DashboardTrendsQueryService {
     }
 
     private void incrementDate(Map<LocalDate, Integer> counts, LocalDate date) {
-        String valueText = Objects.toString(counts.get(date), "0");
+        String valueText = Objects.toString(counts.get(date), DEFAULT_ZERO_TEXT);
         int value;
         try {
             value = Integer.parseInt(valueText);
         } catch (NumberFormatException ex) {
-            log.log(Level.FINE, "Unable to parse trend count; using zero fallback", ex);
+            log.log(Level.FINE, MSG_PARSE_TREND_COUNT_FALLBACK, ex);
             value = 0;
         }
         counts.put(date, Integer.valueOf(value + 1));
@@ -192,31 +216,17 @@ public final class DashboardTrendsQueryService {
 
     private String quoteIdentifier(String identifier) {
         if (identifier == null) {
-            throw new IllegalArgumentException("Invalid SQL identifier");
+            throw new IllegalArgumentException(MSG_INVALID_SQL_IDENTIFIER);
         }
         String normalized = identifier.trim();
         if (normalized.isBlank()) {
-            throw new IllegalArgumentException("Invalid SQL identifier");
+            throw new IllegalArgumentException(MSG_INVALID_SQL_IDENTIFIER);
         }
-        if (!normalized.matches("^[A-Za-z_][A-Za-z0-9_]{0,62}$")) {
-            throw new IllegalArgumentException("Invalid SQL identifier");
+        if (!normalized.matches(IDENTIFIER_REGEX)) {
+            throw new IllegalArgumentException(MSG_INVALID_SQL_IDENTIFIER);
         }
-        return '"' + normalized.replace("\"", "\"\"") + '"';
-    }
-
-    public static final class TrendResult {
-        public final Map<LocalDate, Integer> totalDaily;
-        public final Map<String, Map<LocalDate, Integer>> widgetDaily;
-        public final Map<String, String> widgetNameToId;
-
-        private TrendResult(
-                Map<LocalDate, Integer> totalDaily,
-                Map<String, Map<LocalDate, Integer>> widgetDaily,
-                Map<String, String> widgetNameToId
-        ) {
-            this.totalDaily = totalDaily;
-            this.widgetDaily = widgetDaily;
-            this.widgetNameToId = widgetNameToId;
-        }
+        return '"' + normalized.replace(QUOTE, DOUBLE_QUOTE) + '"';
     }
 }
+
+

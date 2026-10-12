@@ -10,6 +10,7 @@ import java.lang.reflect.Method;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.service.dashboard.DashboardSessionAggregationQueryService;
+import com.sim.chatserver.service.dashboard.SessionAccumulatorData;
 
 import org.junit.jupiter.api.Test;
 
@@ -17,8 +18,7 @@ class DashboardSessionAggregationQueryServiceTest {
 
     @Test
     void sessionAccumulatorData_defaultsAreInitialized() {
-        DashboardSessionAggregationQueryService.SessionAccumulatorData data =
-                new DashboardSessionAggregationQueryService.SessionAccumulatorData();
+        SessionAccumulatorData data = new SessionAccumulatorData();
 
         assertEquals(0, data.count);
         assertEquals(null, data.lastEntry);

@@ -20,7 +20,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import jakarta.servlet.http.Part;
-
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "DashboardSessionNamesLabelServlet", urlPatterns = {"/dashboard/session-names/label"})
 @MultipartConfig
 public class DashboardSessionNamesLabelServlet extends HttpServlet {
@@ -34,48 +36,48 @@ public class DashboardSessionNamesLabelServlet extends HttpServlet {
             return;
         }
 
-        String sessionId = ServletRequestParamUtil.firstParam(req, "sessionId", 512, true, true);
-        String displayName = ServletRequestParamUtil.firstParam(req, "displayName", 512, true, true);
+        String sessionId = ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.FIELD_SESSION_ID, 512, true, true);
+        String displayName = ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.FIELD_DISPLAY_NAME, 512, true, true);
         String email = ServletRequestParamUtil.firstParam(req, "email", 512, true, true);
 
         if (sessionId == null || sessionId.isBlank()) {
-            sessionId = readPartValue(req, "sessionId");
+            sessionId = readPartValue(req, com.sim.chatserver.util.CommonLiteralConstants.FIELD_SESSION_ID);
         }
 
         if (sessionId == null || sessionId.isBlank()) {
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, Json.createObjectBuilder()
-                    .add("status", "error")
-                    .add("message", "sessionId is required")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "sessionId is required")
                     .build());
             return;
         }
 
         try {
             SessionLabelStore.saveLabel(sessionId, displayName, email);
-            writeJson(resp, HttpServletResponse.SC_OK, Json.createObjectBuilder().add("status", "ok").build());
+            writeJson(resp, HttpServletResponse.SC_OK, Json.createObjectBuilder().add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok").build());
         } catch (IllegalArgumentException e) {
             log.log(Level.FINE, "Invalid session label request", e);
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, Json.createObjectBuilder()
-                    .add("status", "error")
-                    .add("message", "Invalid session label request")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Invalid session label request")
                     .build());
         } catch (SQLException e) {
             log.log(Level.WARNING, "Unable to persist session label", e);
             writeJson(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, Json.createObjectBuilder()
-                    .add("status", "error")
-                    .add("message", "Unable to save session label")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Unable to save session label")
                     .build());
         }
     
         } catch (IllegalArgumentException | IllegalStateException e) {
-            java.util.logging.Logger.getLogger("OWASP")
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                    .log(java.util.logging.Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_POST, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -103,10 +105,10 @@ public class DashboardSessionNamesLabelServlet extends HttpServlet {
 
     private boolean requireAuth(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
             writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED, Json.createObjectBuilder()
-                    .add("status", "error")
-                    .add("message", "Authentication required.")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED)
                     .build());
             return false;
         }
@@ -118,8 +120,13 @@ public class DashboardSessionNamesLabelServlet extends HttpServlet {
             ServletJsonResponseUtil.writeJson(resp, status, payload);
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to write session label response", e);
-            throw new IllegalStateException("Unable to write response", e);
+            throw new IllegalStateException(com.sim.chatserver.util.CommonLiteralConstants.MSG_UNABLE_TO_WRITE_RESPONSE_NO_PERIOD, e);
         }
+    }
+
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
     }
 
 }

@@ -7,6 +7,28 @@ import java.util.Set;
 import java.util.regex.Pattern;
 
 final class InactiveUsersFrustrationTextUtil {
+    private static final char SEMICOLON_CHAR = (char) 59;
+    private static final String CODE_BLOCK_MARKER = "```";
+    private static final String CODE_SYMBOLS = "{}[]()" + SEMICOLON_CHAR + "=<>/_\\\\|";
+    private static final String CODE_BLOCK_OPEN = "{";
+    private static final String CODE_BLOCK_CLOSE = "}";
+    private static final String LAMBDA_ARROW = "=>";
+    private static final String DOUBLE_COLON = "::";
+    private static final String LOG_DASH_SEPARATOR = " - ";
+    private static final String LOG_PIPE_SEPARATOR = " | ";
+    private static final String LOG_EXCEPTION = "Exception";
+    private static final String LOG_STACKTRACE = "Stacktrace";
+    private static final String LOG_AT_COM = "at com.";
+    private static final Pattern LOG_DATE_TIME_PATTERN = Pattern.compile(".*\\b\\d{4}-\\d{2}-\\d{2}[ T]\\d{2}:\\d{2}:\\d{2}.*");
+    private static final Pattern LOG_TIME_PATTERN = Pattern.compile(".*\\b\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?\\b.*");
+    private static final Pattern TOKEN_SPLIT_PATTERN = Pattern.compile("[^A-Za-z0-9_]+");
+    private static final Pattern ALL_CAPS_TOKEN_PATTERN = Pattern.compile("[A-Z0-9_]+");
+    private static final String[] CODE_KEYWORDS = {
+            "select ", " from ", " where ", " join ", "insert ", "update ", "delete ",
+            " function ", " class ", " public ", " private ", " protected ", " return ",
+            " if(", " if (", " for(", " for (", " while(", " while ("
+    };
+
     private static final Pattern ALL_CAPS_WORD = Pattern.compile("\\b[A-Z]{4,}\\b");
     private static final Pattern LOGGER_TOKEN = Pattern.compile("\\b(INFO|DEBUG|TRACE|WARN|WARNING|ERROR|FATAL)\\b");
     private static final Pattern PROFANITY_PATTERN = Pattern.compile(
@@ -22,7 +44,7 @@ final class InactiveUsersFrustrationTextUtil {
     private static final Set<String> SAFE_ACRONYMS = Set.of(
             "API", "SDK", "CLI", "GUI", "SQL", "JSON", "XML", "HTTP", "HTTPS", "URL", "URI", "JWT", "SSO", "SAML", "OIDC", "TLS", "SSL",
             "TCP", "UDP", "DNS", "IP", "CPU", "GPU", "RAM", "OS", "DB", "ETL", "CI", "CD", "IDE", "LTS", "JDK", "JVM",
-            "MISRA", "OWASP", "CWE", "CVE", "NIST", "ISO", "IEC", "SOC", "PCI", "HIPAA", "GDPR", "PII"
+            "MISRA", com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP, "CWE", "CVE", "NIST", "ISO", "IEC", "SOC", "PCI", "HIPAA", "GDPR", "PII"
     );
 
     private InactiveUsersFrustrationTextUtil() {
@@ -79,30 +101,27 @@ final class InactiveUsersFrustrationTextUtil {
         String value = text;
         String lower = value.toLowerCase();
 
-        if (value.contains("```")) {
+        if (value.contains(CODE_BLOCK_MARKER)) {
             return true;
         }
 
         int codeHints = 0;
-        String[] keywords = {
-                "select ", " from ", " where ", " join ", "insert ", "update ", "delete ",
-                " function ", " class ", " public ", " private ", " protected ", " return ",
-                " if(", " if (", " for(", " for (", " while(", " while ("
-        };
-        for (String keyword : keywords) {
+        for (String keyword : CODE_KEYWORDS) {
             if (lower.contains(keyword)) {
                 codeHints++;
             }
         }
 
-        if (value.contains("{") || value.contains("}") || value.contains(String.valueOf((char) 59)) || value.contains("=>") || value.contains("::")) {
+        if (value.contains(CODE_BLOCK_OPEN) || value.contains(CODE_BLOCK_CLOSE)
+                || value.contains(String.valueOf(SEMICOLON_CHAR))
+                || value.contains(LAMBDA_ARROW) || value.contains(DOUBLE_COLON)) {
             codeHints++;
         }
 
         int symbolCount = 0;
         for (int i = 0; i < value.length(); i++) {
             char c = value.charAt(i);
-            if ("{}[]();=<>/_\\\\|".indexOf(c) >= 0) {
+            if (CODE_SYMBOLS.indexOf(c) >= 0) {
                 symbolCount++;
             }
         }
@@ -128,16 +147,16 @@ final class InactiveUsersFrustrationTextUtil {
         if (LOGGER_TOKEN.matcher(text).find()) {
             hints++;
         }
-        if (text.matches(".*\\b\\d{4}-\\d{2}-\\d{2}[ T]\\d{2}:\\d{2}:\\d{2}.*")) {
+        if (LOG_DATE_TIME_PATTERN.matcher(text).matches()) {
             hints++;
         }
-        if (text.matches(".*\\b\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?\\b.*")) {
+        if (LOG_TIME_PATTERN.matcher(text).matches()) {
             hints++;
         }
-        if (text.contains(" - ") || text.contains(" | ") || text.contains("::")) {
+        if (text.contains(LOG_DASH_SEPARATOR) || text.contains(LOG_PIPE_SEPARATOR) || text.contains(DOUBLE_COLON)) {
             hints++;
         }
-        if (text.contains("Exception") || text.contains("Stacktrace") || text.contains("at com.")) {
+        if (text.contains(LOG_EXCEPTION) || text.contains(LOG_STACKTRACE) || text.contains(LOG_AT_COM)) {
             hints++;
         }
 
@@ -149,7 +168,7 @@ final class InactiveUsersFrustrationTextUtil {
             return false;
         }
 
-        String[] tokens = text.split("[^A-Za-z0-9_]+");
+        String[] tokens = TOKEN_SPLIT_PATTERN.split(text);
         boolean sawCapsToken = false;
 
         for (String token : tokens) {
@@ -157,7 +176,7 @@ final class InactiveUsersFrustrationTextUtil {
                 continue;
             }
 
-            boolean isAllCaps = token.equals(token.toUpperCase()) && token.matches("[A-Z0-9_]+");
+            boolean isAllCaps = token.equals(token.toUpperCase()) && ALL_CAPS_TOKEN_PATTERN.matcher(token).matches();
             if (!isAllCaps) {
                 continue;
             }

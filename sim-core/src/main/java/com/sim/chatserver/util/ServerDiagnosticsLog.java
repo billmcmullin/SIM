@@ -27,6 +27,28 @@ public final class ServerDiagnosticsLog {
 
     private static final Logger log = Logger.getLogger(ServerDiagnosticsLog.class.getCanonicalName());
 
+    private static final String EMPTY = "";
+    private static final String DEFAULT_COMPONENT = "server";
+    private static final String DEFAULT_EVENT = "event";
+    private static final String LOG_SUFFIX = ".log";
+    private static final String MSG_WRITE_FAILURE_PREFIX = "Failed writing server diagnostics log. Disable with ";
+    private static final String MSG_WRITE_FAILURE_MIDDLE = "=false or fix ";
+    private static final String ENTRY_SEPARATOR = "================================================================================";
+    private static final String ENTRY_TIMESTAMP = "Timestamp : ";
+    private static final String ENTRY_COMPONENT = "Component : ";
+    private static final String ENTRY_REQUEST_ID = "RequestId : ";
+    private static final String ENTRY_NO_REQUEST = "(none)";
+    private static final String ENTRY_EVENT = "Event     : ";
+    private static final String ENTRY_DETAILS = "Details:";
+    private static final String ENTRY_ERROR = "Error:";
+    private static final String ENTRY_COLON_SPACE = ": ";
+    private static final String ENTRY_STACK_TRACE = "Stack Trace:";
+    private static final String TRUTHY_TRUE = com.sim.chatserver.util.CommonLiteralConstants.VALUE_TRUE;
+    private static final String TRUTHY_ONE = "1";
+    private static final String TRUTHY_YES = com.sim.chatserver.util.CommonLiteralConstants.VALUE_YES;
+    private static final String TRUTHY_Y = "y";
+    private static final String TRUTHY_ON = "on";
+
     private static final String ENV_ENABLED = "SIM_SERVER_DIAGNOSTIC_LOG_ENABLED";
     private static final String ENV_DIR = "SIM_SERVER_DIAGNOSTIC_LOG_DIR";
 
@@ -55,66 +77,23 @@ public final class ServerDiagnosticsLog {
             return;
         }
 
-        String comp = safeToken(component, "server");
-        String req = safeToken(requestId, "");
-        String evt = safeToken(event, "event");
+        String comp = safeToken(component, DEFAULT_COMPONENT);
+        String req = safeToken(requestId, EMPTY);
+        String evt = safeToken(event, DEFAULT_EVENT);
 
         synchronized (LOCK) {
             try {
                 Path dir = resolveLogDirectory();
                 Files.createDirectories(dir);
 
-                String fileName = TextIoSanitizerUtil.safeFileToken(comp, "server") + '-' + LocalDate.now() + ".log";
-                Path file = dir.resolve(fileName);
-
-                String lineSep = System.lineSeparator();
-                StringBuilder entry = new StringBuilder(1024);
-                entry.append("================================================================================")
-                    .append(lineSep)
-                    .append("Timestamp : ").append(Instant.now()).append(lineSep)
-                    .append("Component : ").append(comp).append(lineSep)
-                    .append("RequestId : ").append(req.isBlank() ? "(none)" : req).append(lineSep)
-                    .append("Event     : ").append(evt).append(lineSep);
-
-                if (details != null && !details.isBlank()) {
-                    entry.append("Details:").append(lineSep)
-                        .append(details)
-                        .append(lineSep);
-                }
-
-                if (error != null) {
-                    entry.append("Error:")
-                        .append(lineSep)
-                        .append(error.getClass().getCanonicalName())
-                        .append(": ")
-                        .append(safeErrorMessage(error))
-                        .append(lineSep);
-
-                    StringWriter sw = new StringWriter();
-                    error.printStackTrace(new PrintWriter(sw));
-                    entry.append("Stack Trace:")
-                        .append(lineSep)
-                            .append(sw)
-                        .append(lineSep);
-                }
-
-                entry.append("================================================================================")
-                    .append(lineSep)
-                    .append(lineSep);
-
-                Files.writeString(
-                        file,
-                        entry,
-                        StandardCharsets.UTF_8,
-                        StandardOpenOption.CREATE,
-                        StandardOpenOption.APPEND,
-                        StandardOpenOption.WRITE
-                );
+                Path file = resolveDailyLogPath(dir, comp);
+                String entry = buildEntry(comp, req, evt, details, error);
+                appendEntry(file, entry);
             } catch (IOException ex) {
                 if (!warnedWriteFailure) {
                     warnedWriteFailure = true;
                     log.log(Level.WARNING,
-                            "Failed writing server diagnostics log. Disable with " + ENV_ENABLED + "=false or fix " + ENV_DIR,
+                            MSG_WRITE_FAILURE_PREFIX + ENV_ENABLED + MSG_WRITE_FAILURE_MIDDLE + ENV_DIR,
                             ex);
                 }
             }
@@ -134,7 +113,7 @@ public final class ServerDiagnosticsLog {
     private static Path resolveLogDirectory() {
         String configured = DIR_ENV_VALUE;
         String dirName = configured == null ? DEFAULT_DIR_NAME : configured;
-        Path base = Paths.get("").toAbsolutePath().normalize();
+        Path base = Paths.get(EMPTY).toAbsolutePath().normalize();
         Path resolved = base.resolve(dirName).normalize();
         if (!resolved.startsWith(base)) {
             return base.resolve(DEFAULT_DIR_NAME).normalize();
@@ -142,13 +121,67 @@ public final class ServerDiagnosticsLog {
         return resolved;
     }
 
+    private static Path resolveDailyLogPath(Path dir, String component) {
+        String fileName = TextIoSanitizerUtil.safeFileToken(component, DEFAULT_COMPONENT) + '-' + LocalDate.now() + LOG_SUFFIX;
+        return dir.resolve(fileName);
+    }
+
+    private static String buildEntry(String component, String requestId, String event, String details, Throwable error) {
+        String lineSep = System.lineSeparator();
+        StringBuilder entry = new StringBuilder(1024);
+        entry.append(ENTRY_SEPARATOR)
+            .append(lineSep)
+            .append(ENTRY_TIMESTAMP).append(Instant.now()).append(lineSep)
+            .append(ENTRY_COMPONENT).append(component).append(lineSep)
+            .append(ENTRY_REQUEST_ID).append(requestId.isBlank() ? ENTRY_NO_REQUEST : requestId).append(lineSep)
+            .append(ENTRY_EVENT).append(event).append(lineSep);
+
+        if (details != null && !details.isBlank()) {
+            entry.append(ENTRY_DETAILS).append(lineSep)
+                .append(details)
+                .append(lineSep);
+        }
+
+        if (error != null) {
+            entry.append(ENTRY_ERROR)
+                .append(lineSep)
+                .append(error.getClass().getCanonicalName())
+                .append(ENTRY_COLON_SPACE)
+                .append(safeErrorMessage(error))
+                .append(lineSep);
+
+            StringWriter sw = new StringWriter();
+            error.printStackTrace(new PrintWriter(sw));
+            entry.append(ENTRY_STACK_TRACE)
+                .append(lineSep)
+                .append(sw)
+                .append(lineSep);
+        }
+
+        entry.append(ENTRY_SEPARATOR)
+            .append(lineSep)
+            .append(lineSep);
+        return entry.toString();
+    }
+
+    private static void appendEntry(Path file, String entry) throws IOException {
+        Files.writeString(
+                file,
+                entry,
+                StandardCharsets.UTF_8,
+                StandardOpenOption.CREATE,
+                StandardOpenOption.APPEND,
+                StandardOpenOption.WRITE
+        );
+    }
+
     private static boolean isTruthy(String value) {
-        String normalized = value == null ? "" : value.trim().toLowerCase(Locale.ROOT);
-        return "true".equals(normalized)
-                || "1".equals(normalized)
-                || "yes".equals(normalized)
-                || "y".equals(normalized)
-                || "on".equals(normalized);
+    String normalized = value == null ? EMPTY : value.trim().toLowerCase(Locale.ROOT);
+    return TRUTHY_TRUE.equals(normalized)
+        || TRUTHY_ONE.equals(normalized)
+        || TRUTHY_YES.equals(normalized)
+        || TRUTHY_Y.equals(normalized)
+        || TRUTHY_ON.equals(normalized);
     }
 
     private static String safeToken(String value, String fallback) {
@@ -197,32 +230,18 @@ public final class ServerDiagnosticsLog {
             return null;
         }
         if (trimmed.length() > MAX_CONFIG_VALUE_LEN) {
-            return safeSlice(trimmed, 0, MAX_CONFIG_VALUE_LEN);
+            return TextIoSanitizerUtil.safeSlice(trimmed, 0, MAX_CONFIG_VALUE_LEN);
         }
         return trimmed;
     }
 
-    private static String safeSlice(String value, int beginIndex, int endIndex) {
-        if (value == null || value.isEmpty()) {
-            return "";
-        }
-        int safeBegin = Math.max(0, beginIndex);
-        int safeEnd = Math.max(safeBegin, Math.min(endIndex, value.length()));
-        int length = safeEnd - safeBegin;
-        if (length <= 0) {
-            return "";
-        }
-        char[] chars = value.toCharArray();
-        return new String(chars, safeBegin, length);
-    }
-
     private static String safeErrorMessage(Throwable error) {
         if (error == null) {
-            return "";
+            return EMPTY;
         }
         String msg = error.getMessage();
         if (msg == null) {
-            return "";
+            return EMPTY;
         }
         return msg.replace(System.lineSeparator().charAt(0), ' ').replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), ' ').trim();
     }

@@ -11,6 +11,8 @@ import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.sim.chatserver.util.CommonLiteralConstants;
+
 /**
  * URL allow/deny validator to reduce SSRF risk for workspace calls.
  *
@@ -22,6 +24,25 @@ import java.util.logging.Logger;
 public final class TrustedUrlValidator {
 
     private static final Logger LOG = Logger.getLogger(TrustedUrlValidator.class.getCanonicalName());
+    private static final String EMPTY = "";
+    private static final String HTTPS_SCHEME = CommonLiteralConstants.SCHEME_HTTPS;
+    private static final String HTTP_SCHEME = CommonLiteralConstants.SCHEME_HTTP;
+    private static final String HOST_LOCALHOST = com.sim.chatserver.util.CommonLiteralConstants.HOST_LOCALHOST;
+    private static final String SUFFIX_LOCAL = ".local";
+    private static final String SUFFIX_INTERNAL = ".internal";
+    private static final String SUFFIX_LOCALHOST = ".localhost";
+    private static final String SUFFIX_LOCALDOMAIN = ".localdomain";
+    private static final String CONTROL_CHARS_REGEX = com.sim.chatserver.util.CommonLiteralConstants.REGEX_CTRL_EXCEPT_CRLF_TAB;
+    private static final String LOG_URL_PARSE_FAILED = "URL parse failed during trust validation";
+    private static final String LOG_HOST_RESOLUTION_FAILED = "Host resolution failed during trust validation";
+    private static final String ERR_URL_BLANK = "URL is blank.";
+    private static final String ERR_URL_INVALID = "URL is invalid.";
+    private static final String ERR_SCHEME = "Only http/https URLs are allowed.";
+    private static final String ERR_HOST_MISSING = "URL host is missing.";
+    private static final String ERR_LOCAL_HOST = "Local/internal host is not allowed.";
+    private static final String ERR_ALLOWLIST = "Host is not in allowlist.";
+    private static final String ERR_PRIVATE_NETWORK = "Private/local network address is not allowed.";
+    private static final String ERR_DNS_FAILED = "Host DNS resolution failed.";
 
     private final Set<String> allowedHosts;     // exact lowercase hosts
     private final Set<String> allowedSuffixes;  // lowercase suffixes, e.g. ".example.com"
@@ -43,35 +64,35 @@ public final class TrustedUrlValidator {
     public ValidationResult validate(String rawUrl) {
         String canonicalUrl = canonicalizeUrlInput(rawUrl);
         if (canonicalUrl.isBlank()) {
-            return ValidationResult.invalid("URL is blank.");
+            return ValidationResult.invalid(ERR_URL_BLANK);
         }
 
         final URI uri;
         try {
             uri = URI.create(canonicalUrl).normalize();
         } catch (IllegalArgumentException ex) {
-            LOG.log(Level.FINE, "URL parse failed during trust validation", ex);
-            return ValidationResult.invalid("URL is invalid.");
+            LOG.log(Level.FINE, LOG_URL_PARSE_FAILED, ex);
+            return ValidationResult.invalid(ERR_URL_INVALID);
         }
 
         String scheme = lower(uri.getScheme());
-        if (!"https".equals(scheme) && !"http".equals(scheme)) {
-            return ValidationResult.invalid("Only http/https URLs are allowed.");
+        if (!HTTPS_SCHEME.equals(scheme) && !HTTP_SCHEME.equals(scheme)) {
+            return ValidationResult.invalid(ERR_SCHEME);
         }
 
         String host = lower(uri.getHost());
         if (host.isBlank()) {
-            return ValidationResult.invalid("URL host is missing.");
+            return ValidationResult.invalid(ERR_HOST_MISSING);
         }
 
         if (isObviouslyLocalAlias(host)) {
-            return ValidationResult.invalid("Local/internal host is not allowed.");
+            return ValidationResult.invalid(ERR_LOCAL_HOST);
         }
 
         // If allowlist configured, enforce it.
         if (!allowedHosts.isEmpty() || !allowedSuffixes.isEmpty()) {
             if (!isHostAllowedByAllowlist(host)) {
-                return ValidationResult.invalid("Host is not in allowlist.");
+                return ValidationResult.invalid(ERR_ALLOWLIST);
             }
         }
 
@@ -79,11 +100,11 @@ public final class TrustedUrlValidator {
         try {
             InetAddress address = InetAddress.getByName(host);
             if (!allowPrivateNetworks && isPrivateOrLocalAddress(address)) {
-                return ValidationResult.invalid("Private/local network address is not allowed.");
+                return ValidationResult.invalid(ERR_PRIVATE_NETWORK);
             }
         } catch (UnknownHostException | SecurityException ex) {
-            LOG.log(Level.FINE, "Host resolution failed during trust validation", ex);
-            return ValidationResult.invalid("Host DNS resolution failed.");
+            LOG.log(Level.FINE, LOG_HOST_RESOLUTION_FAILED, ex);
+            return ValidationResult.invalid(ERR_DNS_FAILED);
         }
 
         return ValidationResult.valid(host, scheme, uri.getPort());
@@ -118,11 +139,11 @@ public final class TrustedUrlValidator {
     }
 
     private boolean isObviouslyLocalAlias(String host) {
-        return "localhost".equals(host)
-                || host.endsWith(".local")
-                || host.endsWith(".internal")
-                || host.endsWith(".localhost")
-                || host.endsWith(".localdomain");
+        return HOST_LOCALHOST.equals(host)
+            || host.endsWith(SUFFIX_LOCAL)
+            || host.endsWith(SUFFIX_INTERNAL)
+            || host.endsWith(SUFFIX_LOCALHOST)
+            || host.endsWith(SUFFIX_LOCALDOMAIN);
     }
 
     private boolean isPrivateOrLocalAddress(InetAddress a) {
@@ -148,71 +169,15 @@ public final class TrustedUrlValidator {
     }
 
     private String lower(String s) {
-        return s == null ? "" : s.trim().toLowerCase(Locale.ROOT);
+        return s == null ? EMPTY : s.trim().toLowerCase(Locale.ROOT);
     }
 
     private String canonicalizeUrlInput(String rawUrl) {
         if (rawUrl == null) {
-            return "";
+            return EMPTY;
         }
         return Normalizer.normalize(rawUrl, Normalizer.Form.NFKC)
-                .replaceAll("[\\p{Cntrl}&&[^\\r\\n\\t]]", "")
+                .replaceAll(CONTROL_CHARS_REGEX, EMPTY)
                 .trim();
-    }
-
-    public static final class ValidationResult {
-
-        private final boolean valid;
-        private final String reason;
-        private final String host;
-        private final String scheme;
-        private final int port;
-
-        private ValidationResult(boolean valid, String reason, String host, String scheme, int port) {
-            this.valid = valid;
-            this.reason = reason == null ? "" : reason;
-            this.host = host == null ? "" : host;
-            this.scheme = scheme == null ? "" : scheme;
-            this.port = port;
-        }
-
-        private static ValidationResult valid(String host, String scheme, int port) {
-            return new ValidationResult(true, "", host, scheme, port);
-        }
-
-        private static ValidationResult invalid(String reason) {
-            return new ValidationResult(false, reason, "", "", -1);
-        }
-
-        public boolean isValid() {
-            return valid;
-        }
-
-        public String getReason() {
-            return reason;
-        }
-
-        String getHost() {
-            return host;
-        }
-
-        String getScheme() {
-            return scheme;
-        }
-
-        int getPort() {
-            return port;
-        }
-
-        @Override
-        public String toString() {
-            return "ValidationResult{"
-                    + "valid=" + valid
-                    + ", reason='" + reason + '\''
-                    + ", host='" + host + '\''
-                    + ", scheme='" + scheme + '\''
-                    + ", port=" + port
-                    + '}';
-        }
     }
 }

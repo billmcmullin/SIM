@@ -16,6 +16,9 @@ import com.sim.chatserver.widget.WidgetStore;
 
 public final class DashboardTermSelectionQueryService {
 
+    private static final String LOG_UNABLE_REBUILD_TERM_SNAPSHOTS = "Unable to rebuild term snapshots on demand";
+    private static final String LOG_UNABLE_LIST_WIDGETS = "Unable to list widgets for term selection";
+
     private final AppDataSourceHolder dataSourceHolder;
     private final TermsStore termsStore;
     private final Logger log;
@@ -46,7 +49,7 @@ public final class DashboardTermSelectionQueryService {
             }
             return summary.copyTermSnapshots();
         } catch (SQLException | IllegalStateException ex) {
-            log.log(Level.WARNING, "Unable to rebuild term snapshots on demand", ex);
+            log.log(Level.WARNING, LOG_UNABLE_REBUILD_TERM_SNAPSHOTS, ex);
             return Map.of();
         }
     }
@@ -56,7 +59,7 @@ public final class DashboardTermSelectionQueryService {
             List<WidgetEntry> widgets = WidgetStore.list(null);
             return widgets == null ? List.of() : widgets;
         } catch (SQLException | IllegalStateException ex) {
-            log.log(Level.WARNING, "Unable to list widgets for term selection", ex);
+            log.log(Level.WARNING, LOG_UNABLE_LIST_WIDGETS, ex);
             return List.of();
         }
     }

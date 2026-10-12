@@ -33,9 +33,11 @@ import org.openpdf.text.pdf.PdfWriter;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.JsonRequestParserUtil;
 import com.sim.chatserver.term.TermChatSnapshot;
+import com.sim.chatserver.util.CommonLiteralConstants;
 import com.sim.chatserver.util.SessionIdFormatter;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
+import com.sim.chatserver.web.dashboard.widgets.Selection;
 import com.sim.chatserver.web.dashboard.widgets.WidgetReviewStartServlet;
 
 import jakarta.enterprise.inject.spi.CDI;
@@ -52,12 +54,18 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "WidgetExportServlet", urlPatterns = {"/dashboard/widgets/drilldown/export"})
 public class WidgetExportServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(WidgetExportServlet.class.getCanonicalName());
 
-    private static final String DEFAULT_FORMAT = "csv";
+    private static final String FORMAT_CSV = CommonLiteralConstants.FORMAT_CSV;
+    private static final String FORMAT_JSON = CommonLiteralConstants.FORMAT_JSON;
+    private static final String KEY_SELECTED_CHAT_IDS = CommonLiteralConstants.KEY_SELECTED_CHAT_IDS;
+    private static final String DEFAULT_FORMAT = FORMAT_CSV;
     private static final int FALLBACK_ROW_LIMIT = parseIntProperty("export.fallbackRowLimit", 40);
     private static final Color TABLE_HEADER_BG = new Color(245, 247, 250);
     private static final int MAX_JSON_PAYLOAD_BYTES = 128 * 1024;
@@ -84,7 +92,7 @@ public class WidgetExportServlet extends HttpServlet {
             return;
         }
 
-        String selectionId = payload.getString("selectionId", "").trim();
+        String selectionId = payload.getString(com.sim.chatserver.util.CommonLiteralConstants.PARAM_SELECTION_ID, "").trim();
         if (selectionId.isEmpty()) {
             sendErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, "selectionId required.");
             return;
@@ -95,7 +103,7 @@ public class WidgetExportServlet extends HttpServlet {
         String reportMarkdown = payload.getString("reportMarkdown", "").trim();
 
         HttpSession session = req.getSession(false);
-        WidgetReviewStartServlet.Selection selection = WidgetReviewStartServlet.fetchSelection(session, selectionId);
+        Selection selection = WidgetReviewStartServlet.fetchSelection(session, selectionId);
         if (selection == null) {
             sendErrorSafe(resp, HttpServletResponse.SC_NOT_FOUND, "Selection not found.");
             return;
@@ -112,11 +120,11 @@ public class WidgetExportServlet extends HttpServlet {
             resp.setHeader("Content-Disposition", disposition);
 
             switch (format) {
-                case "csv" ->
+                case FORMAT_CSV ->
                     writeCsv(resp, exportRows);
-                case "json" ->
+                case FORMAT_JSON ->
                     writeJson(resp, exportRows);
-                case "text" ->
+                case com.sim.chatserver.util.CommonLiteralConstants.KEY_TEXT ->
                     writeText(resp, exportRows);
                 case "pdf" ->
                     writePdf(resp, exportRows, selectionId, reportMarkdown);
@@ -149,12 +157,12 @@ public class WidgetExportServlet extends HttpServlet {
 
     private List<String> parseSelectedChatIds(JsonObject payload) {
         List<String> ids = new ArrayList<>();
-        if (!payload.containsKey("selectedChatIds")) {
+        if (!payload.containsKey(KEY_SELECTED_CHAT_IDS)) {
             return ids;
         }
 
         try {
-            JsonArray arr = payload.getJsonArray("selectedChatIds");
+            JsonArray arr = payload.getJsonArray(KEY_SELECTED_CHAT_IDS);
             if (arr == null) {
                 return ids;
             }
@@ -191,7 +199,7 @@ public class WidgetExportServlet extends HttpServlet {
             return DEFAULT_FORMAT;
         }
         return switch (format) {
-            case "csv", "json", "text", "pdf" ->
+            case com.sim.chatserver.util.CommonLiteralConstants.FORMAT_CSV, com.sim.chatserver.util.CommonLiteralConstants.FORMAT_JSON, com.sim.chatserver.util.CommonLiteralConstants.KEY_TEXT, "pdf" ->
                 format;
             default ->
                 DEFAULT_FORMAT;
@@ -200,18 +208,18 @@ public class WidgetExportServlet extends HttpServlet {
 
     private String extensionFor(String format) {
         return switch (format) {
-            case "json" ->
-                "json";
-            case "text" ->
+            case FORMAT_JSON ->
+                com.sim.chatserver.util.CommonLiteralConstants.FORMAT_JSON;
+            case com.sim.chatserver.util.CommonLiteralConstants.KEY_TEXT ->
                 "txt";
             case "pdf" ->
                 "pdf";
             default ->
-                "csv";
+                com.sim.chatserver.util.CommonLiteralConstants.FORMAT_CSV;
         };
     }
 
-    private List<TermChatSnapshot> resolveExportRows(WidgetReviewStartServlet.Selection selection, List<String> selectedChatIds) {
+    private List<TermChatSnapshot> resolveExportRows(Selection selection, List<String> selectedChatIds) {
         List<TermChatSnapshot> exportRows = new ArrayList<>();
 
         if (selection.hasSnapshots()) {
@@ -267,7 +275,7 @@ public class WidgetExportServlet extends HttpServlet {
 
     private void writeCsv(HttpServletResponse resp, List<TermChatSnapshot> exportRows) {
         resp.setContentType("text/csv; charset=UTF-8");
-        OutputStream out = openOutputStreamSafe(resp, "csv");
+        OutputStream out = openOutputStreamSafe(resp, com.sim.chatserver.util.CommonLiteralConstants.FORMAT_CSV);
         try (out) {
             out.write(("sessionId,sessionIdDisplay,createdAt,prompt,response" + LS).getBytes(StandardCharsets.UTF_8));
             for (TermChatSnapshot row : exportRows) {
@@ -285,18 +293,18 @@ public class WidgetExportServlet extends HttpServlet {
     }
 
     private void writeJson(HttpServletResponse resp, List<TermChatSnapshot> exportRows) {
-        resp.setContentType("application/json; charset=UTF-8");
-        OutputStream out = openOutputStreamSafe(resp, "json");
+        resp.setContentType(CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON_UTF8);
+        OutputStream out = openOutputStreamSafe(resp, com.sim.chatserver.util.CommonLiteralConstants.FORMAT_JSON);
         try (out) {
             JsonArrayBuilder ab = Json.createArrayBuilder();
             for (TermChatSnapshot row : exportRows) {
                 String sid = safe(row.getSessionId());
                 ab.add(Json.createObjectBuilder()
-                        .add("sessionId", sid)
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_SESSION_ID, sid)
                         .add("sessionIdDisplay", SessionIdFormatter.formatForDisplay(sid))
-                        .add("createdAt", row.getCreatedAt() == null ? "" : row.getCreatedAt().toInstant().toString())
-                        .add("prompt", safe(row.getPrompt()))
-                        .add("response", safe(row.getResponse())));
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_CREATED_AT, row.getCreatedAt() == null ? "" : row.getCreatedAt().toInstant().toString())
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_PROMPT, safe(row.getPrompt()))
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_RESPONSE, safe(row.getResponse())));
             }
             Json.createWriter(out).writeArray(ab.build());
         } catch (IOException e) {
@@ -306,7 +314,7 @@ public class WidgetExportServlet extends HttpServlet {
 
     private void writeText(HttpServletResponse resp, List<TermChatSnapshot> exportRows) {
         resp.setContentType("text/plain; charset=UTF-8");
-        OutputStream out = openOutputStreamSafe(resp, "text");
+        OutputStream out = openOutputStreamSafe(resp, com.sim.chatserver.util.CommonLiteralConstants.KEY_TEXT);
         try (out) {
             for (TermChatSnapshot row : exportRows) {
                 String sessionId = safe(row.getSessionId());
@@ -636,7 +644,7 @@ public class WidgetExportServlet extends HttpServlet {
         if (s == null) {
             return "";
         }
-        return s.length() <= max ? s : new String(s.toCharArray(), 0, max) + "...";
+        return s.length() <= max ? s : new String(s.toCharArray(), 0, max) + com.sim.chatserver.util.CommonLiteralConstants.ELLIPSIS;
     }
 
     private String safe(String s) {
@@ -659,7 +667,7 @@ public class WidgetExportServlet extends HttpServlet {
             return "";
         }
         boolean needsQuote = s.contains(",") || s.contains("\"") || s.contains(System.lineSeparator()) || s.contains(System.lineSeparator());
-        String escaped = s.replace("\"", "\"\"");
+        String escaped = s.replace("\"", com.sim.chatserver.util.CommonLiteralConstants.DOUBLE_QUOTE_ESCAPED);
         return needsQuote ? '"' + escaped + '"' : escaped;
     }
 
@@ -711,25 +719,33 @@ public class WidgetExportServlet extends HttpServlet {
 
     private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
             resp.setHeader("Cache-Control", "no-store");
             try {
-                ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+                ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED);
             } catch (IOException e) {
                 log.log(Level.FINE, "Unable to write auth error response", e);
-                sendErrorSafe(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+                sendErrorSafe(resp, HttpServletResponse.SC_UNAUTHORIZED, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED);
             }
             return false;
         }
         return true;
     }
 
-    private static final class OrderIndex {
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
 
-        final int value;
 
-        private OrderIndex(int value) {
-            this.value = value;
-        }
+
+}
+
+final class OrderIndex {
+
+    final int value;
+
+    OrderIndex(int value) {
+        this.value = value;
     }
 }
+

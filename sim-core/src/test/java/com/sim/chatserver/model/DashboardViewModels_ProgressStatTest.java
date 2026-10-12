@@ -2,14 +2,14 @@ package com.sim.chatserver.model;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.model.DashboardViewModels.ProgressStat;
+import com.sim.chatserver.model.ProgressStat;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 /**
  * Parasoft Jtest UTA: Test class for ProgressStat
  *
- * @see com.sim.chatserver.model.DashboardViewModels.ProgressStat
+ * @see com.sim.chatserver.model.ProgressStat
  * @author bmcmullin
  */
 public class DashboardViewModels_ProgressStatTest
@@ -18,7 +18,7 @@ public class DashboardViewModels_ProgressStatTest
     /**
      * Parasoft Jtest UTA: Test for getDelta()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.ProgressStat#getDelta()
+     * @see com.sim.chatserver.model.ProgressStat#getDelta()
      * @author bmcmullin
      */
     @Test
@@ -47,7 +47,7 @@ public class DashboardViewModels_ProgressStatTest
     /**
      * Parasoft Jtest UTA: Test for getDirection()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.ProgressStat#getDirection()
+     * @see com.sim.chatserver.model.ProgressStat#getDirection()
      * @author bmcmullin
      */
     @Test
@@ -76,7 +76,7 @@ public class DashboardViewModels_ProgressStatTest
     /**
      * Parasoft Jtest UTA: Test for getPctDelta()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.ProgressStat#getPctDelta()
+     * @see com.sim.chatserver.model.ProgressStat#getPctDelta()
      * @author bmcmullin
      */
     @Test
@@ -105,7 +105,7 @@ public class DashboardViewModels_ProgressStatTest
     /**
      * Parasoft Jtest UTA: Test for getToday()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.ProgressStat#getToday()
+     * @see com.sim.chatserver.model.ProgressStat#getToday()
      * @author bmcmullin
      */
     @Test
@@ -136,7 +136,7 @@ public class DashboardViewModels_ProgressStatTest
     /**
      * Parasoft Jtest UTA: Test for getYesterday()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.ProgressStat#getYesterday()
+     * @see com.sim.chatserver.model.ProgressStat#getYesterday()
      * @author bmcmullin
      */
     @Test
@@ -164,3 +164,4 @@ public class DashboardViewModels_ProgressStatTest
 
     }
 }
+

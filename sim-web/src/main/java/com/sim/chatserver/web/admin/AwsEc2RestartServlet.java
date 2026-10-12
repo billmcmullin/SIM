@@ -28,31 +28,37 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.ec2.Ec2Client;
 import software.amazon.awssdk.services.ec2.model.RebootInstancesRequest;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "AwsEc2RestartServlet", urlPatterns = {"/admin/aws/restart-ec2"})
 public class AwsEc2RestartServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(AwsEc2RestartServlet.class.getCanonicalName());
     private static final int MAX_IP_LENGTH = 64;
+    private static final String OUTCOME_FAILED = com.sim.chatserver.util.CommonLiteralConstants.STATUS_FAILED;
+    private static final String LOG_AWS_EC2_REBOOT_FAILED = "AWS EC2 reboot failed";
+    private static final String MSG_AWS_EC2_REBOOT_FAILED = "AWS EC2 reboot request failed.";
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
         try {
             String requestId = UUID.randomUUID().toString();
             HttpSession session = req.getSession(false);
-            if (session == null || session.getAttribute("user") == null) {
+            if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
                 auditRestart(requestId, "(anonymous)", "", "", "", "blocked", HttpServletResponse.SC_UNAUTHORIZED,
-                        "Authentication required.", Level.WARNING);
-                writeErrorSafe(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+                        com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED, Level.WARNING);
+                writeErrorSafe(resp, HttpServletResponse.SC_UNAUTHORIZED, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED);
                 return;
             }
 
-            String username = session.getAttribute("user") == null ? "(unknown)" : session.getAttribute("user").toString();
+            String username = session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null ? com.sim.chatserver.util.CommonLiteralConstants.MARKER_UNKNOWN : session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER).toString();
 
-            String role = session.getAttribute("role") == null ? "" : session.getAttribute("role").toString();
-            if (!"ADMIN".equalsIgnoreCase(role)) {
+            String role = session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.ROLE) == null ? "" : session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.ROLE).toString();
+            if (!com.sim.chatserver.util.CommonLiteralConstants.ROLE_ADMIN.equalsIgnoreCase(role)) {
                 auditRestart(requestId, username, "", "", "", "blocked", HttpServletResponse.SC_FORBIDDEN,
-                        "Admin role required.", Level.WARNING);
-                writeErrorSafe(resp, HttpServletResponse.SC_FORBIDDEN, "Admin role required.");
+                        com.sim.chatserver.util.CommonLiteralConstants.MSG_ADMIN_ROLE_REQUIRED, Level.WARNING);
+                writeErrorSafe(resp, HttpServletResponse.SC_FORBIDDEN, com.sim.chatserver.util.CommonLiteralConstants.MSG_ADMIN_ROLE_REQUIRED);
                 return;
             }
 
@@ -101,7 +107,7 @@ public class AwsEc2RestartServlet extends HttpServlet {
             String normalizedSecretAccessKey = awsSecretAccessKey.trim();
             String normalizedRestartConfirmed = restartConfirmed == null ? "" : restartConfirmed.trim();
 
-            if (!"true".equalsIgnoreCase(normalizedRestartConfirmed)) {
+            if (!com.sim.chatserver.util.CommonLiteralConstants.VALUE_TRUE.equalsIgnoreCase(normalizedRestartConfirmed)) {
                 auditRestart(requestId, username, clientIp, normalizedRegion, normalizedInstanceId, "blocked",
                     HttpServletResponse.SC_BAD_REQUEST,
                     "Restart confirmation prompt was not accepted.", Level.INFO);
@@ -119,61 +125,65 @@ public class AwsEc2RestartServlet extends HttpServlet {
                         normalizedSecretAccessKey,
                         normalizedInstanceId);
 
-                auditRestart(requestId, username, clientIp, normalizedRegion, normalizedInstanceId, "success",
+                auditRestart(requestId, username, clientIp, normalizedRegion, normalizedInstanceId, com.sim.chatserver.util.CommonLiteralConstants.FIELD_SUCCESS,
                     HttpServletResponse.SC_OK,
                     "EC2 reboot request submitted.", Level.INFO);
 
                 JsonObject payload = Json.createObjectBuilder()
-                        .add("status", "ok")
-                        .add("message", "EC2 reboot request submitted.")
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "EC2 reboot request submitted.")
                     .add("instanceId", normalizedInstanceId)
                         .build();
                 writeJsonSafe(resp, HttpServletResponse.SC_OK, payload);
             } catch (AwsServiceException ex) {
-                log.log(Level.WARNING, "AWS EC2 reboot failed", ex);
+                log.log(Level.WARNING, LOG_AWS_EC2_REBOOT_FAILED, ex);
                 String message = ex.awsErrorDetails() != null
                         ? ex.awsErrorDetails().errorMessage()
-                        : "AWS EC2 reboot request failed.";
-                auditRestart(requestId, username, clientIp, normalizedRegion, normalizedInstanceId, "failed",
+                        : MSG_AWS_EC2_REBOOT_FAILED;
+                auditRestart(requestId, username, clientIp, normalizedRegion, normalizedInstanceId, OUTCOME_FAILED,
                     HttpServletResponse.SC_BAD_GATEWAY,
                     message, Level.WARNING);
                 writeErrorSafe(resp, HttpServletResponse.SC_BAD_GATEWAY, message);
             } catch (SdkClientException ex) {
-                log.log(Level.WARNING, "AWS EC2 reboot failed", ex);
-                auditRestart(requestId, username, clientIp, normalizedRegion, normalizedInstanceId, "failed",
+                log.log(Level.WARNING, LOG_AWS_EC2_REBOOT_FAILED, ex);
+                auditRestart(requestId, username, clientIp, normalizedRegion, normalizedInstanceId, OUTCOME_FAILED,
                     HttpServletResponse.SC_BAD_GATEWAY,
-                    "AWS EC2 reboot request failed.", Level.WARNING);
-                writeErrorSafe(resp, HttpServletResponse.SC_BAD_GATEWAY, "AWS EC2 reboot request failed.");
+                    MSG_AWS_EC2_REBOOT_FAILED, Level.WARNING);
+                writeErrorSafe(resp, HttpServletResponse.SC_BAD_GATEWAY, MSG_AWS_EC2_REBOOT_FAILED);
             } catch (Ec2RebootFailureException ex) {
                 Throwable cause = ex.getCause();
                 if (cause instanceof AwsServiceException awsEx) {
-                    log.log(Level.WARNING, "AWS EC2 reboot failed", awsEx);
+                    log.log(Level.WARNING, LOG_AWS_EC2_REBOOT_FAILED, awsEx);
                     String message = awsEx.awsErrorDetails() != null
                             ? awsEx.awsErrorDetails().errorMessage()
-                            : "AWS EC2 reboot request failed.";
-                    auditRestart(requestId, username, clientIp, normalizedRegion, normalizedInstanceId, "failed",
+                            : MSG_AWS_EC2_REBOOT_FAILED;
+                    auditRestart(requestId, username, clientIp, normalizedRegion, normalizedInstanceId, OUTCOME_FAILED,
                         HttpServletResponse.SC_BAD_GATEWAY,
                         message, Level.WARNING);
                     writeErrorSafe(resp, HttpServletResponse.SC_BAD_GATEWAY, message);
                 } else if (cause instanceof SdkClientException sdkEx) {
-                    log.log(Level.WARNING, "AWS EC2 reboot failed", sdkEx);
-                    auditRestart(requestId, username, clientIp, normalizedRegion, normalizedInstanceId, "failed",
+                    log.log(Level.WARNING, LOG_AWS_EC2_REBOOT_FAILED, sdkEx);
+                    auditRestart(requestId, username, clientIp, normalizedRegion, normalizedInstanceId, OUTCOME_FAILED,
                         HttpServletResponse.SC_BAD_GATEWAY,
-                        "AWS EC2 reboot request failed.", Level.WARNING);
-                    writeErrorSafe(resp, HttpServletResponse.SC_BAD_GATEWAY, "AWS EC2 reboot request failed.");
+                        MSG_AWS_EC2_REBOOT_FAILED, Level.WARNING);
+                    writeErrorSafe(resp, HttpServletResponse.SC_BAD_GATEWAY, MSG_AWS_EC2_REBOOT_FAILED);
                 } else {
-                    throw new IllegalStateException("Unexpected reboot failure.", ex);
+                    log.log(Level.WARNING, LOG_AWS_EC2_REBOOT_FAILED, ex);
+                    auditRestart(requestId, username, clientIp, normalizedRegion, normalizedInstanceId, OUTCOME_FAILED,
+                        HttpServletResponse.SC_BAD_GATEWAY,
+                        MSG_AWS_EC2_REBOOT_FAILED, Level.WARNING);
+                    writeErrorSafe(resp, HttpServletResponse.SC_BAD_GATEWAY, MSG_AWS_EC2_REBOOT_FAILED);
                 }
             }
         } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             Logger.getLogger(getClass().getCanonicalName())
-                    .log(Level.WARNING, "Unhandled exception in doPost", e);
+                    .log(Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_POST, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (IOException ioe) {
                     Logger.getLogger(getClass().getCanonicalName())
-                            .log(Level.FINE, "Failed sending fallback server error.", ioe);
+                            .log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -195,15 +205,6 @@ public class AwsEc2RestartServlet extends HttpServlet {
             } catch (AwsServiceException | SdkClientException ex) {
                 throw new Ec2RebootFailureException(ex);
             }
-        }
-    }
-
-    private static final class Ec2RebootFailureException extends RuntimeException {
-
-        private static final long serialVersionUID = 1L;
-
-        private Ec2RebootFailureException(Throwable cause) {
-            super(cause);
         }
     }
 
@@ -244,7 +245,7 @@ public class AwsEc2RestartServlet extends HttpServlet {
         try {
             ServletJsonResponseUtil.writeError(resp, status, message);
         } catch (IOException ex) {
-            log.log(Level.FINE, "Unable to write JSON error response", ex);
+            log.log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_UNABLE_TO_WRITE_JSON_ERROR_RESPONSE, ex);
             if (!resp.isCommitted()) {
                 try {
                     resp.sendError(status, safe(message));
@@ -272,7 +273,7 @@ public class AwsEc2RestartServlet extends HttpServlet {
 
     private String safe(String value) {
         if (value == null || value.isBlank()) {
-            return "(unknown)";
+            return com.sim.chatserver.util.CommonLiteralConstants.MARKER_UNKNOWN;
         }
         return scrub(value);
     }
@@ -288,4 +289,21 @@ public class AwsEc2RestartServlet extends HttpServlet {
                 .replaceAll("[\\p{Cntrl}]", " ")
                 .trim();
     }
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
+
+
+
 }
+
+final class Ec2RebootFailureException extends RuntimeException {
+
+    private static final long serialVersionUID = 1L;
+
+    Ec2RebootFailureException(Throwable cause) {
+        super(cause);
+    }
+}
+

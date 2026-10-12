@@ -21,11 +21,12 @@ import org.junit.jupiter.api.Test;
 
 import com.sim.chatserver.model.review.ReduceRequest;
 import com.sim.chatserver.model.review.ReduceResult;
+import com.sim.chatserver.service.OrchestrationResult;
 import com.sim.chatserver.service.PromptTemplateService;
 import com.sim.chatserver.service.ReviewContextBuilderService;
 import com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator;
 import com.sim.chatserver.service.WorkspaceClient;
-import com.sim.chatserver.service.WorkspaceClient.WorkspaceResponse;
+import com.sim.chatserver.service.WorkspaceResponse;
 
 import jakarta.json.Json;
 
@@ -38,7 +39,7 @@ class WidgetReviewOrchestrationRunnerTest {
 
     @Test
     void run_returnsResult_onSuccess() throws Exception {
-        WidgetReviewMapReduceOrchestrator.OrchestrationResult expected = orchestrationResult(
+        OrchestrationResult expected = orchestrationResult(
                 workspaceResponse(202, "{\"status\":\"queued\"}", "application/json")
         );
         WidgetReviewMapReduceOrchestrator orchestrator = spy(WidgetReviewMapReduceOrchestrator.newDefault(
@@ -59,7 +60,7 @@ class WidgetReviewOrchestrationRunnerTest {
                 any()
         );
 
-        WidgetReviewMapReduceOrchestrator.OrchestrationResult actual = assertDoesNotThrowRun(orchestrator);
+            OrchestrationResult actual = assertDoesNotThrowRun(orchestrator);
         assertSame(expected, actual);
     }
 
@@ -113,7 +114,7 @@ class WidgetReviewOrchestrationRunnerTest {
         assertSame(boom, ex.getCause());
     }
 
-    private static WidgetReviewMapReduceOrchestrator.OrchestrationResult assertDoesNotThrowRun(
+    private static OrchestrationResult assertDoesNotThrowRun(
             WidgetReviewMapReduceOrchestrator orchestrator
     ) {
         try {
@@ -123,7 +124,7 @@ class WidgetReviewOrchestrationRunnerTest {
         }
     }
 
-    private static WidgetReviewMapReduceOrchestrator.OrchestrationResult runWithDefaults(
+    private static OrchestrationResult runWithDefaults(
             WidgetReviewMapReduceOrchestrator orchestrator
     ) throws IOException, InterruptedException {
         return WidgetReviewOrchestrationRunner.run(
@@ -142,10 +143,10 @@ class WidgetReviewOrchestrationRunnerTest {
     }
 
     @SuppressWarnings("unchecked")
-    private static WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestrationResult(WorkspaceResponse response) {
+        private static OrchestrationResult orchestrationResult(WorkspaceResponse response) {
         try {
-            Constructor<WidgetReviewMapReduceOrchestrator.OrchestrationResult> ctor =
-                    WidgetReviewMapReduceOrchestrator.OrchestrationResult.class.getDeclaredConstructor(
+            Constructor<OrchestrationResult> ctor =
+                OrchestrationResult.class.getDeclaredConstructor(
                             WorkspaceResponse.class,
                             List.class,
                             List.class,
@@ -173,3 +174,4 @@ class WidgetReviewOrchestrationRunnerTest {
         }
     }
 }
+

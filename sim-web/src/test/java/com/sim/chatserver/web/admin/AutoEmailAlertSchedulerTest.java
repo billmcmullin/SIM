@@ -28,8 +28,9 @@ import org.mockito.ArgumentCaptor;
 import com.sim.chatserver.config.ServerConfig;
 import com.sim.chatserver.email.DbEmailConfigProvider;
 import com.sim.chatserver.service.widget.WidgetAvailabilityChecker;
+import com.sim.chatserver.service.widget.WidgetAvailabilityResult;
 import com.sim.chatserver.term.TermsStore;
-import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConfig;
+import com.sim.chatserver.web.admin.AutoEmailAlertConfig;
  class AutoEmailAlertSchedulerTest {
 
     @Test
@@ -82,7 +83,7 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
         cfg.setHealthResendIntervalSeconds(30);
         cfg.setHealthSubject("Offline alert");
 
-        when(checker.checkNow()).thenReturn(new WidgetAvailabilityChecker.WidgetAvailabilityResult(false, "DOWN", "", 10L, "d"));
+        when(checker.checkNow()).thenReturn(new WidgetAvailabilityResult(false, "DOWN", "", 10L, "d"));
         Instant firstCheck = Instant.parse("2026-08-07T12:00:00Z");
         invokePrivate(scheduler, "evaluateHealthAlert", new Class<?>[]{AutoEmailAlertConfig.class, Instant.class}, cfg, firstCheck);
 
@@ -98,7 +99,7 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
         setPrivateField(cfg, "healthOfflineSince", Instant.parse("2026-08-07T11:50:00Z"));
         setPrivateField(cfg, "healthLastAlertAt", Instant.parse("2026-08-07T11:55:00Z"));
         setPrivateField(cfg, "healthLastRestartAttemptAt", Instant.parse("2026-08-07T11:56:00Z"));
-        when(checker.checkNow()).thenReturn(new WidgetAvailabilityChecker.WidgetAvailabilityResult(true, "UP", "", 5L, "ok"));
+        when(checker.checkNow()).thenReturn(new WidgetAvailabilityResult(true, "UP", "", 5L, "ok"));
         invokePrivate(scheduler, "evaluateHealthAlert", new Class<?>[]{AutoEmailAlertConfig.class, Instant.class}, cfg, Instant.parse("2026-08-07T12:01:00Z"));
         verify(store).updateHealthState(any(), eq("UP"), eq(null), eq(null), eq(null));
     }
@@ -130,7 +131,7 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
         cfg.setHealthOfflineDelaySeconds(300);
         cfg.setHealthResendIntervalSeconds(30);
 
-        when(checker.checkNow()).thenReturn(new WidgetAvailabilityChecker.WidgetAvailabilityResult(false, "DOWN", "", 10L, "d"));
+        when(checker.checkNow()).thenReturn(new WidgetAvailabilityResult(false, "DOWN", "", 10L, "d"));
         Instant now = Instant.parse("2026-08-07T12:00:00Z");
         invokePrivate(scheduler, "evaluateHealthAlert", new Class<?>[]{AutoEmailAlertConfig.class, Instant.class}, cfg, now);
 
@@ -167,11 +168,11 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
                         capture.set(region + ":" + instanceId + ":" + accessKeyId + ":" + secretAccessKey));
 
         AutoEmailAlertConfig cfg = new AutoEmailAlertConfig();
-        Object result = new WidgetAvailabilityChecker.WidgetAvailabilityResult(false, "DOWN", "", 12L, "offline");
+                Object result = new WidgetAvailabilityResult(false, "DOWN", "", 12L, "offline");
         boolean restarted = (boolean) invokePrivate(
                 scheduler,
                 "attemptAutomaticAwsRestart",
-                new Class<?>[]{AutoEmailAlertConfig.class, Instant.class, Instant.class, WidgetAvailabilityChecker.WidgetAvailabilityResult.class},
+                    new Class<?>[]{AutoEmailAlertConfig.class, Instant.class, Instant.class, WidgetAvailabilityResult.class},
                 cfg,
                 Instant.parse("2026-08-07T12:00:00Z"),
                 Instant.parse("2026-08-07T11:50:00Z"),
@@ -212,7 +213,7 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
         Instant priorRestartAttempt = Instant.parse("2026-08-07T11:59:00Z");
         setPrivateField(cfg, "healthLastRestartAttemptAt", priorRestartAttempt);
 
-        when(checker.checkNow()).thenReturn(new WidgetAvailabilityChecker.WidgetAvailabilityResult(false, "DOWN", "", 10L, "d"));
+        when(checker.checkNow()).thenReturn(new WidgetAvailabilityResult(false, "DOWN", "", 10L, "d"));
         Instant now = Instant.parse("2026-08-07T12:00:00Z");
         invokePrivate(scheduler, "evaluateHealthAlert", new Class<?>[]{AutoEmailAlertConfig.class, Instant.class}, cfg, now);
 
@@ -321,15 +322,15 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
         cfg.setTermMessage("term note");
         setPrivateField(cfg, "healthLastRestartAttemptAt", Instant.parse("2026-08-07T10:59:00Z"));
 
-        Object result = new WidgetAvailabilityChecker.WidgetAvailabilityResult(false, "DOWN", "2026-08-07T11:00:00Z", -5L, "details");
+        Object result = new WidgetAvailabilityResult(false, "DOWN", "2026-08-07T11:00:00Z", -5L, "details");
         Instant now = Instant.parse("2026-08-07T11:00:00Z");
 
-        String healthBody = (String) invokePrivate(scheduler, "buildHealthBody", new Class<?>[]{AutoEmailAlertConfig.class, WidgetAvailabilityChecker.WidgetAvailabilityResult.class, Instant.class, Instant.class}, cfg, result, now, now.minusSeconds(30));
+        String healthBody = (String) invokePrivate(scheduler, "buildHealthBody", new Class<?>[]{AutoEmailAlertConfig.class, WidgetAvailabilityResult.class, Instant.class, Instant.class}, cfg, result, now, now.minusSeconds(30));
         assertTrue(healthBody.contains("OFFLINE"));
         assertTrue(healthBody.contains("custom note"));
         assertTrue(healthBody.contains("Automatic EC2 restart attempted at"));
 
-        String healthHtml = (String) invokePrivate(scheduler, "buildHealthHtmlBody", new Class<?>[]{AutoEmailAlertConfig.class, WidgetAvailabilityChecker.WidgetAvailabilityResult.class, Instant.class, Instant.class}, cfg, result, now, now.minusSeconds(30));
+        String healthHtml = (String) invokePrivate(scheduler, "buildHealthHtmlBody", new Class<?>[]{AutoEmailAlertConfig.class, WidgetAvailabilityResult.class, Instant.class, Instant.class}, cfg, result, now, now.minusSeconds(30));
         assertTrue(healthHtml.contains("<html"));
         assertTrue(healthHtml.contains("Runbook"));
         assertTrue(healthHtml.contains("Automatic EC2 restart attempted at"));
@@ -337,10 +338,10 @@ import com.sim.chatserver.web.admin.AutoEmailAlertConfigStore.AutoEmailAlertConf
         String recoverySubject = (String) invokePrivate(scheduler, "buildHealthRecoverySubject", new Class<?>[]{AutoEmailAlertConfig.class}, cfg);
         assertTrue(recoverySubject.toLowerCase().contains("back online"));
 
-        String recoveryBody = (String) invokePrivate(scheduler, "buildHealthRecoveryBody", new Class<?>[]{AutoEmailAlertConfig.class, WidgetAvailabilityChecker.WidgetAvailabilityResult.class, Instant.class, Instant.class}, cfg, result, now, now.minusSeconds(120));
+        String recoveryBody = (String) invokePrivate(scheduler, "buildHealthRecoveryBody", new Class<?>[]{AutoEmailAlertConfig.class, WidgetAvailabilityResult.class, Instant.class, Instant.class}, cfg, result, now, now.minusSeconds(120));
         assertTrue(recoveryBody.contains("ONLINE"));
 
-        String recoveryHtml = (String) invokePrivate(scheduler, "buildHealthRecoveryHtmlBody", new Class<?>[]{AutoEmailAlertConfig.class, WidgetAvailabilityChecker.WidgetAvailabilityResult.class, Instant.class, Instant.class}, cfg, result, now, now.minusSeconds(120));
+        String recoveryHtml = (String) invokePrivate(scheduler, "buildHealthRecoveryHtmlBody", new Class<?>[]{AutoEmailAlertConfig.class, WidgetAvailabilityResult.class, Instant.class, Instant.class}, cfg, result, now, now.minusSeconds(120));
         assertTrue(recoveryHtml.contains("recovery"));
 
         String termBody = (String) invokePrivate(scheduler, "buildTermBody", new Class<?>[]{AutoEmailAlertConfig.class, Instant.class, long.class, long.class, long.class}, cfg, now, 10L, 20L, 10L);

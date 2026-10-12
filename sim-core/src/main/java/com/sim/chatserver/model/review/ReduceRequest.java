@@ -9,6 +9,8 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 
+import com.sim.chatserver.util.CommonLiteralConstants;
+
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
@@ -20,6 +22,44 @@ import jakarta.json.JsonObject;
  * - coverageComplete
  */
 public final class ReduceRequest {
+
+    private static final String EMPTY = "";
+    private static final String DEFAULT_MODE = CommonLiteralConstants.DEFAULT_MODE_CHAT;
+    private static final String FIELD_REQUEST_ID = CommonLiteralConstants.FIELD_REQUEST_ID;
+    private static final String FIELD_TARGET_URL = "targetUrl";
+    private static final String FIELD_MODE = CommonLiteralConstants.FIELD_MODE;
+    private static final String FIELD_SESSION_ID = CommonLiteralConstants.FIELD_SESSION_ID;
+    private static final String FIELD_RESET = com.sim.chatserver.util.CommonLiteralConstants.VALUE_RESET;
+    private static final String FIELD_CONTROLLED_PROMPT = "controlledPrompt";
+    private static final String FIELD_TOTAL_SELECTED = CommonLiteralConstants.FIELD_TOTAL_SELECTED;
+    private static final String FIELD_TOTAL_BATCHES = CommonLiteralConstants.FIELD_TOTAL_BATCHES;
+    private static final String FIELD_MAP_OUTPUTS_COUNT = "mapOutputsCount";
+    private static final String FIELD_FAILED_BATCH_COUNT = "failedBatchCount";
+    private static final String FIELD_MAP_OUTPUTS = "mapOutputs";
+    private static final String FIELD_FAILED_BATCH_INDEXES = CommonLiteralConstants.FIELD_FAILED_BATCH_INDEXES;
+    private static final String FIELD_FAILED_BATCH_REASONS = "failedBatchReasons";
+    private static final String FIELD_ALL_SELECTED_CHAT_IDS = CommonLiteralConstants.FIELD_ALL_SELECTED_CHAT_IDS;
+    private static final String FIELD_USED_CHAT_IDS = CommonLiteralConstants.FIELD_USED_CHAT_IDS;
+    private static final String FIELD_MISSING_CHAT_IDS = CommonLiteralConstants.FIELD_MISSING_CHAT_IDS;
+    private static final String FIELD_COVERAGE_COMPLETE = CommonLiteralConstants.FIELD_COVERAGE_COMPLETE;
+    private static final String FIELD_MAP_OUTPUTS_PARAM = "mapOutputs";
+    private static final String ERR_TOTAL_SELECTED_LT_ALL = "totalSelected cannot be less than allSelectedChatIds.size()";
+    private static final String ERR_MISSING_CHAT_IDS_MISMATCH = "missingChatIds must exactly equal allSelectedChatIds - usedChatIds";
+    private static final String ERR_COVERAGE_COMPLETE_MISMATCH = "coverageComplete must equal missingChatIds.isEmpty()";
+    private static final String ERR_REQUIRED_SUFFIX = CommonLiteralConstants.ERR_REQUIRED_SUFFIX;
+    private static final String ERR_NON_NEGATIVE_SUFFIX = " must be >= 0";
+    private static final String TOSTRING_PREFIX = "ReduceRequest{";
+    private static final String TOSTRING_REQUEST_ID_PREFIX = CommonLiteralConstants.TOSTRING_REQUEST_ID_PREFIX;
+    private static final String TOSTRING_MODE_PREFIX = ", mode='";
+    private static final String TOSTRING_RESET_PREFIX = ", reset=";
+    private static final String TOSTRING_TOTAL_SELECTED_PREFIX = ", totalSelected=";
+    private static final String TOSTRING_TOTAL_BATCHES_PREFIX = CommonLiteralConstants.TOSTRING_TOTAL_BATCHES_PREFIX;
+    private static final String TOSTRING_MAP_OUTPUTS_COUNT_PREFIX = ", mapOutputsCount=";
+    private static final String TOSTRING_FAILED_BATCH_INDEXES_PREFIX = ", failedBatchIndexes=";
+    private static final String TOSTRING_COVERAGE_COMPLETE_PREFIX = com.sim.chatserver.util.CommonLiteralConstants.TOSTRING_COVERAGE_COMPLETE_PREFIX;
+    private static final String TOSTRING_ALL_IDS_PREFIX = ", allSelectedChatIds=";
+    private static final String TOSTRING_USED_IDS_PREFIX = ", usedChatIds=";
+    private static final String TOSTRING_MISSING_IDS_PREFIX = ", " + CommonLiteralConstants.FIELD_MISSING_CHAT_IDS + '=';
 
     private final String requestId;
     private final String targetUrl;
@@ -41,18 +81,18 @@ public final class ReduceRequest {
     private final List<String> missingChatIds;
     private final boolean coverageComplete;
 
-    private ReduceRequest(Builder b) {
-        this.requestId = requireNonBlank(b.requestId, "requestId");
-        this.targetUrl = requireNonBlank(b.targetUrl, "targetUrl");
-        this.mode = defaultIfBlank(b.mode, "chat");
-        this.sessionId = defaultIfNull(b.sessionId, "");
+    ReduceRequest(ReduceRequestBuilder b) {
+        this.requestId = requireNonBlank(b.requestId, FIELD_REQUEST_ID);
+        this.targetUrl = requireNonBlank(b.targetUrl, FIELD_TARGET_URL);
+        this.mode = defaultIfBlank(b.mode, DEFAULT_MODE);
+        this.sessionId = defaultIfNull(b.sessionId, EMPTY);
         this.reset = b.reset;
 
-        this.controlledPrompt = requireNonBlank(b.controlledPrompt, "controlledPrompt");
-        this.totalSelected = requireNonNegative(b.totalSelected, "totalSelected");
-        this.totalBatches = requireNonNegative(b.totalBatches, "totalBatches");
+        this.controlledPrompt = requireNonBlank(b.controlledPrompt, FIELD_CONTROLLED_PROMPT);
+        this.totalSelected = requireNonNegative(b.totalSelected, FIELD_TOTAL_SELECTED);
+        this.totalBatches = requireNonNegative(b.totalBatches, FIELD_TOTAL_BATCHES);
 
-        this.mapOutputs = immutableStringListKeepCase(Objects.requireNonNull(b.mapOutputs, "mapOutputs"));
+        this.mapOutputs = immutableStringListKeepCase(Objects.requireNonNull(b.mapOutputs, FIELD_MAP_OUTPUTS_PARAM));
         this.failedBatchIndexes = immutableDistinctPositiveIntList(defaultIfNullList(b.failedBatchIndexes));
         this.failedBatchReasons = immutableStringListKeepCase(defaultIfNullList(b.failedBatchReasons));
 
@@ -72,8 +112,8 @@ public final class ReduceRequest {
         validateConsistency();
     }
 
-    public static Builder builder() {
-        return new Builder();
+    public static ReduceRequestBuilder builder() {
+        return new ReduceRequestBuilder();
     }
 
     public String getRequestId() {
@@ -153,22 +193,24 @@ public final class ReduceRequest {
     }
 
     JsonObject toJson() {
+        int failedBatchCount = failedBatchIndexes == null ? 0 : failedBatchIndexes.size();
+
         JsonArrayBuilder outputs = Json.createArrayBuilder();
         for (String out : mapOutputs) {
-            outputs.add(out == null ? "" : out);
+            outputs.add(out == null ? EMPTY : out);
         }
 
         JsonArrayBuilder failedIdx = Json.createArrayBuilder();
-        for (String text : toNumberTexts(failedBatchIndexes)) {
-            failedIdx.add(Integer.parseInt(text));
+        if (failedBatchIndexes != null) {
+            for (String text : toNumberTexts(failedBatchIndexes)) {
+                failedIdx.add(Integer.parseInt(text));
+            }
         }
 
         JsonArrayBuilder failedReasons = Json.createArrayBuilder();
-        for (String r : failedBatchReasons) {
-            failedReasons.add(r == null ? "" : r);
+        for (String reason : failedBatchReasons) {
+            failedReasons.add(reason == null ? EMPTY : reason);
         }
-
-        int failedBatchCount = failedBatchIndexes == null ? 0 : failedBatchIndexes.size();
 
         JsonArrayBuilder allIds = Json.createArrayBuilder();
         for (String id : allSelectedChatIds) {
@@ -186,152 +228,46 @@ public final class ReduceRequest {
         }
 
         return Json.createObjectBuilder()
-                .add("requestId", requestId)
-                .add("targetUrl", targetUrl)
-                .add("mode", mode)
-                .add("sessionId", sessionId)
-                .add("reset", reset)
-                .add("controlledPrompt", controlledPrompt)
-                .add("totalSelected", totalSelected)
-                .add("totalBatches", totalBatches)
-                .add("mapOutputsCount", mapOutputs.size())
-                .add("failedBatchCount", failedBatchCount)
-                .add("mapOutputs", outputs)
-                .add("failedBatchIndexes", failedIdx)
-                .add("failedBatchReasons", failedReasons)
-                .add("allSelectedChatIds", allIds)
-                .add("usedChatIds", usedIds)
-                .add("missingChatIds", missingIds)
-                .add("coverageComplete", coverageComplete)
+            .add(FIELD_REQUEST_ID, requestId)
+            .add(FIELD_TARGET_URL, targetUrl)
+            .add(FIELD_MODE, mode)
+            .add(FIELD_SESSION_ID, sessionId)
+            .add(FIELD_RESET, reset)
+            .add(FIELD_CONTROLLED_PROMPT, controlledPrompt)
+            .add(FIELD_TOTAL_SELECTED, totalSelected)
+            .add(FIELD_TOTAL_BATCHES, totalBatches)
+            .add(FIELD_MAP_OUTPUTS_COUNT, mapOutputs.size())
+            .add(FIELD_FAILED_BATCH_COUNT, failedBatchCount)
+            .add(FIELD_MAP_OUTPUTS, outputs)
+            .add(FIELD_FAILED_BATCH_INDEXES, failedIdx)
+            .add(FIELD_FAILED_BATCH_REASONS, failedReasons)
+            .add(FIELD_ALL_SELECTED_CHAT_IDS, allIds)
+            .add(FIELD_USED_CHAT_IDS, usedIds)
+            .add(FIELD_MISSING_CHAT_IDS, missingIds)
+            .add(FIELD_COVERAGE_COMPLETE, coverageComplete)
                 .build();
     }
 
     @Override
     public String toString() {
-        return "ReduceRequest{"
-                + "requestId='" + requestId + '\''
-                + ", mode='" + mode + '\''
-                + ", reset=" + reset
-                + ", totalSelected=" + totalSelected
-                + ", totalBatches=" + totalBatches
-                + ", mapOutputsCount=" + mapOutputs.size()
-                + ", failedBatchIndexes=" + failedBatchIndexes
-                + ", coverageComplete=" + coverageComplete
-                + ", allSelectedChatIds=" + allSelectedChatIds.size()
-                + ", usedChatIds=" + usedChatIds.size()
-                + ", missingChatIds=" + missingChatIds.size()
+        return TOSTRING_PREFIX
+            + TOSTRING_REQUEST_ID_PREFIX + requestId + '\''
+            + TOSTRING_MODE_PREFIX + mode + '\''
+            + TOSTRING_RESET_PREFIX + reset
+            + TOSTRING_TOTAL_SELECTED_PREFIX + totalSelected
+            + TOSTRING_TOTAL_BATCHES_PREFIX + totalBatches
+            + TOSTRING_MAP_OUTPUTS_COUNT_PREFIX + mapOutputs.size()
+            + TOSTRING_FAILED_BATCH_INDEXES_PREFIX + failedBatchIndexes
+            + TOSTRING_COVERAGE_COMPLETE_PREFIX + coverageComplete
+            + TOSTRING_ALL_IDS_PREFIX + allSelectedChatIds.size()
+            + TOSTRING_USED_IDS_PREFIX + usedChatIds.size()
+            + TOSTRING_MISSING_IDS_PREFIX + missingChatIds.size()
                 + '}';
-    }
-
-    public static final class Builder {
-
-        private String requestId;
-        private String targetUrl;
-        private String mode;
-        private String sessionId;
-        private boolean reset;
-
-        private String controlledPrompt;
-        private int totalSelected;
-        private int totalBatches;
-
-        private List<String> mapOutputs = new ArrayList<>();
-        private List<Integer> failedBatchIndexes = new ArrayList<>();
-        private List<String> failedBatchReasons = new ArrayList<>();
-
-        private List<String> allSelectedChatIds = new ArrayList<>();
-        private List<String> usedChatIds = new ArrayList<>();
-        private List<String> missingChatIds = new ArrayList<>();
-        private boolean coverageCompleteOverride; // retained for backward compatibility, ignored in strict build
-
-        private Builder() {
-        }
-
-        public Builder requestId(String requestId) {
-            this.requestId = requestId;
-            return this;
-        }
-
-        public Builder targetUrl(String targetUrl) {
-            this.targetUrl = targetUrl;
-            return this;
-        }
-
-        public Builder mode(String mode) {
-            this.mode = mode;
-            return this;
-        }
-
-        public Builder sessionId(String sessionId) {
-            this.sessionId = sessionId;
-            return this;
-        }
-
-        public Builder reset(boolean reset) {
-            this.reset = reset;
-            return this;
-        }
-
-        public Builder controlledPrompt(String controlledPrompt) {
-            this.controlledPrompt = controlledPrompt;
-            return this;
-        }
-
-        public Builder totalSelected(int totalSelected) {
-            this.totalSelected = totalSelected;
-            return this;
-        }
-
-        public Builder totalBatches(int totalBatches) {
-            this.totalBatches = totalBatches;
-            return this;
-        }
-
-        public Builder mapOutputs(List<String> mapOutputs) {
-            this.mapOutputs = mapOutputs == null ? new ArrayList<>() : mapOutputs;
-            return this;
-        }
-
-        public Builder failedBatchIndexes(List<Integer> failedBatchIndexes) {
-            this.failedBatchIndexes = failedBatchIndexes == null ? new ArrayList<>() : failedBatchIndexes;
-            return this;
-        }
-
-        public Builder failedBatchReasons(List<String> failedBatchReasons) {
-            this.failedBatchReasons = failedBatchReasons == null ? new ArrayList<>() : failedBatchReasons;
-            return this;
-        }
-
-        public Builder allSelectedChatIds(List<String> allSelectedChatIds) {
-            this.allSelectedChatIds = allSelectedChatIds == null ? new ArrayList<>() : allSelectedChatIds;
-            return this;
-        }
-
-        public Builder usedChatIds(List<String> usedChatIds) {
-            this.usedChatIds = usedChatIds == null ? new ArrayList<>() : usedChatIds;
-            return this;
-        }
-
-        public Builder missingChatIds(List<String> missingChatIds) {
-            // accepted for compatibility; ignored in strict deterministic construction
-            this.missingChatIds = missingChatIds == null ? new ArrayList<>() : missingChatIds;
-            return this;
-        }
-
-        public Builder coverageComplete(boolean coverageComplete) {
-            // accepted for compatibility; ignored in strict deterministic construction
-            this.coverageCompleteOverride = coverageComplete;
-            return this;
-        }
-
-        public ReduceRequest build() {
-            return new ReduceRequest(this);
-        }
     }
 
     private void validateConsistency() {
         if (totalSelected < allSelectedChatIds.size()) {
-            throw new IllegalArgumentException("totalSelected cannot be less than allSelectedChatIds.size()");
+            throw new IllegalArgumentException(ERR_TOTAL_SELECTED_LT_ALL);
         }
 
         Set<String> expectedMissing = new LinkedHashSet<>(allSelectedChatIds);
@@ -340,24 +276,24 @@ public final class ReduceRequest {
         }
 
         if (!expectedMissing.equals(new LinkedHashSet<>(missingChatIds))) {
-            throw new IllegalArgumentException("missingChatIds must exactly equal allSelectedChatIds - usedChatIds");
+            throw new IllegalArgumentException(ERR_MISSING_CHAT_IDS_MISMATCH);
         }
 
         if (coverageComplete != missingChatIds.isEmpty()) {
-            throw new IllegalArgumentException("coverageComplete must equal missingChatIds.isEmpty()");
+            throw new IllegalArgumentException(ERR_COVERAGE_COMPLETE_MISMATCH);
         }
     }
 
     private static String requireNonBlank(String value, String field) {
         if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(field + " is required");
+            throw new IllegalArgumentException(field + ERR_REQUIRED_SUFFIX);
         }
         return value;
     }
 
     private static int requireNonNegative(int value, String field) {
         if (value < 0) {
-            throw new IllegalArgumentException(field + " must be >= 0");
+            throw new IllegalArgumentException(field + ERR_NON_NEGATIVE_SUFFIX);
         }
         return value;
     }
@@ -427,3 +363,4 @@ public final class ReduceRequest {
         return texts;
     }
 }
+

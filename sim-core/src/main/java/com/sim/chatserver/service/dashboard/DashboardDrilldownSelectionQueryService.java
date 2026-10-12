@@ -14,6 +14,8 @@ import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.util.CommonLiteralConstants;
+import com.sim.chatserver.util.SqlLiteralConstants;
 import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.util.DashboardDbUtil;
 import com.sim.chatserver.util.SqlTimeUtil;
@@ -24,7 +26,26 @@ import jakarta.enterprise.inject.spi.CDI;
 
 public final class DashboardDrilldownSelectionQueryService {
 
-    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
+    private static final String EMPTY = "";
+        private static final String LABEL_LATEST_CHATS = "Latest Chats";
+        private static final String SQL_SELECT_WIDGET_ROWS = SqlLiteralConstants.SQL_SELECT_WIDGET_CHAT_PROMPT_RESPONSE_CREATED_SESSION_FROM;
+        private static final String SQL_SELECT_WIDGET_ROWS_NO_SESSION =
+            "SELECT widget_chat_id, prompt, response_text, created_at FROM ";
+        private static final String SQL_WHERE_SESSION_EQ_ORDER_BY_CREATED_DESC =
+            " WHERE session_id = ? ORDER BY created_at DESC";
+        private static final String SQL_ORDER_BY_CREATED_DESC_LIMIT = " ORDER BY created_at DESC LIMIT ?";
+        private static final String SQL_READ_DATE_RANGE_ORDER_BY_CREATED_DESC =
+            SqlLiteralConstants.SQL_WHERE_CREATED_AT_RANGE + SqlLiteralConstants.SQL_ORDER_BY_CREATED_AT_DESC;
+        private static final String MSG_UNABLE_TO_READ_DATE_ENTRIES = "Unable to read date entries from table ";
+        private static final String MSG_UNABLE_TO_COLLECT_DATE_ENTRIES = "Unable to collect date entries";
+        private static final String MSG_UNABLE_TO_COLLECT_LATEST_CHATS = "Unable to collect latest chats";
+        private static final String MSG_QUERY_FAILED_FOR_WIDGET_TABLE = "Query failed for widget table ";
+        private static final String MSG_UNABLE_TO_COLLECT_SESSION_ENTRIES = "Unable to collect session entries for review";
+        private static final String MSG_UNABLE_TO_LIST_WIDGETS = com.sim.chatserver.util.CommonLiteralConstants.MSG_UNABLE_TO_LIST_WIDGETS;
+        private static final String LOG_UNABLE_TO_READ_DATE_ENTRIES_PREFIX = "Unable to read date entries from table ";
+        private static final String MESSAGE_SEPARATOR = ": ";
+
+    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile(CommonLiteralConstants.SQL_IDENTIFIER_REGEX);
 
     private final Logger log;
 
@@ -45,48 +66,39 @@ public final class DashboardDrilldownSelectionQueryService {
         try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             Map<String, Boolean> tableExistsCache = DashboardDbUtil.newRequestTableCache();
 
-            for (WidgetEntry widget : widgets) {
-                if (widget == null || widget.getWidgetId() == null) {
-                    continue;
-                }
-                String widgetId = widget.getWidgetId();
-                String tableName = DashboardDbUtil.sanitizeWidgetTableName(widgetId);
-                if (!DashboardDbUtil.tableExistsCached(conn, tableName, tableExistsCache)) {
-                    continue;
-                }
-
-                String sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
+            forEachExistingWidgetTable(conn, widgets, tableExistsCache, (widgetId, tableName) -> {
+                String sql = SQL_SELECT_WIDGET_ROWS
                         + quoteIdentifier(tableName)
-                        + " WHERE created_at >= ? AND created_at < ? ORDER BY created_at DESC";
+                    + SQL_READ_DATE_RANGE_ORDER_BY_CREATED_DESC;
 
                 try (java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
                     ps.setTimestamp(1, startTs);
                     ps.setTimestamp(2, endTs);
                     try (ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
-                            String chatId = rs.getString("widget_chat_id");
-                            String prompt = rs.getString("prompt");
-                            String response = rs.getString("response_text");
-                            Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                            String sessionId = rs.getString("session_id");
+                            String chatId = rs.getString(SqlLiteralConstants.COL_WIDGET_CHAT_ID);
+                            String prompt = rs.getString(SqlLiteralConstants.COL_PROMPT);
+                            String response = rs.getString(SqlLiteralConstants.COL_RESPONSE_TEXT);
+                            Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, SqlLiteralConstants.COL_CREATED_AT);
+                            String sessionId = rs.getString(SqlLiteralConstants.COL_SESSION_ID);
 
                             snapshots.add(new TermChatSnapshot(
                                     date.toString(),
                                     widgetId,
-                                    chatId == null ? "" : chatId,
-                                    prompt == null ? "" : prompt,
-                                    response == null ? "" : response,
+                                    chatId == null ? EMPTY : chatId,
+                                    prompt == null ? EMPTY : prompt,
+                                    response == null ? EMPTY : response,
                                     createdAt,
-                                    sessionId == null ? "" : sessionId
+                                    sessionId == null ? EMPTY : sessionId
                             ));
                         }
                     }
                 } catch (SQLException ex) {
-                    log.log(Level.FINE, "Unable to read date entries from table " + tableName, ex);
+                    log.log(Level.FINE, LOG_UNABLE_TO_READ_DATE_ENTRIES_PREFIX + tableName, ex);
                 }
-            }
+            });
         } catch (SQLException ex) {
-            log.log(Level.WARNING, "Unable to collect date entries", ex);
+            log.log(Level.WARNING, MSG_UNABLE_TO_COLLECT_DATE_ENTRIES, ex);
         }
 
         return snapshots;
@@ -99,35 +111,25 @@ public final class DashboardDrilldownSelectionQueryService {
         try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             Map<String, Boolean> tableExistsCache = DashboardDbUtil.newRequestTableCache();
 
-            for (WidgetEntry w : widgets) {
-                if (w == null || w.getWidgetId() == null || w.getWidgetId().isBlank()) {
-                    continue;
-                }
-
-                String widgetId = w.getWidgetId();
-                String tableName = DashboardDbUtil.sanitizeWidgetTableName(widgetId);
-                if (!DashboardDbUtil.tableExistsCached(conn, tableName, tableExistsCache)) {
-                    continue;
-                }
-
-                String sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
+            forEachExistingWidgetTable(conn, widgets, tableExistsCache, (widgetId, tableName) -> {
+                String sql = SQL_SELECT_WIDGET_ROWS
                         + quoteIdentifier(tableName)
-                        + " ORDER BY created_at DESC LIMIT ?";
+                    + SQL_ORDER_BY_CREATED_DESC_LIMIT;
 
                 try (java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
                     ps.setInt(1, Math.max(limit, 1));
                     try (ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
-                            String chatId = rs.getString("widget_chat_id");
-                            String prompt = rs.getString("prompt");
-                            String response = rs.getString("response_text");
-                            Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                            String sessionId = rs.getString("session_id");
+                            String chatId = rs.getString(SqlLiteralConstants.COL_WIDGET_CHAT_ID);
+                            String prompt = rs.getString(SqlLiteralConstants.COL_PROMPT);
+                            String response = rs.getString(SqlLiteralConstants.COL_RESPONSE_TEXT);
+                            Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, SqlLiteralConstants.COL_CREATED_AT);
+                            String sessionId = rs.getString(SqlLiteralConstants.COL_SESSION_ID);
 
                             all.add(new TermChatSnapshot(
-                                    "Latest Chats",
+                                LABEL_LATEST_CHATS,
                                     widgetId,
-                                    chatId == null ? "" : chatId,
+                                    chatId == null ? EMPTY : chatId,
                                     prompt,
                                     response,
                                     createdAt,
@@ -136,9 +138,9 @@ public final class DashboardDrilldownSelectionQueryService {
                         }
                     }
                 }
-            }
+            });
         } catch (SQLException ex) {
-            log.log(Level.WARNING, "Unable to collect latest chats", ex);
+            log.log(Level.WARNING, MSG_UNABLE_TO_COLLECT_LATEST_CHATS, ex);
         }
 
         all.sort(Comparator.comparing(
@@ -161,50 +163,66 @@ public final class DashboardDrilldownSelectionQueryService {
         try (Connection conn = dataSourceHolder().getDataSource().getConnection()) {
             Map<String, Boolean> tableExistsCache = DashboardDbUtil.newRequestTableCache();
 
-            for (WidgetEntry widget : widgets) {
-                if (widget == null || widget.getWidgetId() == null) {
-                    continue;
-                }
-                String widgetId = widget.getWidgetId();
-                String tableName = DashboardDbUtil.sanitizeWidgetTableName(widgetId);
-                if (!DashboardDbUtil.tableExistsCached(conn, tableName, tableExistsCache)) {
-                    continue;
-                }
-                String sql = "SELECT widget_chat_id, prompt, response_text, created_at FROM "
+            forEachExistingWidgetTable(conn, widgets, tableExistsCache, (widgetId, tableName) -> {
+                String sql = SQL_SELECT_WIDGET_ROWS_NO_SESSION
                         + quoteIdentifier(tableName)
-                        + " WHERE session_id = ? ORDER BY created_at DESC";
+                        + SQL_WHERE_SESSION_EQ_ORDER_BY_CREATED_DESC;
                 try (java.sql.PreparedStatement ps = conn.prepareStatement(sql)) {
                     ps.setString(1, sessionId);
                     try (ResultSet rs = ps.executeQuery()) {
                         while (rs.next()) {
-                            String chatId = rs.getString("widget_chat_id");
-                            Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
+                            String chatId = rs.getString(SqlLiteralConstants.COL_WIDGET_CHAT_ID);
+                            Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, SqlLiteralConstants.COL_CREATED_AT);
                             snapshots.add(new TermChatSnapshot(
                                     sessionId,
                                     widgetId,
-                                    chatId == null ? "" : chatId,
-                                    rs.getString("prompt"),
-                                    rs.getString("response_text"),
+                                    chatId == null ? EMPTY : chatId,
+                                    rs.getString(SqlLiteralConstants.COL_PROMPT),
+                                    rs.getString(SqlLiteralConstants.COL_RESPONSE_TEXT),
                                     createdAt,
                                     sessionId
                             ));
                         }
                     }
                 } catch (SQLException ex) {
-                    log.log(Level.WARNING, "Query failed for widget table " + tableName + ": " + ex.getMessage(), ex);
+                    log.log(Level.WARNING, MSG_QUERY_FAILED_FOR_WIDGET_TABLE + tableName + MESSAGE_SEPARATOR + ex.getMessage(), ex);
                 }
-            }
+            });
         } catch (SQLException ex) {
-            log.log(Level.WARNING, "Unable to collect session entries for review", ex);
+            log.log(Level.WARNING, MSG_UNABLE_TO_COLLECT_SESSION_ENTRIES, ex);
         }
         return snapshots;
+    }
+
+    @FunctionalInterface
+    private interface WidgetTableOperation {
+        void apply(String widgetId, String tableName) throws SQLException;
+    }
+
+    private void forEachExistingWidgetTable(
+            Connection conn,
+            List<WidgetEntry> widgets,
+            Map<String, Boolean> tableExistsCache,
+            WidgetTableOperation operation
+    ) throws SQLException {
+        for (WidgetEntry widget : widgets) {
+            if (widget == null || widget.getWidgetId() == null || widget.getWidgetId().isBlank()) {
+                continue;
+            }
+            String widgetId = widget.getWidgetId();
+            String tableName = DashboardDbUtil.sanitizeWidgetTableName(widgetId);
+            if (!DashboardDbUtil.tableExistsCached(conn, tableName, tableExistsCache)) {
+                continue;
+            }
+            operation.apply(widgetId, tableName);
+        }
     }
 
     private List<WidgetEntry> listWidgets() {
         try {
             return WidgetStore.list(null);
         } catch (SQLException | IllegalArgumentException | IllegalStateException ex) {
-            log.log(Level.WARNING, "Unable to list widgets", ex);
+            log.log(Level.WARNING, MSG_UNABLE_TO_LIST_WIDGETS, ex);
             return List.of();
         }
     }
@@ -215,8 +233,8 @@ public final class DashboardDrilldownSelectionQueryService {
 
     private String quoteIdentifier(String identifier) {
         if (identifier == null || !SAFE_SQL_IDENTIFIER.matcher(identifier).matches()) {
-            throw new IllegalArgumentException("Invalid SQL identifier");
+            throw new IllegalArgumentException(SqlLiteralConstants.SQL_INVALID_IDENTIFIER);
         }
-        return '"' + identifier.replace("\"", "\"\"") + '"';
+        return '"' + identifier.replace(SqlLiteralConstants.DOUBLE_QUOTE, SqlLiteralConstants.DOUBLE_DOUBLE_QUOTE) + '"';
     }
 }

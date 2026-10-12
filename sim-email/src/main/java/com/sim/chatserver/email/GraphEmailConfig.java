@@ -8,9 +8,11 @@ public record GraphEmailConfig(
         String authorityHost // optional, defaults to login.microsoftonline.com if blank
         ) {
 
+    private static final String DEFAULT_AUTHORITY_HOST = "login.microsoftonline.com";
+
     public String effectiveAuthorityHost() {
         return (authorityHost == null || authorityHost.isBlank())
-                ? "login.microsoftonline.com"
+                ? DEFAULT_AUTHORITY_HOST
                 : authorityHost.trim();
     }
 

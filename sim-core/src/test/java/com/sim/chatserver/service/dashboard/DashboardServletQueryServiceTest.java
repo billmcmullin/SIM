@@ -34,10 +34,10 @@ import org.junit.jupiter.api.Test;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 
-import com.sim.chatserver.model.DashboardViewModels.ProgressStat;
-import com.sim.chatserver.model.DashboardViewModels.SessionOverview;
-import com.sim.chatserver.model.DashboardViewModels.SessionTimeline;
-import com.sim.chatserver.model.DashboardViewModels.TermSummary;
+import com.sim.chatserver.model.ProgressStat;
+import com.sim.chatserver.model.SessionOverview;
+import com.sim.chatserver.model.SessionTimeline;
+import com.sim.chatserver.model.TermSummary;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.widget.WidgetEntry;
@@ -217,3 +217,4 @@ class DashboardServletQueryServiceTest {
         return method.invoke(target, args);
     }
 }
+

@@ -18,6 +18,7 @@ import java.util.logging.Logger;
 import javax.sql.DataSource;
 
 import com.sim.chatserver.config.EncryptedDbConfigStore;
+import com.sim.chatserver.util.CommonLiteralConstants;
 import com.sim.chatserver.util.TextIoSanitizerUtil;
 
 /**
@@ -31,6 +32,59 @@ public class WidgetHealthConfigStore {
     private static final Logger log = Logger.getLogger(WidgetHealthConfigStore.class.getCanonicalName());
     private static final String DEFAULT_HEALTHCHECK_URL = "http://anythingllm:3001/api/v1/system";
     private static final int DEFAULT_CHECK_INTERVAL_SECONDS = 300;
+    private static final String HTTP_METHOD_GET = "GET";
+    private static final String HTTP_METHOD_HEAD = "HEAD";
+    private static final String HTTP_METHOD_POST = com.sim.chatserver.util.CommonLiteralConstants.HTTP_METHOD_POST;
+    private static final String HEADER_AUTHORIZATION = CommonLiteralConstants.HEADER_AUTHORIZATION;
+    private static final String SQL_ADD_REQUEST_ORIGIN = "ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS request_origin TEXT";
+    private static final String SQL_ADD_REQUEST_REFERER = "ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS request_referer TEXT";
+    private static final String SQL_ADD_REQUEST_USER_AGENT = "ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS request_user_agent TEXT";
+    private static final String SQL_ADD_REQUEST_COOKIE = "ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS request_cookie TEXT";
+    private static final String SQL_ADD_API_KEY_HEADER_NAME = "ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS api_key_header_name VARCHAR(255)";
+    private static final String SQL_ADD_API_KEY_VALUE = "ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS api_key_value TEXT";
+    private static final String SQL_ADD_HEALTHCHECK_ENABLED = "ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS healthcheck_enabled BOOLEAN NOT NULL DEFAULT TRUE";
+    private static final String SQL_ADD_CHECK_INTERVAL_SECONDS = "ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS check_interval_seconds INT NOT NULL DEFAULT 300";
+    private static final String MSG_CONFIG_NULL = "WidgetHealthConfig cannot be null";
+    private static final String MSG_FAILED_SAVE_CONFIG = "Failed to save widget health config";
+    private static final String MSG_INVALID_INTEGER_TEXT = "Invalid integer text for column ";
+    private static final String MSG_INVALID_POSITIVE_INTEGER_TEXT = "Invalid positive integer text for column ";
+    private static final String MSG_INSTANT_PARSE_FALLBACK = "Instant timestamp parse fallback for column ";
+    private static final String MSG_TIMESTAMP_PARSE_FALLBACK_FAILED = "Timestamp parse fallback failed for column ";
+    private static final String MSG_INVALID_TIMESTAMP_VALUE = "Invalid timestamp value for column ";
+    private static final String MSG_RESULTSET_CHAR_STREAM_FAILED = "ResultSet character-stream read failed for column ";
+    private static final String MSG_CHAR_STREAM_DECODE_FAILED = "Character-stream decode failed for column ";
+    private static final String MSG_RESULTSET_BINARY_FAILED = "ResultSet binary read failed for column ";
+    private static final String MSG_RESULTSET_STRING_FAILED = "ResultSet string read failed for column ";
+    private static final String MSG_RESULTSET_OBJECT_FAILED = "ResultSet object read failed for column ";
+    private static final String MSG_NEGATIVE_NUMERIC_VALUE = "Negative numeric value for column ";
+    private static final String MSG_OUT_OF_RANGE_TIMESTAMP = "Out-of-range timestamp value for column ";
+    private static final String MSG_FALLING_BACK = ", falling back";
+    private static final String COL_ID = "id";
+    private static final String COL_HEALTHCHECK_URL = "healthcheck_url";
+    private static final String COL_HEALTHCHECK_ENABLED = "healthcheck_enabled";
+    private static final String COL_CHECK_INTERVAL_SECONDS = "check_interval_seconds";
+    private static final String COL_METHOD = "method";
+    private static final String COL_TIMEOUT_MS = "timeout_ms";
+    private static final String COL_EXPECT_JSON_FIELD = "expect_json_field";
+    private static final String COL_EXPECT_JSON_VALUE = "expect_json_value";
+    private static final String COL_WIDGET_ID = "widget_id";
+    private static final String COL_REQUEST_ORIGIN = "request_origin";
+    private static final String COL_REQUEST_REFERER = "request_referer";
+    private static final String COL_REQUEST_USER_AGENT = "request_user_agent";
+    private static final String COL_REQUEST_COOKIE = "request_cookie";
+    private static final String COL_API_KEY_HEADER_NAME = "api_key_header_name";
+    private static final String COL_API_KEY_VALUE = "api_key_value";
+    private static final String COL_UPDATED_BY = "updated_by";
+    private static final String COL_UPDATED_AT = com.sim.chatserver.util.CommonLiteralConstants.SQL_COL_UPDATED_AT;
+    private static final String BOOL_TRUE = CommonLiteralConstants.VALUE_TRUE;
+    private static final String BOOL_ONE = "1";
+    private static final String BOOL_YES = CommonLiteralConstants.VALUE_YES;
+    private static final String BOOL_Y = "y";
+    private static final String BOOL_FALSE = CommonLiteralConstants.VALUE_FALSE;
+    private static final String BOOL_ZERO = "0";
+    private static final String BOOL_NO = "no";
+    private static final String BOOL_N = "n";
+    private static final String SIGNED_INTEGER_PATTERN = "^-?\\d+$";
     private static final Instant MIN_ALLOWED_INSTANT = Instant.parse("1970-01-01T00:00:00Z");
     private static final Instant MAX_ALLOWED_INSTANT = Instant.parse("3000-12-31T23:59:59Z");
     private static final byte[] EMPTY_BYTES = new byte[0];
@@ -58,7 +112,7 @@ public class WidgetHealthConfigStore {
                 healthcheck_url TEXT NOT NULL,
                 healthcheck_enabled BOOLEAN NOT NULL DEFAULT TRUE,
                 check_interval_seconds INT NOT NULL DEFAULT 300,
-                method VARCHAR(10) NOT NULL DEFAULT 'GET',
+            method VARCHAR(10) NOT NULL DEFAULT '%s',
                 timeout_ms INT NOT NULL DEFAULT 8000,
                 expect_json_field VARCHAR(100),
                 expect_json_value VARCHAR(255),
@@ -72,21 +126,21 @@ public class WidgetHealthConfigStore {
                 updated_by VARCHAR(100),
                 updated_at TIMESTAMP NOT NULL DEFAULT NOW()
             )
-            """;
+            """.formatted(HTTP_METHOD_GET);
 
         try (Connection c = dataSource.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
             ps.execute();
         }
 
         // Backward-compatible migrations for existing DBs
-        addColumnIfMissing("ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS request_origin TEXT");
-        addColumnIfMissing("ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS request_referer TEXT");
-        addColumnIfMissing("ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS request_user_agent TEXT");
-        addColumnIfMissing("ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS request_cookie TEXT");
-        addColumnIfMissing("ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS api_key_header_name VARCHAR(255)");
-        addColumnIfMissing("ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS api_key_value TEXT");
-        addColumnIfMissing("ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS healthcheck_enabled BOOLEAN NOT NULL DEFAULT TRUE");
-        addColumnIfMissing("ALTER TABLE widget_health_config ADD COLUMN IF NOT EXISTS check_interval_seconds INT NOT NULL DEFAULT 300");
+        addColumnIfMissing(SQL_ADD_REQUEST_ORIGIN);
+        addColumnIfMissing(SQL_ADD_REQUEST_REFERER);
+        addColumnIfMissing(SQL_ADD_REQUEST_USER_AGENT);
+        addColumnIfMissing(SQL_ADD_REQUEST_COOKIE);
+        addColumnIfMissing(SQL_ADD_API_KEY_HEADER_NAME);
+        addColumnIfMissing(SQL_ADD_API_KEY_VALUE);
+        addColumnIfMissing(SQL_ADD_HEALTHCHECK_ENABLED);
+        addColumnIfMissing(SQL_ADD_CHECK_INTERVAL_SECONDS);
     }
 
     private void addColumnIfMissing(String sql) throws java.sql.SQLException {
@@ -106,9 +160,9 @@ public class WidgetHealthConfigStore {
                 api_key_header_name, api_key_value,
                 updated_by, updated_at
             )
-            VALUES (?, ?, TRUE, 300, 'GET', 8000, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'system', NOW())
+            VALUES (?, ?, TRUE, 300, '%s', 8000, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, 'system', NOW())
             ON CONFLICT (id) DO NOTHING
-            """;
+            """.formatted(HTTP_METHOD_GET);
 
         try (Connection c = dataSource.getConnection(); PreparedStatement ps = c.prepareStatement(sql)) {
             ps.setInt(1, SINGLETON_ID);
@@ -143,7 +197,7 @@ public class WidgetHealthConfigStore {
 
     public WidgetHealthConfig save(WidgetHealthConfig in) throws java.sql.SQLException {
         if (in == null) {
-            throw new IllegalArgumentException("WidgetHealthConfig cannot be null");
+            throw new IllegalArgumentException(MSG_CONFIG_NULL);
         }
 
         final String sql = """
@@ -252,7 +306,7 @@ public class WidgetHealthConfigStore {
 
             ps.executeUpdate();
         } catch (java.sql.SQLException e) {
-            log.log(Level.SEVERE, "Failed to save widget health config", e);
+            log.log(Level.SEVERE, MSG_FAILED_SAVE_CONFIG, e);
             throw e;
         }
 
@@ -261,24 +315,24 @@ public class WidgetHealthConfigStore {
 
     private WidgetHealthConfig mapRow(ResultSet rs) throws java.sql.SQLException {
         WidgetHealthConfig cfg = new WidgetHealthConfig();
-        cfg.setId(readNonNegativeInt(rs, "id"));
-        cfg.setHealthcheckUrl(trimToNull(readSanitizedDbText(rs, "healthcheck_url", 2048)));
-        cfg.setHealthcheckEnabled(readSafeBoolean(rs, "healthcheck_enabled", true));
-        cfg.setCheckIntervalSeconds(readPositiveInt(rs, "check_interval_seconds", DEFAULT_CHECK_INTERVAL_SECONDS));
-        cfg.setMethod(defaultIfBlank(readSanitizedDbText(rs, "method", 16), "GET"));
-        cfg.setTimeoutMs(readPositiveInt(rs, "timeout_ms", 1));
-        cfg.setExpectJsonField(trimToNull(readSanitizedDbText(rs, "expect_json_field", 100)));
-        cfg.setExpectJsonValue(trimToNull(readSanitizedDbText(rs, "expect_json_value", 255)));
-        cfg.setWidgetId(trimToNull(readSanitizedDbText(rs, "widget_id", 255)));
-        cfg.setRequestOrigin(trimToNull(readSanitizedDbText(rs, "request_origin", 2048)));
-        cfg.setRequestReferer(trimToNull(readSanitizedDbText(rs, "request_referer", 2048)));
-        cfg.setRequestUserAgent(trimToNull(readSanitizedDbText(rs, "request_user_agent", 1024)));
-        cfg.setRequestCookie(trimToNull(readDecryptedSecret(rs, "request_cookie", 4096)));
-        cfg.setApiKeyHeaderName(trimToNull(readSanitizedDbText(rs, "api_key_header_name", 255)));
-        cfg.setApiKeyValue(trimToNull(readDecryptedSecret(rs, "api_key_value", 4096)));
-        cfg.setUpdatedBy(trimToNull(readSanitizedDbText(rs, "updated_by", 100)));
+        cfg.setId(readNonNegativeInt(rs, COL_ID));
+        cfg.setHealthcheckUrl(trimToNull(readSanitizedDbText(rs, COL_HEALTHCHECK_URL, 2048)));
+        cfg.setHealthcheckEnabled(readSafeBoolean(rs, COL_HEALTHCHECK_ENABLED, true));
+        cfg.setCheckIntervalSeconds(readPositiveInt(rs, COL_CHECK_INTERVAL_SECONDS, DEFAULT_CHECK_INTERVAL_SECONDS));
+        cfg.setMethod(defaultIfBlank(readSanitizedDbText(rs, COL_METHOD, 16), HTTP_METHOD_GET));
+        cfg.setTimeoutMs(readPositiveInt(rs, COL_TIMEOUT_MS, 1));
+        cfg.setExpectJsonField(trimToNull(readSanitizedDbText(rs, COL_EXPECT_JSON_FIELD, 100)));
+        cfg.setExpectJsonValue(trimToNull(readSanitizedDbText(rs, COL_EXPECT_JSON_VALUE, 255)));
+        cfg.setWidgetId(trimToNull(readSanitizedDbText(rs, COL_WIDGET_ID, 255)));
+        cfg.setRequestOrigin(trimToNull(readSanitizedDbText(rs, COL_REQUEST_ORIGIN, 2048)));
+        cfg.setRequestReferer(trimToNull(readSanitizedDbText(rs, COL_REQUEST_REFERER, 2048)));
+        cfg.setRequestUserAgent(trimToNull(readSanitizedDbText(rs, COL_REQUEST_USER_AGENT, 1024)));
+        cfg.setRequestCookie(trimToNull(readDecryptedSecret(rs, COL_REQUEST_COOKIE, 4096)));
+        cfg.setApiKeyHeaderName(trimToNull(readSanitizedDbText(rs, COL_API_KEY_HEADER_NAME, 255)));
+        cfg.setApiKeyValue(trimToNull(readDecryptedSecret(rs, COL_API_KEY_VALUE, 4096)));
+        cfg.setUpdatedBy(trimToNull(readSanitizedDbText(rs, COL_UPDATED_BY, 100)));
 
-        Timestamp ts = readSafeTimestamp(rs, "updated_at");
+        Timestamp ts = readSafeTimestamp(rs, COL_UPDATED_AT);
         cfg.setUpdatedAt(ts == null ? null : ts.toInstant());
 
         return normalize(cfg);
@@ -305,9 +359,9 @@ public class WidgetHealthConfigStore {
         }
         out.setCheckIntervalSeconds(intervalSeconds);
 
-        String method = defaultIfBlank(in.getMethod(), "GET").trim().toUpperCase();
-        if (!"GET".equals(method) && !"HEAD".equals(method) && !"POST".equals(method)) {
-            method = "GET";
+        String method = defaultIfBlank(in.getMethod(), HTTP_METHOD_GET).trim().toUpperCase();
+        if (!HTTP_METHOD_GET.equals(method) && !HTTP_METHOD_HEAD.equals(method) && !HTTP_METHOD_POST.equals(method)) {
+            method = HTTP_METHOD_GET;
         }
         out.setMethod(method);
 
@@ -330,7 +384,7 @@ public class WidgetHealthConfigStore {
         String apiKeyValue = trimToNull(in.getApiKeyValue());
         String apiKeyHeaderName = trimToNull(in.getApiKeyHeaderName());
         if (apiKeyValue != null && apiKeyHeaderName == null) {
-            apiKeyHeaderName = "Authorization";
+            apiKeyHeaderName = HEADER_AUTHORIZATION;
         }
         out.setApiKeyHeaderName(apiKeyHeaderName);
         out.setApiKeyValue(apiKeyValue);
@@ -358,28 +412,28 @@ public class WidgetHealthConfigStore {
 
     private int readNonNegativeInt(ResultSet rs, String column) throws java.sql.SQLException {
         String text = TextIoSanitizerUtil.validateCanonicalized(readRawDbText(rs, column), 64);
-        if (text == null || text.isBlank() || !text.matches("^-?\\d+$")) {
+        if (text == null || text.isBlank() || !text.matches(SIGNED_INTEGER_PATTERN)) {
             return 0;
         }
         try {
             int parsed = Integer.parseInt(text.trim());
             return Math.max(0, validateDbInt(parsed, column, 0));
         } catch (NumberFormatException ex) {
-            log.log(Level.FINE, "Invalid integer text for column " + column, ex);
+            log.log(Level.FINE, MSG_INVALID_INTEGER_TEXT + column, ex);
             return 0;
         }
     }
 
     private int readPositiveInt(ResultSet rs, String column, int fallback) throws java.sql.SQLException {
         String text = TextIoSanitizerUtil.validateCanonicalized(readRawDbText(rs, column), 64);
-        if (text == null || text.isBlank() || !text.matches("^-?\\d+$")) {
+        if (text == null || text.isBlank() || !text.matches(SIGNED_INTEGER_PATTERN)) {
             return fallback;
         }
         try {
             int value = validateDbInt(Integer.parseInt(text.trim()), column, fallback);
             return value > 0 ? value : fallback;
         } catch (NumberFormatException ex) {
-            log.log(Level.FINE, "Invalid positive integer text for column " + column, ex);
+            log.log(Level.FINE, MSG_INVALID_POSITIVE_INTEGER_TEXT + column, ex);
             return fallback;
         }
     }
@@ -390,10 +444,10 @@ public class WidgetHealthConfigStore {
             return fallback;
         }
         text = text.trim().toLowerCase(Locale.ROOT);
-        if ("true".equals(text) || "1".equals(text) || "yes".equals(text) || "y".equals(text)) {
+        if (BOOL_TRUE.equals(text) || BOOL_ONE.equals(text) || BOOL_YES.equals(text) || BOOL_Y.equals(text)) {
             return true;
         }
-        if ("false".equals(text) || "0".equals(text) || "no".equals(text) || "n".equals(text)) {
+        if (BOOL_FALSE.equals(text) || BOOL_ZERO.equals(text) || BOOL_NO.equals(text) || BOOL_N.equals(text)) {
             return false;
         }
         return fallback;
@@ -414,11 +468,11 @@ public class WidgetHealthConfigStore {
         try {
             value = Timestamp.from(Instant.parse(text.trim()));
         } catch (DateTimeException ex) {
-            log.log(Level.FINE, "Instant timestamp parse fallback for column " + column, ex);
+            log.log(Level.FINE, MSG_INSTANT_PARSE_FALLBACK + column, ex);
             try {
                 value = Timestamp.valueOf(text.replace('T', ' '));
             } catch (IllegalArgumentException parseEx) {
-                log.log(Level.FINE, "Timestamp parse fallback failed for column " + column, parseEx);
+                log.log(Level.FINE, MSG_TIMESTAMP_PARSE_FALLBACK_FAILED + column, parseEx);
                 return null;
             }
         }
@@ -434,7 +488,7 @@ public class WidgetHealthConfigStore {
             Instant instant = validateDbInstant(value.toInstant(), column);
             return instant == null ? null : Timestamp.from(instant);
         } catch (DateTimeException | IllegalArgumentException e) {
-            log.log(Level.FINE, "Invalid timestamp value for column " + column, e);
+            log.log(Level.FINE, MSG_INVALID_TIMESTAMP_VALUE + column, e);
             return null;
         }
     }
@@ -455,9 +509,9 @@ public class WidgetHealthConfigStore {
                 }
             }
         } catch (java.sql.SQLException ex) {
-            log.log(Level.FINE, "ResultSet character-stream read failed for column " + column, ex);
+            log.log(Level.FINE, MSG_RESULTSET_CHAR_STREAM_FAILED + column, ex);
         } catch (IOException ex) {
-            log.log(Level.FINE, "Character-stream decode failed for column " + column, ex);
+            log.log(Level.FINE, MSG_CHAR_STREAM_DECODE_FAILED + column, ex);
         }
 
         try {
@@ -469,7 +523,7 @@ public class WidgetHealthConfigStore {
             String raw = new String(safeBytes, StandardCharsets.UTF_8);
                 return TextIoSanitizerUtil.validateCanonicalized(raw, 4096);
         } catch (java.sql.SQLException ex) {
-            log.log(Level.FINE, "ResultSet binary read failed for column " + column, ex);
+            log.log(Level.FINE, MSG_RESULTSET_BINARY_FAILED + column, ex);
         }
 
         try {
@@ -478,7 +532,7 @@ public class WidgetHealthConfigStore {
                 return TextIoSanitizerUtil.validateCanonicalized(raw, 4096);
             }
         } catch (java.sql.SQLException ex) {
-            log.log(Level.FINE, "ResultSet string read failed for column " + column, ex);
+            log.log(Level.FINE, MSG_RESULTSET_STRING_FAILED + column, ex);
         }
 
         try {
@@ -488,7 +542,7 @@ public class WidgetHealthConfigStore {
             }
             return TextIoSanitizerUtil.validateCanonicalized(String.valueOf(raw), 4096);
         } catch (java.sql.SQLException ex) {
-            log.log(Level.FINE, "ResultSet object read failed for column " + column, ex);
+            log.log(Level.FINE, MSG_RESULTSET_OBJECT_FAILED + column, ex);
             return null;
         }
     }
@@ -509,7 +563,7 @@ public class WidgetHealthConfigStore {
 
     private int validateDbInt(int value, String column, int fallback) {
         if (value < 0) {
-            log.log(Level.FINE, "Negative numeric value for column " + column + ", falling back");
+            log.log(Level.FINE, MSG_NEGATIVE_NUMERIC_VALUE + column + MSG_FALLING_BACK);
             return fallback;
         }
         return value;
@@ -520,181 +574,11 @@ public class WidgetHealthConfigStore {
             return null;
         }
         if (instant.isBefore(MIN_ALLOWED_INSTANT) || instant.isAfter(MAX_ALLOWED_INSTANT)) {
-            log.log(Level.FINE, "Out-of-range timestamp value for column " + column);
+            log.log(Level.FINE, MSG_OUT_OF_RANGE_TIMESTAMP + column);
             return null;
         }
         return instant;
     }
 
-    /**
-     * Model object for DB-backed widget health config.
-     */
-    public static class WidgetHealthConfig {
-
-        private int id;
-        private String healthcheckUrl;
-        private boolean healthcheckEnabled = true;
-        private int checkIntervalSeconds = DEFAULT_CHECK_INTERVAL_SECONDS;
-        private String method;
-        private int timeoutMs;
-        private String expectJsonField;
-        private String expectJsonValue;
-        private String widgetId;
-
-        // New: optional request-shaping headers for synthetic probe
-        private String requestOrigin;
-        private String requestReferer;
-        private String requestUserAgent;
-        private String requestCookie;
-
-        private String apiKeyHeaderName;
-        private String apiKeyValue;
-
-        private String updatedBy;
-        private Instant updatedAt;
-
-        public int getId() {
-            return id;
-        }
-
-        private final void setId(int id) {
-            this.id = id;
-        }
-
-        private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
-            throw new java.io.NotSerializableException(getClass().getCanonicalName());
-        }
-
-        private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
-            throw new java.io.NotSerializableException(getClass().getCanonicalName());
-        }
-
-        public String getHealthcheckUrl() {
-            return healthcheckUrl;
-        }
-
-        public void setHealthcheckUrl(String healthcheckUrl) {
-            this.healthcheckUrl = healthcheckUrl;
-        }
-
-        public boolean isHealthcheckEnabled() {
-            return healthcheckEnabled;
-        }
-
-        public void setHealthcheckEnabled(boolean healthcheckEnabled) {
-            this.healthcheckEnabled = healthcheckEnabled;
-        }
-
-        public int getCheckIntervalSeconds() {
-            return checkIntervalSeconds;
-        }
-
-        public void setCheckIntervalSeconds(int checkIntervalSeconds) {
-            this.checkIntervalSeconds = checkIntervalSeconds;
-        }
-
-        public String getMethod() {
-            return method;
-        }
-
-        public void setMethod(String method) {
-            this.method = method;
-        }
-
-        public int getTimeoutMs() {
-            return timeoutMs;
-        }
-
-        public void setTimeoutMs(int timeoutMs) {
-            this.timeoutMs = timeoutMs;
-        }
-
-        public String getExpectJsonField() {
-            return expectJsonField;
-        }
-
-        public void setExpectJsonField(String expectJsonField) {
-            this.expectJsonField = expectJsonField;
-        }
-
-        public String getExpectJsonValue() {
-            return expectJsonValue;
-        }
-
-        public void setExpectJsonValue(String expectJsonValue) {
-            this.expectJsonValue = expectJsonValue;
-        }
-
-        public String getWidgetId() {
-            return widgetId;
-        }
-
-        public void setWidgetId(String widgetId) {
-            this.widgetId = widgetId;
-        }
-
-        public String getRequestOrigin() {
-            return requestOrigin;
-        }
-
-        public void setRequestOrigin(String requestOrigin) {
-            this.requestOrigin = requestOrigin;
-        }
-
-        public String getRequestReferer() {
-            return requestReferer;
-        }
-
-        public void setRequestReferer(String requestReferer) {
-            this.requestReferer = requestReferer;
-        }
-
-        public String getRequestUserAgent() {
-            return requestUserAgent;
-        }
-
-        public void setRequestUserAgent(String requestUserAgent) {
-            this.requestUserAgent = requestUserAgent;
-        }
-
-        public String getRequestCookie() {
-            return requestCookie;
-        }
-
-        public void setRequestCookie(String requestCookie) {
-            this.requestCookie = requestCookie;
-        }
-
-        public String getApiKeyHeaderName() {
-            return apiKeyHeaderName;
-        }
-
-        public void setApiKeyHeaderName(String apiKeyHeaderName) {
-            this.apiKeyHeaderName = apiKeyHeaderName;
-        }
-
-        public String getApiKeyValue() {
-            return apiKeyValue;
-        }
-
-        public void setApiKeyValue(String apiKeyValue) {
-            this.apiKeyValue = apiKeyValue;
-        }
-
-        public String getUpdatedBy() {
-            return updatedBy;
-        }
-
-        public void setUpdatedBy(String updatedBy) {
-            this.updatedBy = updatedBy;
-        }
-
-        public Instant getUpdatedAt() {
-            return updatedAt;
-        }
-
-        public void setUpdatedAt(Instant updatedAt) {
-            this.updatedAt = updatedAt;
-        }
-    }
 }
+

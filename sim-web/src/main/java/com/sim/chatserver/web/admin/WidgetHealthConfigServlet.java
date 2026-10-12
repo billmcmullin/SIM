@@ -1,7 +1,7 @@
 package com.sim.chatserver.web.admin;
 
 import com.sim.chatserver.service.widget.WidgetHealthConfigStore;
-import com.sim.chatserver.service.widget.WidgetHealthConfigStore.WidgetHealthConfig;
+import com.sim.chatserver.service.widget.WidgetHealthConfig;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
@@ -39,13 +39,9 @@ public class WidgetHealthConfigServlet extends HttpServlet {
     @Override
     public void init() throws ServletException {
         super.init();
-        try {
-            WidgetHealthConfigStore initializedStore = ensureStoreInitialized();
-            if (initializedStore == null) {
-                throw new IllegalStateException("Widget health config store is unavailable");
-            }
-        } catch (IllegalStateException e) {
-            throw new ServletException("Failed to initialize widget health config store", e);
+        WidgetHealthConfigStore initializedStore = ensureStoreInitialized();
+        if (initializedStore == null) {
+            throw new ServletException("Failed to initialize widget health config store");
         }
     }
 
@@ -72,8 +68,8 @@ public class WidgetHealthConfigServlet extends HttpServlet {
         }
     
         } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
-            log.log(Level.WARNING, "Unhandled exception in doGet", e);
-            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+            log.log(Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
+            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
         }
     }
 
@@ -88,13 +84,13 @@ public class WidgetHealthConfigServlet extends HttpServlet {
             WidgetHealthConfigStore currentStore = ensureStoreInitialized();
 
             if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
-                writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, errorJson("Invalid JSON payload."));
+                writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, errorJson(com.sim.chatserver.util.CommonLiteralConstants.MSG_INVALID_JSON_PAYLOAD));
                 return;
             }
 
             String body = readRequestBody(req);
             if (body == null) {
-                writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, errorJson("Invalid JSON payload."));
+                writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, errorJson(com.sim.chatserver.util.CommonLiteralConstants.MSG_INVALID_JSON_PAYLOAD));
                 return;
             }
             JsonObject in = parseJson(body);
@@ -107,7 +103,7 @@ public class WidgetHealthConfigServlet extends HttpServlet {
             cfg.setTimeoutMs(intOrDefault(in, "timeoutMs", 8000));
             cfg.setExpectJsonField(stringOrNull(in, "expectJsonField"));
             cfg.setExpectJsonValue(stringOrNull(in, "expectJsonValue"));
-            cfg.setWidgetId(stringOrNull(in, "widgetId"));
+            cfg.setWidgetId(stringOrNull(in, com.sim.chatserver.util.CommonLiteralConstants.KEY_WIDGET_ID));
 
             // New optional request-shaping fields for synthetic probe
             cfg.setRequestOrigin(stringOrNull(in, "requestOrigin"));
@@ -138,9 +134,9 @@ public class WidgetHealthConfigServlet extends HttpServlet {
             }
 
             HttpSession session = req.getSession(false);
-            String updatedBy = session != null && session.getAttribute("user") != null
-                    ? String.valueOf(session.getAttribute("user"))
-                    : "unknown";
+            String updatedBy = session != null && session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) != null
+                    ? String.valueOf(session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER))
+                    : com.sim.chatserver.util.CommonLiteralConstants.VALUE_UNKNOWN_LOWER;
             cfg.setUpdatedBy(updatedBy);
             cfg.setUpdatedAt(Instant.now());
 
@@ -153,8 +149,8 @@ public class WidgetHealthConfigServlet extends HttpServlet {
         }
     
         } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
-            log.log(Level.WARNING, "Unhandled exception in doPost", e);
-            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+            log.log(Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_POST, e);
+            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
         }
     }
 
@@ -194,13 +190,13 @@ public class WidgetHealthConfigServlet extends HttpServlet {
 
     private boolean isAdmin(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED, errorJson("Authentication required."));
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+            writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED, errorJson(com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED));
             return false;
         }
-        Object role = session.getAttribute("role");
-        if (role == null || !"ADMIN".equalsIgnoreCase(String.valueOf(role))) {
-            writeJson(resp, HttpServletResponse.SC_FORBIDDEN, errorJson("Admin role required."));
+        Object role = session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.ROLE);
+        if (role == null || !com.sim.chatserver.util.CommonLiteralConstants.ROLE_ADMIN.equalsIgnoreCase(String.valueOf(role))) {
+            writeJson(resp, HttpServletResponse.SC_FORBIDDEN, errorJson(com.sim.chatserver.util.CommonLiteralConstants.MSG_ADMIN_ROLE_REQUIRED));
             return false;
         }
         return true;
@@ -216,7 +212,7 @@ public class WidgetHealthConfigServlet extends HttpServlet {
                 .add("timeoutMs", cfg == null ? 8000 : Math.max(1, cfg.getTimeoutMs()))
                 .add("expectJsonField", safe(cfg == null ? null : cfg.getExpectJsonField()))
                 .add("expectJsonValue", safe(cfg == null ? null : cfg.getExpectJsonValue()))
-                .add("widgetId", safe(cfg == null ? null : cfg.getWidgetId()))
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_WIDGET_ID, safe(cfg == null ? null : cfg.getWidgetId()))
                 // New optional request-shaping fields
                 .add("requestOrigin", safe(cfg == null ? null : cfg.getRequestOrigin()))
                 .add("requestReferer", safe(cfg == null ? null : cfg.getRequestReferer()))
@@ -225,7 +221,7 @@ public class WidgetHealthConfigServlet extends HttpServlet {
                 .add("apiKeyHeaderName", safe(cfg == null ? null : cfg.getApiKeyHeaderName()))
                 .add("apiKeyStored", cfg != null && cfg.getApiKeyValue() != null)
                 .add("updatedBy", safe(cfg == null ? null : cfg.getUpdatedBy()))
-                .add("updatedAt", cfg == null || cfg.getUpdatedAt() == null ? "" : cfg.getUpdatedAt().toString());
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_UPDATED_AT, cfg == null || cfg.getUpdatedAt() == null ? "" : cfg.getUpdatedAt().toString());
 
         return b.build();
     }
@@ -286,11 +282,11 @@ public class WidgetHealthConfigServlet extends HttpServlet {
         } catch (ClassCastException e) {
             log.log(Level.FINE, "Unable to read JSON boolean key {0} directly; trying parse fallback", key);
             String raw = String.valueOf(obj.get(key)).replace("\"", "").trim();
-            if ("true".equalsIgnoreCase(raw) || "1".equals(raw) || "yes".equalsIgnoreCase(raw)
+            if (com.sim.chatserver.util.CommonLiteralConstants.VALUE_TRUE.equalsIgnoreCase(raw) || "1".equals(raw) || com.sim.chatserver.util.CommonLiteralConstants.VALUE_YES.equalsIgnoreCase(raw)
                     || "on".equalsIgnoreCase(raw) || "y".equalsIgnoreCase(raw)) {
                 return true;
             }
-            if ("false".equalsIgnoreCase(raw) || "0".equals(raw) || "no".equalsIgnoreCase(raw)
+            if (com.sim.chatserver.util.CommonLiteralConstants.VALUE_FALSE.equalsIgnoreCase(raw) || "0".equals(raw) || "no".equalsIgnoreCase(raw)
                     || "off".equalsIgnoreCase(raw) || "n".equalsIgnoreCase(raw)) {
                 return false;
             }
@@ -315,8 +311,8 @@ public class WidgetHealthConfigServlet extends HttpServlet {
 
     private JsonObject errorJson(String message) {
         return Json.createObjectBuilder()
-                .add("status", "error")
-                .add("message", message == null ? "Request failed." : message)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, message == null ? com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_FAILED : message)
                 .build();
     }
 
@@ -346,7 +342,7 @@ public class WidgetHealthConfigServlet extends HttpServlet {
             ServletJsonResponseUtil.writeJson(resp, status, body);
         } catch (IOException e) {
             log.log(Level.WARNING, "Unable to write widget health config JSON response", e);
-            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
+            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_UNABLE_TO_WRITE_RESPONSE);
         }
     }
 
@@ -357,7 +353,13 @@ public class WidgetHealthConfigServlet extends HttpServlet {
         try {
             resp.sendError(status, message);
         } catch (IOException ioe) {
-            log.log(Level.FINE, "Fallback sendError failed", ioe);
+            log.log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_FAILED, ioe);
         }
     }
+
+    private void readObject(java.io.ObjectInputStream in) throws java.io.IOException, ClassNotFoundException {
+        throw new java.io.InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
+
 }
+

@@ -4,6 +4,8 @@ import java.time.OffsetDateTime;
 
 public class CustomerProfile {
 
+    private static final String SUPPRESS_UNUSED = com.sim.chatserver.util.CommonLiteralConstants.SUPPRESS_UNUSED;
+
     private String sessionId;
     private String friendlyName;
     private String salesforceContactId;
@@ -15,12 +17,12 @@ public class CustomerProfile {
     private String rawJson;
     private OffsetDateTime lastSyncedAt;
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(SUPPRESS_UNUSED)
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(SUPPRESS_UNUSED)
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }

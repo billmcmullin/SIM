@@ -51,16 +51,36 @@ public final class EmailConfigLoader {
     private static final Pattern SAFE_HOST = Pattern.compile("^[a-zA-Z0-9.-]{1,253}$");
     private static final Pattern SAFE_PORT_TEXT = Pattern.compile("^\\d{1,5}$");
     private static final Pattern SAFE_BOOL_TEXT = Pattern.compile("^(?i:true|false|1|0|yes|no|y|n|on|off)$");
-    private static final Pattern SAFE_EMAIL = Pattern.compile("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$");
-        private static final EmailConfig DEFAULT_EMAIL_CONFIG = new EmailConfig(
+    private static final String SAFE_EMAIL_REGEX_LOCAL_PART = "^[^\\s@]+";
+    private static final String SAFE_EMAIL_REGEX_DOMAIN_PART = "@[^\\s@]+\\.[^\\s@]+$";
+    private static final Pattern SAFE_EMAIL = Pattern.compile(SAFE_EMAIL_REGEX_LOCAL_PART + SAFE_EMAIL_REGEX_DOMAIN_PART);
+    private static final String MSG_FALLBACK_TO_LOCALHOST = "No valid SMTP config found in ENV or properties. Falling back to localhost:25.";
+    private static final String SOURCE_ENV_PREFIX = "ENV ";
+    private static final String SOURCE_PROPERTIES_PREFIX = "properties ";
+    private static final String EMPTY = "";
+    private static final String MSG_INVALID_CONFIG_PATH = "MAIL_CONFIG_FILE is set to an invalid path.";
+    private static final String MSG_CONFIG_PATH_NOT_FILE = "MAIL_CONFIG_FILE is set but file does not exist or is not a regular file.";
+    private static final String MSG_LOADED_EXTERNAL_PROPS = "Loaded SMTP properties from external file.";
+    private static final String MSG_FAILED_EXTERNAL_PROPS = "Failed to load SMTP properties from external file.";
+    private static final String MSG_LOADED_CLASSPATH_PROPS = "Loaded SMTP properties from classpath: email.properties";
+    private static final String MSG_FAILED_CLASSPATH_PROPS = "Failed loading classpath email.properties";
+    private static final String MSG_INVALID_PORT_RANGE = "Invalid SMTP port out of range in {0}.";
+    private static final String MSG_INVALID_PORT = "Invalid SMTP port in {0}.";
+    private static final String BOOL_TRUE = "true";
+    private static final String BOOL_ONE = "1";
+    private static final String BOOL_YES = "yes";
+    private static final String BOOL_Y = "y";
+    private static final String BOOL_ON = "on";
+
+    private static final EmailConfig DEFAULT_EMAIL_CONFIG = new EmailConfig(
             "localhost",
             25,
             false,
             false,
             false,
-            "",
-            "",
-            ""
+            EMPTY,
+            EMPTY,
+            EMPTY
         );
 
     @FunctionalInterface
@@ -102,7 +122,7 @@ public final class EmailConfigLoader {
             return props;
         }
 
-        log.warning("No valid SMTP config found in ENV or properties. Falling back to localhost:25.");
+        log.warning(MSG_FALLBACK_TO_LOCALHOST);
         return DEFAULT_EMAIL_CONFIG;
     }
 
@@ -112,7 +132,7 @@ public final class EmailConfigLoader {
      */
     static EmailConfig loadEnvOnly() {
         String host = trimToNull(envSanitized(ENV_HOST, MAX_ENV_TEXT_LEN));
-        int port = parsePort(trimToNull(envSanitized(ENV_PORT, 6)), "ENV " + ENV_PORT);
+        int port = parsePort(trimToNull(envSanitized(ENV_PORT, 6)), SOURCE_ENV_PREFIX + ENV_PORT);
 
         if (host == null || port < 1) {
             return null;
@@ -122,9 +142,9 @@ public final class EmailConfigLoader {
         boolean starttls = parseBoolean(envSanitized(ENV_STARTTLS, 16), false);
         boolean ssl = parseBoolean(envSanitized(ENV_SSL, 16), false);
 
-        String username = defaultString(envSanitized(ENV_USERNAME, MAX_ENV_TEXT_LEN), "");
-        String password = defaultString(envSanitized(ENV_PASSWORD, MAX_ENV_SECRET_LEN), "");
-        String from = defaultString(envSanitized(ENV_FROM, MAX_ENV_TEXT_LEN), "");
+        String username = defaultString(envSanitized(ENV_USERNAME, MAX_ENV_TEXT_LEN), EMPTY);
+        String password = defaultString(envSanitized(ENV_PASSWORD, MAX_ENV_SECRET_LEN), EMPTY);
+        String from = defaultString(envSanitized(ENV_FROM, MAX_ENV_TEXT_LEN), EMPTY);
 
         return new EmailConfig(host, port, auth, starttls, ssl, username, password, from);
     }
@@ -149,7 +169,7 @@ public final class EmailConfigLoader {
         }
 
         String host = trimToNull(p.getProperty(PROP_HOST));
-        int port = parsePort(trimToNull(p.getProperty(PROP_PORT)), "properties " + PROP_PORT);
+        int port = parsePort(trimToNull(p.getProperty(PROP_PORT)), SOURCE_PROPERTIES_PREFIX + PROP_PORT);
 
         if (host == null || port < 1) {
             return null;
@@ -159,9 +179,9 @@ public final class EmailConfigLoader {
         boolean starttls = parseBoolean(p.getProperty(PROP_STARTTLS), false);
         boolean ssl = parseBoolean(p.getProperty(PROP_SSL), false);
 
-        String username = defaultString(p.getProperty(PROP_USERNAME), "");
-        String password = defaultString(p.getProperty(PROP_PASSWORD), "");
-        String from = defaultString(p.getProperty(PROP_FROM), "");
+        String username = defaultString(p.getProperty(PROP_USERNAME), EMPTY);
+        String password = defaultString(p.getProperty(PROP_PASSWORD), EMPTY);
+        String from = defaultString(p.getProperty(PROP_FROM), EMPTY);
 
         return new EmailConfig(host, port, auth, starttls, ssl, username, password, from);
     }
@@ -177,20 +197,20 @@ public final class EmailConfigLoader {
         try {
             path = Path.of(pathValue).normalize();
         } catch (InvalidPathException ex) {
-            log.warning("MAIL_CONFIG_FILE is set to an invalid path.");
+            log.warning(MSG_INVALID_CONFIG_PATH);
             return p;
         }
 
         if (!Files.exists(path) || !Files.isRegularFile(path)) {
-            log.warning("MAIL_CONFIG_FILE is set but file does not exist or is not a regular file.");
+            log.warning(MSG_CONFIG_PATH_NOT_FILE);
             return p;
         }
 
         try (InputStream in = Files.newInputStream(path)) {
             p.load(in);
-            log.info("Loaded SMTP properties from external file.");
+            log.info(MSG_LOADED_EXTERNAL_PROPS);
         } catch (IOException e) {
-            log.log(Level.WARNING, "Failed to load SMTP properties from external file.", e);
+            log.log(Level.WARNING, MSG_FAILED_EXTERNAL_PROPS, e);
         }
 
         return p;
@@ -204,9 +224,9 @@ public final class EmailConfigLoader {
                 return p;
             }
             p.load(in);
-            log.info("Loaded SMTP properties from classpath: email.properties");
+            log.info(MSG_LOADED_CLASSPATH_PROPS);
         } catch (IOException e) {
-            log.log(Level.WARNING, "Failed loading classpath email.properties", e);
+            log.log(Level.WARNING, MSG_FAILED_CLASSPATH_PROPS, e);
         }
         return p;
     }
@@ -218,12 +238,12 @@ public final class EmailConfigLoader {
         try {
             int port = Integer.parseInt(value.trim());
             if (port < 1 || port > 65535) {
-                log.log(Level.WARNING, "Invalid SMTP port out of range in {0}.", sourceLabel);
+                log.log(Level.WARNING, MSG_INVALID_PORT_RANGE, sourceLabel);
                 return -1;
             }
             return port;
         } catch (NumberFormatException e) {
-            log.log(Level.WARNING, "Invalid SMTP port in {0}.", sourceLabel);
+            log.log(Level.WARNING, MSG_INVALID_PORT, sourceLabel);
             return -1;
         }
     }
@@ -233,11 +253,11 @@ public final class EmailConfigLoader {
         if (v == null) {
             return defaultValue;
         }
-        return "true".equalsIgnoreCase(v)
-                || "1".equals(v)
-                || "yes".equalsIgnoreCase(v)
-                || "y".equalsIgnoreCase(v)
-                || "on".equalsIgnoreCase(v);
+        return BOOL_TRUE.equalsIgnoreCase(v)
+                || BOOL_ONE.equals(v)
+                || BOOL_YES.equalsIgnoreCase(v)
+                || BOOL_Y.equalsIgnoreCase(v)
+                || BOOL_ON.equalsIgnoreCase(v);
     }
 
     private static String trimToNull(String s) {

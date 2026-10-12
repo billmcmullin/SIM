@@ -11,6 +11,8 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 
+import com.sim.chatserver.util.CommonLiteralConstants;
+
 import jakarta.json.Json;
 import jakarta.json.JsonArrayBuilder;
 import jakarta.json.JsonObject;
@@ -19,6 +21,73 @@ import jakarta.json.JsonObject;
  * Tracks async review job progress for UI polling/progress bar.
  */
 public final class ReviewJobStatus {
+    private static final String CONTENT_TYPE_APPLICATION_JSON = CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON;
+    private static final String EMPTY = "";
+    private static final String FIELD_JOB_ID = "jobId";
+    private static final String FIELD_REQUEST_ID = CommonLiteralConstants.FIELD_REQUEST_ID;
+    private static final String FIELD_PHASE = "phase";
+    private static final String FIELD_DONE = "done";
+    private static final String FIELD_SUCCESS = CommonLiteralConstants.FIELD_SUCCESS;
+    private static final String FIELD_PROGRESS_PERCENT = "progressPercent";
+    private static final String FIELD_BATCH_PROGRESS_PERCENT = "batchProgressPercent";
+    private static final String FIELD_TOTAL_SELECTED = CommonLiteralConstants.FIELD_TOTAL_SELECTED;
+    private static final String FIELD_TOTAL_BATCHES = CommonLiteralConstants.FIELD_TOTAL_BATCHES;
+    private static final String FIELD_COMPLETED_BATCHES = "completedBatches";
+    private static final String FIELD_FAILED_BATCHES = "failedBatches";
+    private static final String FIELD_RETRIES = "retries";
+    private static final String FIELD_ALL_SELECTED_CHAT_IDS = CommonLiteralConstants.FIELD_ALL_SELECTED_CHAT_IDS;
+    private static final String FIELD_USED_CHAT_IDS = CommonLiteralConstants.FIELD_USED_CHAT_IDS;
+    private static final String FIELD_MISSING_CHAT_IDS = CommonLiteralConstants.FIELD_MISSING_CHAT_IDS;
+    private static final String FIELD_COVERAGE_PERCENT = "coveragePercent";
+    private static final String FIELD_COVERAGE_COMPLETE = CommonLiteralConstants.FIELD_COVERAGE_COMPLETE;
+    private static final String FIELD_STARTED_AT_EPOCH_MS = "startedAtEpochMs";
+    private static final String FIELD_UPDATED_AT_EPOCH_MS = "updatedAtEpochMs";
+    private static final String FIELD_FINISHED_AT_EPOCH_MS = "finishedAtEpochMs";
+    private static final String FIELD_HTTP_STATUS = "httpStatus";
+    private static final String FIELD_MESSAGE = CommonLiteralConstants.FIELD_MESSAGE;
+    private static final String FIELD_ERROR_MESSAGE = "errorMessage";
+    private static final String FIELD_FINAL_REPORT = "finalReport";
+    private static final String FIELD_RAW_RESPONSE_BODY = "rawResponseBody";
+    private static final String FIELD_CONTENT_TYPE = "contentType";
+    private static final String FIELD_FAILED_BATCH_INDEXES = CommonLiteralConstants.FIELD_FAILED_BATCH_INDEXES;
+    private static final String FIELD_WARNINGS = "warnings";
+    private static final String MSG_REQUIRED_SUFFIX = CommonLiteralConstants.ERR_REQUIRED_SUFFIX;
+    private static final String ERR_FINISHED_AT_REQUIRED = "finishedAtEpochMs must be set when done=true";
+    private static final String ERR_COMPLETED_EXCEEDS_TOTAL = "completedBatches cannot exceed totalBatches";
+    private static final String ERR_MISSING_CHAT_IDS_FORMULA = "missingChatIds must equal allSelectedChatIds - usedChatIds";
+    private static final String ERR_COVERAGE_COMPLETE_MISSING = "coverageComplete=true requires empty missingChatIds";
+    private static final String ERR_RUNNING_DONE_CONFLICT = "running=true cannot be set when done=true";
+    private static final String MSG_QUEUED = "Queued";
+    private static final String MSG_QUEUED_ELLIPSIS = "Queued...";
+    private static final String MSG_CANCELLED = "Cancelled";
+    private static final String MSG_ANALYZING_CHATS_PREFIX = "Analyzing chats: batch ";
+    private static final String MSG_ANALYZING_CHATS_ELLIPSIS = "Analyzing chats...";
+    private static final String MSG_FAILURES_PREFIX = " (failures: ";
+    private static final String MSG_SYNTHESIZING_FINAL_REPORT = "Synthesizing final report...";
+    private static final String TOSTRING_PREFIX = "ReviewJobStatus{";
+    private static final String TOSTRING_JOB_ID_PREFIX = "jobId='";
+    private static final String TOSTRING_REQUEST_ID_PREFIX = ", " + CommonLiteralConstants.TOSTRING_REQUEST_ID_PREFIX;
+    private static final String TOSTRING_PHASE_PREFIX = ", phase=";
+    private static final String TOSTRING_DONE_PREFIX = ", done=";
+    private static final String TOSTRING_SUCCESS_PREFIX = ", success=";
+    private static final String TOSTRING_RUNNING_PREFIX = ", running=";
+    private static final String TOSTRING_BATCH_PROGRESS_PREFIX = ", batchProgressPercent=";
+    private static final String TOSTRING_TOTAL_SELECTED_PREFIX = ", totalSelected=";
+    private static final String TOSTRING_TOTAL_BATCHES_PREFIX = CommonLiteralConstants.TOSTRING_TOTAL_BATCHES_PREFIX;
+    private static final String TOSTRING_COMPLETED_BATCHES_PREFIX = ", completedBatches=";
+    private static final String TOSTRING_FAILED_BATCHES_PREFIX = ", failedBatches=";
+    private static final String TOSTRING_RETRIES_PREFIX = ", retries=";
+    private static final String TOSTRING_ALL_SELECTED_PREFIX = ", allSelectedChatIds=";
+    private static final String TOSTRING_USED_PREFIX = ", usedChatIds=";
+    private static final String TOSTRING_MISSING_PREFIX = ", missingChatIds=";
+    private static final String TOSTRING_COVERAGE_PERCENT_PREFIX = ", coveragePercent=";
+    private static final String TOSTRING_COVERAGE_COMPLETE_PREFIX = com.sim.chatserver.util.CommonLiteralConstants.TOSTRING_COVERAGE_COMPLETE_PREFIX;
+    private static final String TOSTRING_HTTP_STATUS_PREFIX = ", httpStatus=";
+    private static final String JSON_FIELD_RUNNING = CommonLiteralConstants.STATUS_RUNNING;
+    private static final String JSON_FIELD_ACTIVITY = com.sim.chatserver.util.CommonLiteralConstants.FIELD_ACTIVITY;
+    private static final String ACTIVITY_COMPLETED = "Completed";
+    private static final String ACTIVITY_FAILED = "Failed";
+    private static final String NUL_CHAR = com.sim.chatserver.util.CommonLiteralConstants.NULL_CHAR_STRING;
 
     public enum Phase {
         QUEUED,
@@ -71,9 +140,9 @@ public final class ReviewJobStatus {
     final int batchProgressPercent;
     final boolean running;
 
-    ReviewJobStatus(Builder b) {
-        this.jobId = requireNonBlank(b.jobId, "jobId");
-        this.requestId = defaultIfBlank(b.requestId, "");
+    ReviewJobStatus(ReviewJobStatusBuilder b) {
+        this.jobId = requireNonBlank(b.jobId, FIELD_JOB_ID);
+        this.requestId = defaultIfBlank(b.requestId, EMPTY);
 
         this.phase = b.phase == null ? Phase.QUEUED : b.phase;
         this.done = b.done;
@@ -112,12 +181,12 @@ public final class ReviewJobStatus {
         this.finishedAtEpochMs = Math.max(0L, b.finishedAtEpochMs);
 
         this.httpStatus = b.httpStatus;
-        this.message = defaultIfBlank(b.message, "");
-        this.errorMessage = defaultIfBlank(b.errorMessage, "");
+        this.message = defaultIfBlank(b.message, EMPTY);
+        this.errorMessage = defaultIfBlank(b.errorMessage, EMPTY);
 
-        this.finalReport = defaultIfBlank(b.finalReport, "");
-        this.rawResponseBody = defaultIfBlank(b.rawResponseBody, "");
-        this.contentType = defaultIfBlank(b.contentType, "application/json");
+        this.finalReport = defaultIfBlank(b.finalReport, EMPTY);
+        this.rawResponseBody = defaultIfBlank(b.rawResponseBody, EMPTY);
+        this.contentType = defaultIfBlank(b.contentType, CONTENT_TYPE_APPLICATION_JSON);
 
         this.failedBatchIndexes = immutableDistinctPositiveInts(b.failedBatchIndexes);
         this.warnings = immutableDistinctStringsKeepCase(b.warnings);
@@ -135,10 +204,10 @@ public final class ReviewJobStatus {
 
     private void validateConsistency() {
         if (done && finishedAtEpochMs <= 0) {
-            throw new IllegalArgumentException("finishedAtEpochMs must be set when done=true");
+            throw new IllegalArgumentException(ERR_FINISHED_AT_REQUIRED);
         }
         if (completedBatches > totalBatches && totalBatches > 0) {
-            throw new IllegalArgumentException("completedBatches cannot exceed totalBatches");
+            throw new IllegalArgumentException(ERR_COMPLETED_EXCEEDS_TOTAL);
         }
 
         Set<String> expectedMissing = new LinkedHashSet<>(allSelectedChatIds);
@@ -148,20 +217,20 @@ public final class ReviewJobStatus {
 
         Set<String> providedMissing = new LinkedHashSet<>(missingChatIds);
         if (!allSelectedChatIds.isEmpty() && !expectedMissing.equals(providedMissing)) {
-            throw new IllegalArgumentException("missingChatIds must equal allSelectedChatIds - usedChatIds");
+            throw new IllegalArgumentException(ERR_MISSING_CHAT_IDS_FORMULA);
         }
 
         if (coverageComplete && !missingChatIds.isEmpty()) {
-            throw new IllegalArgumentException("coverageComplete=true requires empty missingChatIds");
+            throw new IllegalArgumentException(ERR_COVERAGE_COMPLETE_MISSING);
         }
 
         if (running && done) {
-            throw new IllegalArgumentException("running=true cannot be set when done=true");
+            throw new IllegalArgumentException(ERR_RUNNING_DONE_CONFLICT);
         }
     }
 
-    public static Builder builder() {
-        return new Builder();
+    public static ReviewJobStatusBuilder builder() {
+        return new ReviewJobStatusBuilder();
     }
 
     static ReviewJobStatus queued(String jobId, String requestId, int totalSelected) {
@@ -180,8 +249,8 @@ public final class ReviewJobStatus {
                 .coverageComplete(false)
                 .startedAtEpochMs(now)
                 .updatedAtEpochMs(now)
-                .message("Queued")
-                .activity("Queued...")
+                .message(MSG_QUEUED)
+                .activity(MSG_QUEUED_ELLIPSIS)
                 .running(true)
                 .batchProgressPercent(0)
                 .build();
@@ -347,262 +416,66 @@ public final class ReviewJobStatus {
 
     public JsonObject toJson() {
         return Json.createObjectBuilder()
-                .add("jobId", jobId)
-                .add("requestId", requestId)
-                .add("phase", phase.name())
-                .add("done", done)
-                .add("success", success)
-                .add("running", running)
-                .add("progressPercent", progressPercent())
-                .add("batchProgressPercent", batchProgressPercent)
-                .add("activity", activity)
-                .add("totalSelected", totalSelected)
-                .add("totalBatches", totalBatches)
-                .add("completedBatches", completedBatches)
-                .add("failedBatches", failedBatches)
-                .add("retries", retries)
-                .add("allSelectedChatIds", toJsonArrayStrings(allSelectedChatIds))
-                .add("usedChatIds", toJsonArrayStrings(usedChatIds))
-                .add("missingChatIds", toJsonArrayStrings(missingChatIds))
-                .add("coveragePercent", coveragePercent)
-                .add("coverageComplete", coverageComplete)
-                .add("startedAtEpochMs", startedAtEpochMs)
-                .add("updatedAtEpochMs", updatedAtEpochMs)
-                .add("finishedAtEpochMs", finishedAtEpochMs)
-                .add("httpStatus", httpStatus)
-                .add("message", message)
-                .add("errorMessage", errorMessage)
-                .add("finalReport", finalReport)
-                .add("rawResponseBody", safeBodyPreview(rawResponseBody))
-                .add("contentType", contentType)
-                .add("failedBatchIndexes", toJsonArrayInts(failedBatchIndexes))
-                .add("warnings", toJsonArrayStrings(warnings))
+                .add(FIELD_JOB_ID, jobId)
+                .add(FIELD_REQUEST_ID, requestId)
+                .add(FIELD_PHASE, phase.name())
+                .add(FIELD_DONE, done)
+                .add(FIELD_SUCCESS, success)
+                .add(JSON_FIELD_RUNNING, running)
+                .add(FIELD_PROGRESS_PERCENT, progressPercent())
+                .add(FIELD_BATCH_PROGRESS_PERCENT, batchProgressPercent)
+                .add(JSON_FIELD_ACTIVITY, activity)
+                .add(FIELD_TOTAL_SELECTED, totalSelected)
+                .add(FIELD_TOTAL_BATCHES, totalBatches)
+                .add(FIELD_COMPLETED_BATCHES, completedBatches)
+                .add(FIELD_FAILED_BATCHES, failedBatches)
+                .add(FIELD_RETRIES, retries)
+                .add(FIELD_ALL_SELECTED_CHAT_IDS, toJsonArrayStrings(allSelectedChatIds))
+                .add(FIELD_USED_CHAT_IDS, toJsonArrayStrings(usedChatIds))
+                .add(FIELD_MISSING_CHAT_IDS, toJsonArrayStrings(missingChatIds))
+                .add(FIELD_COVERAGE_PERCENT, coveragePercent)
+                .add(FIELD_COVERAGE_COMPLETE, coverageComplete)
+                .add(FIELD_STARTED_AT_EPOCH_MS, startedAtEpochMs)
+                .add(FIELD_UPDATED_AT_EPOCH_MS, updatedAtEpochMs)
+                .add(FIELD_FINISHED_AT_EPOCH_MS, finishedAtEpochMs)
+                .add(FIELD_HTTP_STATUS, httpStatus)
+                .add(FIELD_MESSAGE, message)
+                .add(FIELD_ERROR_MESSAGE, errorMessage)
+                .add(FIELD_FINAL_REPORT, finalReport)
+                .add(FIELD_RAW_RESPONSE_BODY, safeBodyPreview(rawResponseBody))
+                .add(FIELD_CONTENT_TYPE, contentType)
+                .add(FIELD_FAILED_BATCH_INDEXES, toJsonArrayInts(failedBatchIndexes))
+                .add(FIELD_WARNINGS, toJsonArrayStrings(warnings))
                 .build();
     }
 
     @Override
     public String toString() {
-        return "ReviewJobStatus{"
-                + "jobId='" + jobId + '\''
-                + ", requestId='" + requestId + '\''
-                + ", phase=" + phase
-                + ", done=" + done
-                + ", success=" + success
-                + ", running=" + running
-                + ", batchProgressPercent=" + batchProgressPercent
-                + ", totalSelected=" + totalSelected
-                + ", totalBatches=" + totalBatches
-                + ", completedBatches=" + completedBatches
-                + ", failedBatches=" + failedBatches
-                + ", retries=" + retries
-                + ", allSelectedChatIds=" + allSelectedChatIds.size()
-                + ", usedChatIds=" + usedChatIds.size()
-                + ", missingChatIds=" + missingChatIds.size()
-                + ", coveragePercent=" + coveragePercent
-                + ", coverageComplete=" + coverageComplete
-                + ", httpStatus=" + httpStatus
+        return TOSTRING_PREFIX
+            + TOSTRING_JOB_ID_PREFIX + jobId + '\''
+            + TOSTRING_REQUEST_ID_PREFIX + requestId + '\''
+            + TOSTRING_PHASE_PREFIX + phase
+            + TOSTRING_DONE_PREFIX + done
+            + TOSTRING_SUCCESS_PREFIX + success
+            + TOSTRING_RUNNING_PREFIX + running
+            + TOSTRING_BATCH_PROGRESS_PREFIX + batchProgressPercent
+            + TOSTRING_TOTAL_SELECTED_PREFIX + totalSelected
+            + TOSTRING_TOTAL_BATCHES_PREFIX + totalBatches
+            + TOSTRING_COMPLETED_BATCHES_PREFIX + completedBatches
+            + TOSTRING_FAILED_BATCHES_PREFIX + failedBatches
+            + TOSTRING_RETRIES_PREFIX + retries
+            + TOSTRING_ALL_SELECTED_PREFIX + allSelectedChatIds.size()
+            + TOSTRING_USED_PREFIX + usedChatIds.size()
+            + TOSTRING_MISSING_PREFIX + missingChatIds.size()
+            + TOSTRING_COVERAGE_PERCENT_PREFIX + coveragePercent
+            + TOSTRING_COVERAGE_COMPLETE_PREFIX + coverageComplete
+            + TOSTRING_HTTP_STATUS_PREFIX + httpStatus
                 + '}';
-    }
-
-    public static final class Builder {
-
-        String jobId;
-        String requestId;
-
-        Phase phase;
-        boolean done;
-        boolean success;
-
-        int totalSelected;
-        int totalBatches;
-        int completedBatches;
-        int failedBatches;
-        int retries;
-
-        List<String> allSelectedChatIds = new ArrayList<>();
-        List<String> usedChatIds = new ArrayList<>();
-        List<String> missingChatIds = new ArrayList<>();
-
-        int coveragePercent;
-        boolean coverageComplete;
-
-        long startedAtEpochMs;
-        long updatedAtEpochMs;
-        long finishedAtEpochMs;
-
-        int httpStatus;
-        String message;
-        String errorMessage;
-
-        String finalReport;
-        String rawResponseBody;
-        String contentType;
-
-        List<Integer> failedBatchIndexes = new ArrayList<>();
-        List<String> warnings = new ArrayList<>();
-
-        String activity;
-        int batchProgressPercent = -1;
-        boolean running;
-        boolean runningSet;
-
-        private Builder() {
-        }
-
-        public Builder jobId(String jobId) {
-            this.jobId = jobId;
-            return this;
-        }
-
-        public Builder requestId(String requestId) {
-            this.requestId = requestId;
-            return this;
-        }
-
-        public Builder phase(Phase phase) {
-            this.phase = phase;
-            return this;
-        }
-
-        public Builder done(boolean done) {
-            this.done = done;
-            return this;
-        }
-
-        public Builder success(boolean success) {
-            this.success = success;
-            return this;
-        }
-
-        public Builder totalSelected(int totalSelected) {
-            this.totalSelected = totalSelected;
-            return this;
-        }
-
-        public Builder totalBatches(int totalBatches) {
-            this.totalBatches = totalBatches;
-            return this;
-        }
-
-        public Builder completedBatches(int completedBatches) {
-            this.completedBatches = completedBatches;
-            return this;
-        }
-
-        public Builder failedBatches(int failedBatches) {
-            this.failedBatches = failedBatches;
-            return this;
-        }
-
-        public Builder retries(int retries) {
-            this.retries = retries;
-            return this;
-        }
-
-        public Builder allSelectedChatIds(List<String> allSelectedChatIds) {
-            this.allSelectedChatIds = allSelectedChatIds == null ? new ArrayList<>() : allSelectedChatIds;
-            return this;
-        }
-
-        public Builder usedChatIds(List<String> usedChatIds) {
-            this.usedChatIds = usedChatIds == null ? new ArrayList<>() : usedChatIds;
-            return this;
-        }
-
-        public Builder missingChatIds(List<String> missingChatIds) {
-            this.missingChatIds = missingChatIds == null ? new ArrayList<>() : missingChatIds;
-            return this;
-        }
-
-        public Builder coveragePercent(int coveragePercent) {
-            this.coveragePercent = coveragePercent;
-            return this;
-        }
-
-        public Builder coverageComplete(boolean coverageComplete) {
-            this.coverageComplete = coverageComplete;
-            return this;
-        }
-
-        public Builder startedAtEpochMs(long startedAtEpochMs) {
-            this.startedAtEpochMs = startedAtEpochMs;
-            return this;
-        }
-
-        public Builder updatedAtEpochMs(long updatedAtEpochMs) {
-            this.updatedAtEpochMs = updatedAtEpochMs;
-            return this;
-        }
-
-        public Builder finishedAtEpochMs(long finishedAtEpochMs) {
-            this.finishedAtEpochMs = finishedAtEpochMs;
-            return this;
-        }
-
-        public Builder httpStatus(int httpStatus) {
-            this.httpStatus = httpStatus;
-            return this;
-        }
-
-        public Builder message(String message) {
-            this.message = message;
-            return this;
-        }
-
-        public Builder errorMessage(String errorMessage) {
-            this.errorMessage = errorMessage;
-            return this;
-        }
-
-        public Builder finalReport(String finalReport) {
-            this.finalReport = finalReport;
-            return this;
-        }
-
-        public Builder rawResponseBody(String rawResponseBody) {
-            this.rawResponseBody = rawResponseBody;
-            return this;
-        }
-
-        public Builder contentType(String contentType) {
-            this.contentType = contentType;
-            return this;
-        }
-
-        public Builder failedBatchIndexes(List<Integer> failedBatchIndexes) {
-            this.failedBatchIndexes = failedBatchIndexes == null ? new ArrayList<>() : failedBatchIndexes;
-            return this;
-        }
-
-        public Builder warnings(List<String> warnings) {
-            this.warnings = warnings == null ? new ArrayList<>() : warnings;
-            return this;
-        }
-
-        private Builder activity(String activity) {
-            this.activity = activity;
-            return this;
-        }
-
-        private Builder batchProgressPercent(int batchProgressPercent) {
-            this.batchProgressPercent = batchProgressPercent;
-            return this;
-        }
-
-        private Builder running(boolean running) {
-            this.running = running;
-            this.runningSet = true;
-            return this;
-        }
-
-        public ReviewJobStatus build() {
-            return new ReviewJobStatus(this);
-        }
     }
 
     private static String requireNonBlank(String value, String field) {
         if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(field + " is required");
+            throw new IllegalArgumentException(field + MSG_REQUIRED_SUFFIX);
         }
         return value;
     }
@@ -661,34 +534,34 @@ public final class ReviewJobStatus {
         if (done) {
             return switch (phase) {
                 case COMPLETED ->
-                    "Completed";
+                    ACTIVITY_COMPLETED;
                 case FAILED ->
-                    "Failed";
+                    ACTIVITY_FAILED;
                 case CANCELLED ->
-                    "Cancelled";
+                    MSG_CANCELLED;
                 default ->
-                    "Completed";
+                    ACTIVITY_COMPLETED;
             };
         }
 
         return switch (phase == null ? Phase.QUEUED : phase) {
             case QUEUED ->
-                "Queued...";
+                MSG_QUEUED_ELLIPSIS;
             case MAP ->
                 totalBatches > 0
-                ? "Analyzing chats: batch " + Math.max(0, completedBatches) + '/' + totalBatches
-                + (failedBatches > 0 ? " (failures: " + failedBatches + ')' : "")
-                : "Analyzing chats...";
+                ? MSG_ANALYZING_CHATS_PREFIX + Math.max(0, completedBatches) + '/' + totalBatches
+                + (failedBatches > 0 ? MSG_FAILURES_PREFIX + failedBatches + ')' : EMPTY)
+                : MSG_ANALYZING_CHATS_ELLIPSIS;
             case REDUCE ->
-                "Synthesizing final report...";
+                MSG_SYNTHESIZING_FINAL_REPORT;
             case COMPLETED ->
-                "Completed";
+                ACTIVITY_COMPLETED;
             case FAILED ->
-                "Failed";
+                ACTIVITY_FAILED;
             case CANCELLED ->
-                "Cancelled";
+                MSG_CANCELLED;
             default ->
-                "Queued...";
+                MSG_QUEUED_ELLIPSIS;
         };
     }
 
@@ -767,10 +640,12 @@ public final class ReviewJobStatus {
 
     private static String safeBodyPreview(String body) {
         if (body == null || body.isBlank()) {
-            return "";
+            return EMPTY;
         }
-        String normalized = body.replace("\u0000", "").replace(System.lineSeparator(), "").trim();
+        String normalized = body.replace(NUL_CHAR, EMPTY).replace(System.lineSeparator(), EMPTY).trim();
         int max = 512;
         return normalized.length() > max ? new String(normalized.toCharArray(), 0, max) : normalized;
     }
+
 }
+

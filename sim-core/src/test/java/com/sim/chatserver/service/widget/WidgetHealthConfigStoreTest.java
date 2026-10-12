@@ -71,7 +71,7 @@ class WidgetHealthConfigStoreTest {
         when(loadPs.executeQuery()).thenReturn(rs);
         when(rs.next()).thenReturn(false);
 
-        WidgetHealthConfigStore.WidgetHealthConfig out = underTest.load();
+        WidgetHealthConfig out = underTest.load();
 
         assertNull(out);
     }
@@ -138,7 +138,7 @@ class WidgetHealthConfigStoreTest {
         when(rs.getObject("updated_by", String.class)).thenReturn(" tester ");
         when(rs.getTimestamp("updated_at")).thenReturn(Timestamp.from(Instant.parse("2026-01-01T00:00:00Z")));
 
-        WidgetHealthConfigStore.WidgetHealthConfig out = underTest.load();
+        WidgetHealthConfig out = underTest.load();
 
         assertNotNull(out);
         assertEquals(WidgetHealthConfigStore.SINGLETON_ID, out.getId());
@@ -233,7 +233,7 @@ class WidgetHealthConfigStoreTest {
         when(loadRs.getObject("updated_at", Timestamp.class)).thenReturn(Timestamp.from(Instant.now()));
         when(loadRs.getString("updated_at")).thenReturn(Instant.now().toString());
 
-        WidgetHealthConfigStore.WidgetHealthConfig in = new WidgetHealthConfigStore.WidgetHealthConfig();
+        WidgetHealthConfig in = new WidgetHealthConfig();
         in.setHealthcheckUrl("   ");
         in.setHealthcheckEnabled(true);
         in.setCheckIntervalSeconds(0);
@@ -251,7 +251,7 @@ class WidgetHealthConfigStoreTest {
         in.setUpdatedBy("tester");
         in.setUpdatedAt(Instant.parse("2026-01-01T00:00:00Z"));
 
-        WidgetHealthConfigStore.WidgetHealthConfig out = underTest.save(in);
+        WidgetHealthConfig out = underTest.save(in);
 
         verify(savePs).setString(2, "http://anythingllm:3001/api/v1/system");
         verify(savePs).setString(3, "GET");
@@ -288,7 +288,7 @@ class WidgetHealthConfigStoreTest {
         when(rs.getBytes("check_interval_seconds")).thenReturn(bytes("15"));
         when(rs.getBytes("updated_at")).thenReturn(bytes("2026-01-01 00:00:00"));
 
-        WidgetHealthConfigStore.WidgetHealthConfig out = underTest.load();
+        WidgetHealthConfig out = underTest.load();
 
         assertNotNull(out);
         assertFalse(out.isHealthcheckEnabled());
@@ -302,3 +302,4 @@ class WidgetHealthConfigStoreTest {
         return value == null ? null : value.getBytes(StandardCharsets.UTF_8);
     }
 }
+

@@ -2,6 +2,15 @@ package com.sim.chatserver.salesforce;
 
 public class SalesforceCustomerMatch {
 
+    private static final String TO_STRING_PREFIX = "SalesforceCustomerMatch{";
+    private static final String TO_STRING_CONTACT_ID_PREFIX = "contactId='";
+    private static final String TO_STRING_ACCOUNT_ID_PREFIX = ", accountId='";
+    private static final String TO_STRING_NAME_PREFIX = ", name='";
+    private static final String TO_STRING_EMAIL_PREFIX = ", email='";
+    private static final String TO_STRING_PHONE_PREFIX = ", phone='";
+    private static final String TO_STRING_TITLE_PREFIX = ", title='";
+    private static final String TO_STRING_DEPARTMENT_PREFIX = ", department='";
+
     private String contactId;
     private String accountId;
     private String name;
@@ -11,12 +20,10 @@ public class SalesforceCustomerMatch {
     private String department;
     private String rawJson;
 
-    @SuppressWarnings("unused")
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
@@ -119,14 +126,14 @@ public class SalesforceCustomerMatch {
 
     @Override
     public String toString() {
-        return "SalesforceCustomerMatch{"
-                + "contactId='" + contactId + '\''
-                + ", accountId='" + accountId + '\''
-                + ", name='" + name + '\''
-                + ", email='" + email + '\''
-                + ", phone='" + phone + '\''
-                + ", title='" + title + '\''
-                + ", department='" + department + '\''
+        return TO_STRING_PREFIX
+            + TO_STRING_CONTACT_ID_PREFIX + contactId + '\''
+            + TO_STRING_ACCOUNT_ID_PREFIX + accountId + '\''
+            + TO_STRING_NAME_PREFIX + name + '\''
+            + TO_STRING_EMAIL_PREFIX + email + '\''
+            + TO_STRING_PHONE_PREFIX + phone + '\''
+            + TO_STRING_TITLE_PREFIX + title + '\''
+            + TO_STRING_DEPARTMENT_PREFIX + department + '\''
                 + '}';
     }
 }

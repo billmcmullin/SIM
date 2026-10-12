@@ -1,9 +1,7 @@
 package com.sim.chatserver.web.dashboard.newuser;
 
-import java.io.BufferedReader;
+import com.sim.chatserver.util.SessionLabel;
 import java.io.IOException;
-import java.io.InputStream;
-import java.io.InputStreamReader;
 import java.io.PrintWriter;
 import java.nio.charset.StandardCharsets;
 import java.sql.SQLException;
@@ -23,9 +21,11 @@ import java.util.Set;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import com.sim.chatserver.util.CommonLiteralConstants;
 import com.sim.chatserver.util.SessionLabelStore;
 import com.sim.chatserver.web.util.ServletPathUtil;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
+import com.sim.chatserver.web.util.ServletTemplateLoaderUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 import com.sim.chatserver.widget.WidgetStore;
 
@@ -39,31 +39,34 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "DashboardNewUsersDrilldownServlet", urlPatterns = {"/dashboard/new-users/drilldown"})
 public class DashboardNewUsersDrilldownServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardNewUsersDrilldownServlet.class.getCanonicalName());
     private static final String TEMPLATE_PATH = "/WEB-INF/views/dashboard_new_users_drilldown.html";
-    private static final DateTimeFormatter TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final DateTimeFormatter TS_FMT = DateTimeFormatter.ofPattern(com.sim.chatserver.util.CommonLiteralConstants.DATETIME_PATTERN_SECONDS);
     private static final DateTimeFormatter DATE_FMT = DateTimeFormatter.ISO_LOCAL_DATE;
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         try {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            req.getRequestDispatcher("/login").forward(req, resp);
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+            com.sim.chatserver.web.util.ServletPathUtil.forwardToLogin(req, resp, log);
             return;
         }
 
         String contextPath = ServletPathUtil.safeContextPathNoEmptyGuard(req.getContextPath());
 
-        int page = parsePositiveIntOrDefault(ServletRequestParamUtil.firstParam(req, "page", 256, true, true), 1);
+        int page = parsePositiveIntOrDefault(ServletRequestParamUtil.firstParam(req, CommonLiteralConstants.PARAM_PAGE, 256, true, true), 1);
         int pageSize = parsePositiveIntOrDefault(ServletRequestParamUtil.firstParam(req, "pageSize", 256, true, true), 10);
         if (pageSize != 10 && pageSize != 25 && pageSize != 50) {
             pageSize = 10;
         }
 
-        LocalDate dayFilter = parseDateOrNull(ServletRequestParamUtil.firstParam(req, "day", 256, true, true));
+        LocalDate dayFilter = parseDateOrNull(ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.KEY_DAY, 256, true, true));
 
         List<Row> allRows = new ArrayList<>();
 
@@ -89,7 +92,7 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
             ids.add(entry.getKey());
         }
 
-        Map<String, SessionLabelStore.SessionLabel> labels;
+        Map<String, SessionLabel> labels;
         try {
             labels = ids.isEmpty() ? Map.of() : SessionLabelStore.mapDisplayNames(ids);
         } catch (SQLException | IllegalArgumentException | IllegalStateException ex) {
@@ -141,8 +144,8 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
 
         String template = loadTemplate(req, TEMPLATE_PATH);
         String rendered = template
-            .replace("${contextPath}", escapeHtml(contextPath))
-                .replace("${user}", escapeHtml(String.valueOf(session.getAttribute("user"))))
+            .replace(com.sim.chatserver.util.CommonLiteralConstants.TEMPLATE_CONTEXT_PATH, escapeHtml(contextPath))
+                .replace(com.sim.chatserver.util.CommonLiteralConstants.TEMPLATE_USER, escapeHtml(String.valueOf(session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER))))
                 .replace("${rowsJsonB64}", rowsJsonB64)
                 .replace("${totalUsers}", String.valueOf(total))
                 .replace("${page}", String.valueOf(page))
@@ -159,14 +162,14 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
                 .replace("${dayQuery}", dayFilter == null ? "" : "&day=" + escapeHtml(dayFilter.format(DATE_FMT)));
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
-        resp.setContentType("text/html; charset=UTF-8");
+        resp.setContentType(com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_HTML_UTF8_SPACED);
         try (PrintWriter out = resp.getWriter()) {
             out.print(rendered);
         }
-        } catch (IOException | ServletException | IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
-            java.util.logging.Logger.getLogger("OWASP")
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
-            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+        } catch (IOException | IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                    .log(java.util.logging.Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
+            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
         }
     }
 
@@ -175,7 +178,7 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         int rank = offset + 1;
         for (Row r : rows) {
             builder.add(Json.createObjectBuilder()
-                    .add("rank", rank++)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_RANK, rank++)
                     .add("display", safeJsonText(r.display))
                     .add("firstSeen", safeJsonText(r.firstSeen))
                     .add("totalChats", r.totalChats)
@@ -214,23 +217,7 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         if (req == null || req.getServletContext() == null || path == null || path.isBlank()) {
             return "";
         }
-        try (InputStream stream = req.getServletContext().getResourceAsStream(path)) {
-            if (stream == null) {
-                log.log(Level.WARNING, "Template not found: {0}", path);
-                return "";
-            }
-            try (BufferedReader reader = new BufferedReader(new InputStreamReader(stream, StandardCharsets.UTF_8))) {
-                StringBuilder builder = new StringBuilder();
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    builder.append(line).append(System.lineSeparator());
-                }
-                return builder.toString();
-            }
-        } catch (IOException e) {
-            log.log(Level.WARNING, "Unable to load template " + path, e);
-            return "";
-        }
+        return ServletTemplateLoaderUtil.loadTemplate(req.getServletContext(), path, log);
     }
 
     private String escapeHtml(String s) {
@@ -241,11 +228,11 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         for (int i = 0; i < s.length(); i++) {
             char ch = s.charAt(i);
             switch (ch) {
-                case '&' -> escaped.append("&amp;");
-                case '<' -> escaped.append("&lt;");
-                case '>' -> escaped.append("&gt;");
-                case '\"' -> escaped.append("&quot;");
-                case '\'' -> escaped.append("&#39;");
+                case '&' -> escaped.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_AMP);
+                case '<' -> escaped.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_LT);
+                case '>' -> escaped.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_GT);
+                case '\"' -> escaped.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_QUOT);
+                case '\'' -> escaped.append(com.sim.chatserver.util.CommonLiteralConstants.HTML_ESCAPE_APOS);
                 default -> escaped.append(ch);
             }
         }
@@ -267,7 +254,7 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         try {
             resp.sendError(status, message);
         } catch (IOException ioe) {
-            log.log(Level.FINE, "Failed sending fallback server error.", ioe);
+            log.log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
         }
     }
 
@@ -295,19 +282,23 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         }
     }
 
-    private static final class Row {
-
-        final String display;
-        final String firstSeen;
-        final int totalChats;
-        final String chatEntriesUrl;
-
-        private Row(String display, String firstSeen, int totalChats, String chatEntriesUrl) {
-            this.display = display;
-            this.firstSeen = firstSeen;
-            this.totalChats = totalChats;
-            this.chatEntriesUrl = chatEntriesUrl;
-        }
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
     }
-
 }
+
+final class Row {
+
+    final String display;
+    final String firstSeen;
+    final int totalChats;
+    final String chatEntriesUrl;
+
+    Row(String display, String firstSeen, int totalChats, String chatEntriesUrl) {
+        this.display = display;
+        this.firstSeen = firstSeen;
+        this.totalChats = totalChats;
+        this.chatEntriesUrl = chatEntriesUrl;
+    }
+}
+

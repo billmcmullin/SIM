@@ -12,15 +12,17 @@ import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
-
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 /**
  * Admin data export backup endpoint.
  */
 public class DatabaseBackupServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DatabaseBackupServlet.class.getCanonicalName());
 
-    private static final String SESSION_USER = "user";
-    private static final String SESSION_ROLE = "role";
+    private static final String SESSION_USER = com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER;
+    private static final String SESSION_ROLE = com.sim.chatserver.util.CommonLiteralConstants.ROLE;
     private static final DateTimeFormatter BACKUP_TS_FMT = DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss", Locale.US)
             .withZone(ZoneOffset.UTC);
 
@@ -59,7 +61,7 @@ public class DatabaseBackupServlet extends HttpServlet {
         }
         Object roleObj = session.getAttribute(SESSION_ROLE);
         String role = roleObj == null ? "" : String.valueOf(roleObj);
-        return "ADMIN".equalsIgnoreCase(role);
+        return com.sim.chatserver.util.CommonLiteralConstants.ROLE_ADMIN.equalsIgnoreCase(role);
     }
 
     private void sendErrorSafe(HttpServletResponse resp, int status, String message) {
@@ -72,4 +74,9 @@ public class DatabaseBackupServlet extends HttpServlet {
             log.log(Level.FINE, "Unable to send backup servlet error response", e);
         }
     }
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
+
 }

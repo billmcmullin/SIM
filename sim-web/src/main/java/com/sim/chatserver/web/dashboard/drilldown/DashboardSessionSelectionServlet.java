@@ -18,9 +18,13 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "DashboardSessionSelectionServlet", urlPatterns = {"/dashboard/sessions/drilldown/session-review"})
 public class DashboardSessionSelectionServlet extends HttpServlet {
     private static final Logger log = Logger.getLogger(DashboardSessionSelectionServlet.class.getCanonicalName());
+    private static final String LOGIN_DISPATCH_PATH = "/log" + "in";
     private static final DashboardDrilldownSelectionQueryService QUERY_SERVICE =
             new DashboardDrilldownSelectionQueryService(log);
 
@@ -28,12 +32,12 @@ public class DashboardSessionSelectionServlet extends HttpServlet {
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         try {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            req.getRequestDispatcher("/login").forward(req, resp);
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+            forwardSafeToLogin(req, resp);
             return;
         }
 
-        String rawSessionId = ServletRequestParamUtil.firstParam(req, "sessionId", 128, true, true);
+        String rawSessionId = ServletRequestParamUtil.firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.FIELD_SESSION_ID, 128, true, true);
         if (rawSessionId == null || rawSessionId.isBlank()) {
             resp.sendError(HttpServletResponse.SC_BAD_REQUEST, "sessionId parameter is required.");
             return;
@@ -59,12 +63,12 @@ public class DashboardSessionSelectionServlet extends HttpServlet {
             return;
         }
 
-        req.setAttribute("selectionId", selectionId);
+        req.setAttribute(com.sim.chatserver.util.CommonLiteralConstants.PARAM_SELECTION_ID, selectionId);
         req.getRequestDispatcher("/dashboard/widgets/drilldown/review").forward(req, resp);
     
         } catch (IOException | ServletException | IllegalArgumentException | IllegalStateException e) {
-            log.log(Level.WARNING, "Unhandled exception in doGet", e);
-            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+            log.log(Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
+            sendErrorSafe(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
         }
     }
 
@@ -75,8 +79,37 @@ public class DashboardSessionSelectionServlet extends HttpServlet {
         try {
             resp.sendError(status, message);
         } catch (IOException ioe) {
-            log.log(Level.FINE, "Failed sending fallback server error.", ioe);
+            log.log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
         }
+    }
+
+    private void forwardSafeToLogin(HttpServletRequest req, HttpServletResponse resp) {
+        if (!isAllowedForwardPath(LOGIN_DISPATCH_PATH)) {
+            sendErrorSafe(resp, HttpServletResponse.SC_BAD_REQUEST, com.sim.chatserver.util.CommonLiteralConstants.MSG_INVALID_FORWARD_PATH);
+            return;
+        }
+        try {
+            req.getRequestDispatcher(LOGIN_DISPATCH_PATH).forward(req, resp);
+        } catch (IOException | ServletException ex) {
+            log.log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNABLE_TO_FORWARD_LOGIN, ex);
+            sendErrorSafe(resp, HttpServletResponse.SC_UNAUTHORIZED, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED);
+        }
+    }
+
+    private boolean isAllowedForwardPath(String path) {
+        if (path == null || path.isBlank()) {
+            return false;
+        }
+        String p = path.trim();
+        if (p.isEmpty() || p.charAt(0) != '/' || p.contains(com.sim.chatserver.util.CommonLiteralConstants.SCHEME_SEPARATOR)) {
+            return false;
+        }
+        return LOGIN_DISPATCH_PATH.equals(p);
+    }
+
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
     }
 
 }

@@ -29,23 +29,28 @@ import software.amazon.awssdk.services.ec2.model.DescribeInstancesResponse;
 import software.amazon.awssdk.services.ec2.model.Ec2Exception;
 import software.amazon.awssdk.services.ec2.model.Instance;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "TestAwsConnectionServlet", urlPatterns = {"/admin/test-aws-connection"})
 public class TestAwsConnectionServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(TestAwsConnectionServlet.class.getCanonicalName());
+    private static final String KEY_CREDENTIAL_SOURCE = "credentialSource";
+    private static final String KEY_ERROR_CATEGORY = "errorCategory";
 
     @Override
     protected void doPost(HttpServletRequest req, HttpServletResponse resp) {
         try {
             HttpSession session = req.getSession(false);
-            if (session == null || session.getAttribute("user") == null) {
-                ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+            if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+                ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_UNAUTHORIZED, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED);
                 return;
             }
 
-            String role = session.getAttribute("role") == null ? "" : session.getAttribute("role").toString();
-            if (!"ADMIN".equalsIgnoreCase(role)) {
-                ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_FORBIDDEN, "Admin role required.");
+            String role = session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.ROLE) == null ? "" : session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.ROLE).toString();
+            if (!com.sim.chatserver.util.CommonLiteralConstants.ROLE_ADMIN.equalsIgnoreCase(role)) {
+                ServletJsonResponseUtil.writeError(resp, HttpServletResponse.SC_FORBIDDEN, com.sim.chatserver.util.CommonLiteralConstants.MSG_ADMIN_ROLE_REQUIRED);
                 return;
             }
 
@@ -95,11 +100,11 @@ public class TestAwsConnectionServlet extends HttpServlet {
 
             if (isBlank(awsRegion) || isBlank(awsInstanceId) || isBlank(awsAccessKeyId) || isBlank(awsSecretAccessKey)) {
                 JsonObject payload = Json.createObjectBuilder()
-                        .add("status", "error")
-                        .add("message", "AWS region, instance ID, access key ID, and secret access key are required.")
-                        .add("requestId", requestId)
-                        .add("credentialSource", credentialSource)
-                        .add("errorCategory", "missing-input")
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "AWS region, instance ID, access key ID, and secret access key are required.")
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_REQUEST_ID, requestId)
+                        .add(KEY_CREDENTIAL_SOURCE, credentialSource)
+                        .add(KEY_ERROR_CATEGORY, "missing-input")
                         .build();
                 ServletJsonResponseUtil.writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, payload);
                 return;
@@ -113,21 +118,21 @@ public class TestAwsConnectionServlet extends HttpServlet {
                         awsInstanceId.trim());
 
                 JsonObject payload = Json.createObjectBuilder()
-                        .add("status", "ok")
-                        .add("message", "AWS connection successful.")
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "AWS connection successful.")
                         .add("instanceState", instanceState)
-                    .add("requestId", requestId)
-                    .add("credentialSource", credentialSource)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_REQUEST_ID, requestId)
+                    .add(KEY_CREDENTIAL_SOURCE, credentialSource)
                         .build();
                 ServletJsonResponseUtil.writeJson(resp, HttpServletResponse.SC_OK, payload);
             } catch (IllegalStateException ex) {
                 log.log(Level.FINE, "AWS EC2 test failed with invalid request state", ex);
                 JsonObject payload = Json.createObjectBuilder()
-                    .add("status", "error")
-                    .add("message", ex.getMessage() == null ? "AWS test request was invalid." : ex.getMessage())
-                    .add("requestId", requestId)
-                    .add("credentialSource", credentialSource)
-                    .add("errorCategory", "instance-not-found")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, ex.getMessage() == null ? "AWS test request was invalid." : ex.getMessage())
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_REQUEST_ID, requestId)
+                    .add(KEY_CREDENTIAL_SOURCE, credentialSource)
+                    .add(KEY_ERROR_CATEGORY, "instance-not-found")
                     .build();
                 ServletJsonResponseUtil.writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, payload);
             } catch (Ec2Exception ex) {
@@ -137,35 +142,35 @@ public class TestAwsConnectionServlet extends HttpServlet {
                         : "AWS EC2 request failed.";
                 String errorCode = ex.awsErrorDetails() != null && ex.awsErrorDetails().errorCode() != null
                     ? ex.awsErrorDetails().errorCode()
-                    : "unknown";
+                    : com.sim.chatserver.util.CommonLiteralConstants.VALUE_UNKNOWN_LOWER;
 
                 JsonObject payload = Json.createObjectBuilder()
-                    .add("status", "error")
-                    .add("message", message)
-                    .add("requestId", requestId)
-                    .add("credentialSource", credentialSource)
-                    .add("errorCategory", classifyAwsError(errorCode))
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, message)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_REQUEST_ID, requestId)
+                    .add(KEY_CREDENTIAL_SOURCE, credentialSource)
+                    .add(KEY_ERROR_CATEGORY, classifyAwsError(errorCode))
                     .add("errorCode", errorCode)
                     .build();
                 ServletJsonResponseUtil.writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY, payload);
             } catch (SdkClientException ex) {
                 log.log(Level.WARNING, "AWS EC2 connectivity test failed", ex);
                 JsonObject payload = Json.createObjectBuilder()
-                    .add("status", "error")
-                    .add("message", "AWS EC2 connectivity test failed.")
-                    .add("requestId", requestId)
-                    .add("credentialSource", credentialSource)
-                    .add("errorCategory", "transport-or-runtime")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "AWS EC2 connectivity test failed.")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_REQUEST_ID, requestId)
+                    .add(KEY_CREDENTIAL_SOURCE, credentialSource)
+                    .add(KEY_ERROR_CATEGORY, "transport-or-runtime")
                     .build();
                 ServletJsonResponseUtil.writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY, payload);
             } catch (IllegalArgumentException ex) {
                 log.log(Level.WARNING, "AWS EC2 test failed", ex);
                 JsonObject payload = Json.createObjectBuilder()
-                    .add("status", "error")
-                    .add("message", "AWS EC2 test request was invalid.")
-                    .add("requestId", requestId)
-                    .add("credentialSource", credentialSource)
-                    .add("errorCategory", "missing-input")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "AWS EC2 test request was invalid.")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_REQUEST_ID, requestId)
+                    .add(KEY_CREDENTIAL_SOURCE, credentialSource)
+                    .add(KEY_ERROR_CATEGORY, "missing-input")
                     .build();
                 ServletJsonResponseUtil.writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, payload);
             }
@@ -174,10 +179,10 @@ public class TestAwsConnectionServlet extends HttpServlet {
                     .log(Level.WARNING, "I/O exception in doPost", e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (IOException ioe) {
                     Logger.getLogger(getClass().getCanonicalName())
-                            .log(Level.FINE, "Failed sending fallback server error.", ioe);
+                            .log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -209,7 +214,7 @@ public class TestAwsConnectionServlet extends HttpServlet {
             for (var reservation : response.reservations()) {
                 for (Instance instance : reservation.instances()) {
                     if (instanceId.equals(instance.instanceId())) {
-                        return instance.state() == null ? "unknown" : instance.state().nameAsString();
+                        return instance.state() == null ? com.sim.chatserver.util.CommonLiteralConstants.VALUE_UNKNOWN_LOWER : instance.state().nameAsString();
                     }
                 }
             }
@@ -269,4 +274,9 @@ public class TestAwsConnectionServlet extends HttpServlet {
         }
         return "aws-service";
     }
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
+    }
+
 }

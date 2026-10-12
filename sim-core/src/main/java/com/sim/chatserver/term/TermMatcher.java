@@ -8,12 +8,24 @@ import java.util.regex.Pattern;
  * Behavior: - If match_type == "REGEX" and a match_pattern is present, the
  * provided regex is used. We will only wrap it with word-safe lookarounds when
  * it is safe to do so (to avoid breaking complex regexes that already contain
- * inline flags/anchors/lookarounds). - If match_type == "WILDCARD" and the
+ * inline flags/anchors/lookarounds). - If match_type == com.sim.chatserver.util.CommonLiteralConstants.MATCH_TYPE_WILDCARD and the
  * pattern contains '*' or '?' we translate those into appropriate regex pieces
  * while preserving separator-tolerance between literal characters. - Otherwise
  * we treat the input as a literal token and build a separator-tolerant regex.
  */
 public final class TermMatcher {
+
+    private static final String EMPTY = "";
+    private static final String MATCH_TYPE_REGEX = "REGEX";
+    private static final String REGEX_GROUP_PREFIX = "(?:";
+    private static final String REGEX_INLINE_EXPRESSION_PREFIX = "(?";
+    private static final String REGEX_WORD_BOUNDARY = "\\b";
+    private static final String REGEX_NON_WORD_BOUNDARY = "\\B";
+    private static final String REGEX_START_ANCHOR = "^";
+    private static final String REGEX_END_ANCHOR = "$";
+    private static final String WILDCARD_MULTI = "*";
+    private static final String WILDCARD_SINGLE = "?";
+    private static final String REGEX_ANY_SEQUENCE = ".*";
 
     // class used between literal characters (zero or more of allowed separators)
     // put '-' at the end to avoid ranges in character classes
@@ -36,14 +48,14 @@ public final class TermMatcher {
         String type = term.getMatchType();
         String raw = term.getMatchPattern();
         if (raw == null || raw.trim().isEmpty()) {
-            raw = term.getName() == null ? "" : term.getName().trim();
+            raw = term.getName() == null ? EMPTY : term.getName().trim();
         }
 
         String finalRegex;
-        if (type != null && "REGEX".equalsIgnoreCase(type.trim()) && raw.length() > 0) {
+        if (type != null && MATCH_TYPE_REGEX.equalsIgnoreCase(type.trim()) && raw.length() > 0) {
             // Use provided regex, but only wrap when it is safe to do so.
             if (isSafeToWrapRegex(raw)) {
-                finalRegex = LEFT_BOUND + "(?:" + raw + ')' + RIGHT_BOUND;
+                finalRegex = LEFT_BOUND + REGEX_GROUP_PREFIX + raw + ')' + RIGHT_BOUND;
             } else {
                 // Leave the user's regex intact (they are responsible for anchors/lookarounds).
                 finalRegex = raw;
@@ -83,11 +95,11 @@ public final class TermMatcher {
         // Conservative checks for constructs that suggest the user controls anchors/lookarounds.
         // If present, do not add our own boundaries.
         String lowered = raw;
-        if (lowered.contains("(?") // inline flags or lookaround/expression
-                || lowered.contains("\\b")
-                || lowered.contains("\\B")
-                || lowered.contains("^")
-                || lowered.contains("$")) {
+        if (lowered.contains(REGEX_INLINE_EXPRESSION_PREFIX) // inline flags or lookaround/expression
+                || lowered.contains(REGEX_WORD_BOUNDARY)
+                || lowered.contains(REGEX_NON_WORD_BOUNDARY)
+                || lowered.contains(REGEX_START_ANCHOR)
+                || lowered.contains(REGEX_END_ANCHOR)) {
             return false;
         }
         return true;
@@ -125,7 +137,7 @@ public final class TermMatcher {
      */
     private static String buildWildcardRegex(String pattern) {
         if (pattern == null) {
-            return "";
+            return EMPTY;
         }
         String s = pattern.trim();
         StringBuilder sb = new StringBuilder(s.length() * 4);
@@ -139,11 +151,11 @@ public final class TermMatcher {
             offset += Character.charCount(cp);
 
             // wildcard tokens
-            if ("*".equals(ch)) {
+            if (WILDCARD_MULTI.equals(ch)) {
                 // .* should be used — allow crossing separators and characters
-                sb.append(".*");
+                sb.append(REGEX_ANY_SEQUENCE);
                 continue;
-            } else if ("?".equals(ch)) {
+            } else if (WILDCARD_SINGLE.equals(ch)) {
                 // single any-character
                 sb.append('.');
                 continue;
@@ -166,7 +178,7 @@ public final class TermMatcher {
                 int nextCp = s.codePointAt(temp);
                 String nextCh = new String(Character.toChars(nextCp));
                 // wildcard or separator ends the "immediate literal adjacency" decision
-                if ("*".equals(nextCh) || "?".equals(nextCh)) {
+                if (WILDCARD_MULTI.equals(nextCh) || WILDCARD_SINGLE.equals(nextCh)) {
                     nextIsLiteral = false;
                     break;
                 }

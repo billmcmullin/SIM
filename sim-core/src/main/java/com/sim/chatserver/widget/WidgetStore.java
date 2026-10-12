@@ -7,6 +7,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import com.sim.chatserver.util.SqlLiteralConstants;
 import com.sim.chatserver.util.TextIoSanitizerUtil;
 import java.time.DateTimeException;
 import java.time.Instant;
@@ -23,6 +24,38 @@ import java.util.logging.Logger;
 import com.sim.chatserver.config.Database;
 
 public final class WidgetStore {
+
+    private static final String EMPTY = "";
+    private static final String FIELD_WIDGET_ID = com.sim.chatserver.util.CommonLiteralConstants.KEY_WIDGET_ID;
+    private static final String FIELD_DISPLAY_NAME = com.sim.chatserver.util.CommonLiteralConstants.FIELD_DISPLAY_NAME;
+    private static final String COL_ID = "id";
+    private static final String COL_WIDGET_ID = "widget_id";
+    private static final String COL_DISPLAY_NAME = "display_name";
+    private static final String SQL_SELECT_WIDGET_ENTRIES =
+            "SELECT id, widget_id, display_name, created_at FROM widget_entries";
+    private static final String SQL_WHERE_WIDGET_FILTER = " WHERE widget_id ILIKE ? OR display_name ILIKE ?";
+    private static final String SQL_DELETE_WIDGET_ENTRY_PREFIX = "DELETE FROM widget_entries WHERE id IN (";
+    private static final String REGEX_OPTIONAL_SIGNED_INTEGER = "^-?\\d+$";
+    private static final String LIST_SEPARATOR_COMMA = ",";
+    private static final String MSG_UNABLE_ENSURE_WIDGET_ENTRIES_TABLE = "Unable to ensure widget_entries table exists";
+    private static final String MSG_ID_MUST_BE_POSITIVE = "id must be > 0";
+    private static final String MSG_UNABLE_PERSIST_WIDGET_ENTRY = "Unable to persist widget entry.";
+    private static final String MSG_NO_WIDGET_ENTRY_FOR_ID_PREFIX = "No widget entry found for id ";
+    private static final String MSG_REQUIRED_SUFFIX = " must be provided";
+    private static final String LOG_OUT_OF_RANGE_TIMESTAMP_FOR_COLUMN_PREFIX = "Out-of-range timestamp value for column ";
+    private static final String MSG_WIDGET_ID_ALREADY_EXISTS_PREFIX = "Widget ID '";
+    private static final String MSG_WIDGET_ID_ALREADY_EXISTS_SUFFIX = "' already exists.";
+    private static final String LOG_PARSE_WIDGET_ID_FALLBACK = "Unable to parse widget id value; using default fallback";
+    private static final String LOG_PARSE_INTEGER_FOR_COLUMN = "Unable to parse integer value for column ";
+    private static final String LOG_INSTANT_PARSE_FALLBACK = "Instant parse fallback for created_at";
+    private static final String LOG_OFFSET_PARSE_FALLBACK = "OffsetDateTime parse fallback for created_at";
+    private static final String LOG_TIMESTAMP_PARSE_FAILED = "Timestamp fallback parse failed for created_at";
+    private static final String LOG_INVALID_TIMESTAMP_COLUMN = "Invalid timestamp value for column ";
+    private static final String LOG_CHAR_STREAM_READ_FAILED = "Character-stream read failed for column ";
+    private static final String LOG_CHAR_STREAM_DECODE_FAILED = "Character-stream decode failed for column ";
+    private static final String LOG_BINARY_READ_FAILED = "Binary read failed for column ";
+    private static final String LOG_STRING_READ_FAILED = "String read failed for column ";
+    private static final String LOG_OBJECT_READ_FAILED = "Object read failed for column ";
 
     private static final Logger log = Logger.getLogger(WidgetStore.class.getCanonicalName());
 
@@ -52,7 +85,7 @@ public final class WidgetStore {
              PreparedStatement statement = connection.prepareStatement(CREATE_TABLE_SQL)) {
             statement.executeUpdate();
         } catch (SQLException e) {
-            throw new IllegalStateException("Unable to ensure widget_entries table exists", e);
+            throw new IllegalStateException(MSG_UNABLE_ENSURE_WIDGET_ENTRIES_TABLE, e);
         }
     }
 
@@ -60,13 +93,13 @@ public final class WidgetStore {
         ensureTableExists();
 
         StringBuilder sql = new StringBuilder(
-                "SELECT id, widget_id, display_name, created_at FROM widget_entries");
-        String safeFilterInput = filter == null ? "" : filter.trim();
+                SQL_SELECT_WIDGET_ENTRIES);
+        String safeFilterInput = filter == null ? EMPTY : filter.trim();
         boolean hasFilter = !safeFilterInput.isBlank();
         if (hasFilter) {
-            sql.append(" WHERE widget_id ILIKE ? OR display_name ILIKE ?");
+            sql.append(SQL_WHERE_WIDGET_FILTER);
         }
-        sql.append(" ORDER BY created_at DESC");
+        sql.append(SqlLiteralConstants.SQL_ORDER_BY_CREATED_AT_DESC);
 
         try (Connection connection = Database.getConnection(); PreparedStatement statement = connection.prepareStatement(sql.toString())) {
 
@@ -95,8 +128,8 @@ public final class WidgetStore {
     private static WidgetEntry create(String widgetId, String displayName) throws SQLException {
         ensureTableExists();
 
-        String normalizedWidgetId = normalizeRequired(widgetId, "widgetId");
-        String normalizedDisplayName = normalizeRequired(displayName, "displayName");
+        String normalizedWidgetId = normalizeRequired(widgetId, FIELD_WIDGET_ID);
+        String normalizedDisplayName = normalizeRequired(displayName, FIELD_DISPLAY_NAME);
 
         try {
             return doCreate(normalizedWidgetId, normalizedDisplayName);
@@ -123,11 +156,11 @@ public final class WidgetStore {
         ensureTableExists();
 
         if (id <= 0) {
-            throw new IllegalArgumentException("id must be > 0");
+            throw new IllegalArgumentException(MSG_ID_MUST_BE_POSITIVE);
         }
 
-        String normalizedWidgetId = normalizeRequired(widgetId, "widgetId");
-        String normalizedDisplayName = normalizeRequired(displayName, "displayName");
+        String normalizedWidgetId = normalizeRequired(widgetId, FIELD_WIDGET_ID);
+        String normalizedDisplayName = normalizeRequired(displayName, FIELD_DISPLAY_NAME);
 
         try {
             return doUpdate(id, normalizedWidgetId, normalizedDisplayName);
@@ -174,7 +207,7 @@ public final class WidgetStore {
         try {
             return Integer.parseInt(valueText);
         } catch (NumberFormatException ex) {
-            log.log(Level.FINE, "Unable to parse widget id value; using default fallback", ex);
+            log.log(Level.FINE, LOG_PARSE_WIDGET_ID_FALLBACK, ex);
             return defaultValue;
         }
     }
@@ -196,8 +229,9 @@ public final class WidgetStore {
             return 0;
         }
 
-        String placeholders = java.util.Arrays.stream(validIds).mapToObj(i -> "?").collect(Collectors.joining(","));
-        String sql = "DELETE FROM widget_entries WHERE id IN (" + placeholders + ')';
+        String placeholders = java.util.Arrays.stream(validIds).mapToObj(i -> SqlLiteralConstants.QUESTION_MARK)
+            .collect(Collectors.joining(LIST_SEPARATOR_COMMA));
+        String sql = SQL_DELETE_WIDGET_ENTRY_PREFIX + placeholders + ')';
 
         try (Connection connection = Database.getConnection(); PreparedStatement statement = connection.prepareStatement(sql)) {
             int index = 1;
@@ -233,7 +267,7 @@ public final class WidgetStore {
                 }
             }
         }
-        throw new IllegalStateException("Unable to persist widget entry.");
+        throw new IllegalStateException(MSG_UNABLE_PERSIST_WIDGET_ENTRY);
     }
 
     private static WidgetEntry doUpdate(int id, String widgetId, String displayName) throws SQLException {
@@ -252,7 +286,7 @@ public final class WidgetStore {
                 }
             }
         }
-        throw new IllegalStateException("No widget entry found for id " + id);
+        throw new IllegalStateException(MSG_NO_WIDGET_ENTRY_FOR_ID_PREFIX + id);
     }
 
     private static boolean isUndefinedTable(SQLException e) {
@@ -265,47 +299,49 @@ public final class WidgetStore {
 
     private static WidgetEntry mapRow(ResultSet rs) throws SQLException {
         return new WidgetEntry(
-                readNonNegativeInt(rs, "id"),
-                readSanitizedDbText(rs, "widget_id", 128),
-                readSanitizedDbText(rs, "display_name", 256),
+                readNonNegativeInt(rs, COL_ID),
+                readSanitizedDbText(rs, COL_WIDGET_ID, 128),
+                readSanitizedDbText(rs, COL_DISPLAY_NAME, 256),
                 readCreatedAt(rs));
     }
 
     private static int readNonNegativeInt(ResultSet rs, String column) throws SQLException {
         String text = sanitizeDbText(readRawDbText(rs, column), 64);
-        if (text == null || text.isBlank() || !text.matches("^-?\\d+$")) {
+        if (text == null || text.isBlank() || !text.matches(REGEX_OPTIONAL_SIGNED_INTEGER)) {
             return 0;
         }
         try {
             return Math.max(0, validateDbInt(Integer.parseInt(text), column));
         } catch (NumberFormatException ex) {
-            log.log(Level.FINE, "Unable to parse integer value for column " + column, ex);
+            log.log(Level.FINE, LOG_PARSE_INTEGER_FOR_COLUMN + column, ex);
             return 0;
         }
     }
 
     private static String readSanitizedDbText(ResultSet rs, String column, int maxChars) throws SQLException {
         String value = sanitizeDbText(readRawDbText(rs, column), maxChars);
-        return value == null ? "" : value;
+        return value == null ? EMPTY : value;
     }
 
     private static Instant readCreatedAt(ResultSet rs) throws SQLException {
-        String text = sanitizeDbText(readRawDbText(rs, "created_at"), 128);
+        String text = sanitizeDbText(readRawDbText(rs, SqlLiteralConstants.COL_CREATED_AT), 128);
 
         if (text != null && !text.isBlank()) {
             try {
-                return validateDbInstant(Instant.parse(text), "created_at");
+                return validateDbInstant(Instant.parse(text), SqlLiteralConstants.COL_CREATED_AT);
             } catch (DateTimeException e) {
-                log.log(Level.FINE, "Instant parse fallback for created_at", e);
+                log.log(Level.FINE, LOG_INSTANT_PARSE_FALLBACK, e);
                 try {
-                    return validateDbInstant(OffsetDateTime.parse(text).toInstant(), "created_at");
+                    return validateDbInstant(OffsetDateTime.parse(text).toInstant(), SqlLiteralConstants.COL_CREATED_AT);
                 } catch (DateTimeException ex) {
-                    log.log(Level.FINE, "OffsetDateTime parse fallback for created_at", ex);
+                    log.log(Level.FINE, LOG_OFFSET_PARSE_FALLBACK, ex);
                 }
                 try {
-                    return validateDbInstant(Timestamp.valueOf(text.replace('T', ' ')).toInstant(), "created_at");
+                    return validateDbInstant(
+                            Timestamp.valueOf(text.replace('T', ' ')).toInstant(),
+                            SqlLiteralConstants.COL_CREATED_AT);
                 } catch (IllegalArgumentException ex) {
-                    log.log(Level.FINE, "Timestamp fallback parse failed for created_at", ex);
+                    log.log(Level.FINE, LOG_TIMESTAMP_PARSE_FAILED, ex);
                 }
             }
         }
@@ -322,7 +358,7 @@ public final class WidgetStore {
         try {
             return value.toInstant();
         } catch (DateTimeException | IllegalArgumentException ex) {
-            log.log(Level.FINE, "Invalid timestamp value for column " + column, ex);
+            log.log(Level.FINE, LOG_INVALID_TIMESTAMP_COLUMN + column, ex);
             return null;
         }
     }
@@ -337,9 +373,9 @@ public final class WidgetStore {
                 }
             }
         } catch (SQLException ex) {
-            log.log(Level.FINE, "Character-stream read failed for column " + column, ex);
+            log.log(Level.FINE, LOG_CHAR_STREAM_READ_FAILED + column, ex);
         } catch (IOException ex) {
-            log.log(Level.FINE, "Character-stream decode failed for column " + column, ex);
+            log.log(Level.FINE, LOG_CHAR_STREAM_DECODE_FAILED + column, ex);
         }
 
         try {
@@ -349,7 +385,7 @@ public final class WidgetStore {
                 return TextIoSanitizerUtil.validateCanonicalized(raw, 4096);
             }
         } catch (SQLException ex) {
-            log.log(Level.FINE, "Binary read failed for column " + column, ex);
+            log.log(Level.FINE, LOG_BINARY_READ_FAILED + column, ex);
         }
 
         try {
@@ -358,7 +394,7 @@ public final class WidgetStore {
                 return TextIoSanitizerUtil.validateCanonicalized(raw, 4096);
             }
         } catch (SQLException ex) {
-            log.log(Level.FINE, "String read failed for column " + column, ex);
+            log.log(Level.FINE, LOG_STRING_READ_FAILED + column, ex);
         }
 
         try {
@@ -367,7 +403,7 @@ public final class WidgetStore {
                 return TextIoSanitizerUtil.validateCanonicalized(String.valueOf(raw), 4096);
             }
         } catch (SQLException ex) {
-            log.log(Level.FINE, "Object read failed for column " + column, ex);
+            log.log(Level.FINE, LOG_OBJECT_READ_FAILED + column, ex);
         }
 
         return null;
@@ -375,7 +411,7 @@ public final class WidgetStore {
 
     private static String readAtMostChars(Reader reader, int maxChars) throws IOException {
         if (reader == null || maxChars <= 0) {
-            return "";
+            return EMPTY;
         }
 
         StringBuilder builder = new StringBuilder(Math.min(maxChars, 256));
@@ -398,7 +434,7 @@ public final class WidgetStore {
 
     private static String normalizeRequired(String value, String fieldName) {
         if (value == null || value.isBlank()) {
-            throw new IllegalArgumentException(fieldName + " must be provided");
+            throw new IllegalArgumentException(fieldName + MSG_REQUIRED_SUFFIX);
         }
         return value.trim();
     }
@@ -419,16 +455,10 @@ public final class WidgetStore {
             return null;
         }
         if (instant.isBefore(MIN_ALLOWED_INSTANT) || instant.isAfter(MAX_ALLOWED_INSTANT)) {
-            log.log(Level.FINE, "Out-of-range timestamp value for column " + column);
+            log.log(Level.FINE, LOG_OUT_OF_RANGE_TIMESTAMP_FOR_COLUMN_PREFIX + column);
             return null;
         }
         return instant;
     }
-
-    public static final class DuplicateWidgetIdException extends SQLException {
-
-        private DuplicateWidgetIdException(String widgetId, Throwable cause) {
-            super("Widget ID '" + widgetId + "' already exists.", cause);
-        }
-    }
 }
+

@@ -29,6 +29,20 @@ public class AppDataSourceHolder {
 
     private static final Logger log = Logger.getLogger(AppDataSourceHolder.class.getCanonicalName());
     private static final String DEFAULT_DATASOURCE_JNDI = "java:jboss/datasources/ExampleDS";
+    private static final String UNUSED_SUPPRESSION = com.sim.chatserver.util.CommonLiteralConstants.SUPPRESS_UNUSED;
+    private static final String JDBC_URL_UNKNOWN = com.sim.chatserver.util.CommonLiteralConstants.VALUE_UNKNOWN_LOWER;
+    private static final String MSG_DS_CONNECTIVITY_OK = "WildFly datasource connectivity check succeeded: {0}";
+    private static final String MSG_VALIDATE_DS_FAILED = "Failed to validate WildFly datasource";
+    private static final String MSG_DS_OVERRIDE_SET = "DataSource override set on AppDataSourceHolder";
+    private static final String MSG_CUSTOM_EMF_REMOVED = "Custom EntityManagerFactory bootstrap has been removed; use container-managed JPA.";
+    private static final String MSG_NO_ACTIVE_DS_FOR_PROBE = "No active datasource available for JDBC URL probe";
+    private static final String MSG_READ_ACTIVE_JDBC_URL_FAILED = "Unable to read active JDBC URL from datasource";
+    private static final String MSG_DS_SWITCH_DISABLED = "Datasource switching is disabled. Use WildFly datasource configuration.";
+    private static final String MSG_SWITCH_EXTERNAL_UNSUPPORTED = "switchToExternalAndPersist is not supported in WildFly-managed datasource mode.";
+    private static final String MSG_RUNTIME_REFS_RELEASED = "AppDataSourceHolder released runtime references";
+    private static final String MSG_DS_NOT_AVAILABLE_PREFIX = "WildFly datasource not available at ";
+    private static final String MSG_JNDI_LOOKUP_FAILED_PREFIX = "JNDI lookup failed for datasource ";
+    private static final String MSG_CLOSE_JNDI_CONTEXT_FAILED = "Failed to close JNDI context";
 
     private DataSource managedDataSource;
 
@@ -38,12 +52,12 @@ public class AppDataSourceHolder {
     // Legacy test compatibility only.
     private volatile EntityManagerFactory legacyEmf;
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(UNUSED_SUPPRESSION)
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(UNUSED_SUPPRESSION)
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
@@ -52,14 +66,14 @@ public class AppDataSourceHolder {
     private void init() {
         DataSource dataSource = requireDataSource();
         try (Connection conn = dataSource.getConnection()) {
-            String jdbcUrl = "unknown";
+            String jdbcUrl = JDBC_URL_UNKNOWN;
             if (conn.getMetaData() != null && conn.getMetaData().getURL() != null) {
                 jdbcUrl = conn.getMetaData().getURL();
             }
-            log.log(Level.INFO, "WildFly datasource connectivity check succeeded: {0}", jdbcUrl);
+            log.log(Level.INFO, MSG_DS_CONNECTIVITY_OK, jdbcUrl);
         } catch (SQLException ex) {
-            log.log(Level.SEVERE, "Failed to validate WildFly datasource", ex);
-            throw new IllegalStateException("Failed to validate WildFly datasource", ex);
+            log.log(Level.SEVERE, MSG_VALIDATE_DS_FAILED, ex);
+            throw new IllegalStateException(MSG_VALIDATE_DS_FAILED, ex);
         }
     }
 
@@ -74,7 +88,7 @@ public class AppDataSourceHolder {
 
     public void setDataSource(DataSource dataSource) {
         this.overrideDataSource = dataSource;
-        log.info("DataSource override set on AppDataSourceHolder");
+        log.info(MSG_DS_OVERRIDE_SET);
     }
 
     /**
@@ -94,7 +108,7 @@ public class AppDataSourceHolder {
             return local;
         }
         throw new IllegalStateException(
-                "Custom EntityManagerFactory bootstrap has been removed; use container-managed JPA.");
+                MSG_CUSTOM_EMF_REMOVED);
     }
 
     private String getActiveJdbcUrl() {
@@ -102,21 +116,21 @@ public class AppDataSourceHolder {
         try {
             dataSource = requireDataSource();
         } catch (IllegalStateException ex) {
-            log.log(Level.FINE, "No active datasource available for JDBC URL probe", ex);
-            return "unknown";
+            log.log(Level.FINE, MSG_NO_ACTIVE_DS_FOR_PROBE, ex);
+            return JDBC_URL_UNKNOWN;
         }
 
         try (Connection conn = dataSource.getConnection()) {
             if (conn == null) {
-                return "unknown";
+                return JDBC_URL_UNKNOWN;
             }
             if (conn.getMetaData() != null && conn.getMetaData().getURL() != null) {
                 return conn.getMetaData().getURL();
             }
         } catch (SQLException | IllegalStateException | UnsupportedOperationException ex) {
-            log.log(Level.FINE, "Unable to read active JDBC URL from datasource", ex);
+            log.log(Level.FINE, MSG_READ_ACTIVE_JDBC_URL_FAILED, ex);
         }
-        return "unknown";
+        return JDBC_URL_UNKNOWN;
     }
 
     /**
@@ -126,17 +140,17 @@ public class AppDataSourceHolder {
      */
     private void switchToExternalAndPersist(DbConfig cfg, Consumer<String> callback) {
         if (callback != null) {
-            callback.accept("Datasource switching is disabled. Use WildFly datasource configuration.");
+            callback.accept(MSG_DS_SWITCH_DISABLED);
         }
         throw new UnsupportedOperationException(
-                "switchToExternalAndPersist is not supported in WildFly-managed datasource mode.");
+                MSG_SWITCH_EXTERNAL_UNSUPPORTED);
     }
 
     @PreDestroy
     private void close() {
         this.overrideDataSource = null;
         this.legacyEmf = null;
-        log.info("AppDataSourceHolder released runtime references");
+        log.info(MSG_RUNTIME_REFS_RELEASED);
     }
 
     private DataSource requireDataSource() {
@@ -155,7 +169,7 @@ public class AppDataSourceHolder {
             return lookedUp;
         }
 
-        throw new IllegalStateException("WildFly datasource not available at " + DEFAULT_DATASOURCE_JNDI);
+        throw new IllegalStateException(MSG_DS_NOT_AVAILABLE_PREFIX + DEFAULT_DATASOURCE_JNDI);
     }
 
     private static DataSource lookupDataSource(String jndiName) {
@@ -168,14 +182,14 @@ public class AppDataSourceHolder {
             }
             return null;
         } catch (NamingException ex) {
-            log.log(Level.FINE, "JNDI lookup failed for datasource " + jndiName, ex);
+            log.log(Level.FINE, MSG_JNDI_LOOKUP_FAILED_PREFIX + jndiName, ex);
             return null;
         } finally {
             if (context != null) {
                 try {
                     context.close();
                 } catch (NamingException closeEx) {
-                    log.log(Level.FINE, "Failed to close JNDI context", closeEx);
+                    log.log(Level.FINE, MSG_CLOSE_JNDI_CONTEXT_FAILED, closeEx);
                 }
             }
         }

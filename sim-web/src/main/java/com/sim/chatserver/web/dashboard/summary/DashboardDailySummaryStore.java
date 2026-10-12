@@ -8,6 +8,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import com.sim.chatserver.util.CommonLiteralConstants;
 import com.sim.chatserver.util.TextIoSanitizerUtil;
 import java.time.DateTimeException;
 import java.time.Instant;
@@ -30,10 +31,101 @@ import jakarta.json.JsonObject;
  */
 public class DashboardDailySummaryStore {
     private static final Logger log = Logger.getLogger(DashboardDailySummaryStore.class.getCanonicalName());
-    private static final DateTimeFormatter UI_TS_FMT = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final DateTimeFormatter UI_TS_FMT = DateTimeFormatter.ofPattern(com.sim.chatserver.util.CommonLiteralConstants.DATETIME_PATTERN_SECONDS);
+    private static final String EMPTY = "";
+    private static final String SUPPRESS_UNUSED = com.sim.chatserver.util.CommonLiteralConstants.SUPPRESS_UNUSED;
     private static final String PG_UNIQUE_VIOLATION = "23505";
     private static final LocalDate MIN_ALLOWED_DAY = LocalDate.of(1970, 1, 1);
     private static final LocalDate MAX_ALLOWED_DAY = LocalDate.of(3000, 12, 31);
+    private static final String KEY_QUALITY = "quality";
+    private static final String KEY_USAGE = "usage";
+    private static final String KEY_ENTRY_COUNT = CommonLiteralConstants.FIELD_ENTRY_COUNT;
+    private static final String KEY_META = CommonLiteralConstants.FIELD_META;
+    private static final String KEY_SUMMARY = com.sim.chatserver.util.CommonLiteralConstants.LABEL_SUMMARY;
+    private static final String KEY_OVERALL = "overall";
+    private static final String KEY_RESPONSE = com.sim.chatserver.util.CommonLiteralConstants.FIELD_RESPONSE;
+    private static final String KEY_SUGGESTED_NEXT_ACTION = "suggestedNextAction";
+    private static final String KEY_DAY = com.sim.chatserver.util.CommonLiteralConstants.KEY_DAY;
+    private static final String KEY_SLOT = com.sim.chatserver.util.CommonLiteralConstants.KEY_SLOT;
+    static final String KEY_GENERATED_AT = "generatedAt";
+    private static final String KEY_STARTED_AT = "startedAt";
+    private static final String KEY_UPDATED_AT = com.sim.chatserver.util.CommonLiteralConstants.FIELD_UPDATED_AT;
+    private static final String KEY_IN_PROGRESS = "inProgress";
+    private static final String KEY_FROM_FALLBACK = "fromFallback";
+    private static final String KEY_MESSAGE = com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE;
+    private static final String KEY_STATUS = com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS;
+    private static final String KEY_PROGRESS_PCT = CommonLiteralConstants.FIELD_PROGRESS_PCT;
+    private static final String KEY_STATUS_TEXT = CommonLiteralConstants.FIELD_STATUS_TEXT;
+    private static final String STATUS_OK = "ok";
+    private static final String STATUS_ERROR = com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR;
+    private static final String STATUS_IDLE = com.sim.chatserver.util.CommonLiteralConstants.STATUS_IDLE;
+    private static final String STATUS_QUEUED = "queued";
+    private static final String STATUS_RUNNING = com.sim.chatserver.util.CommonLiteralConstants.STATUS_RUNNING;
+    private static final String STATUS_SUCCESS = com.sim.chatserver.util.CommonLiteralConstants.FIELD_SUCCESS;
+    private static final String PLACEHOLDER_DASH = com.sim.chatserver.util.CommonLiteralConstants.VALUE_NA;
+    private static final String MSG_NO_SUMMARY_YET = "No summary has been generated yet.";
+    private static final String MSG_WAITING_FOR_SCHEDULED = "Waiting for scheduled generation.";
+    private static final String MSG_SUMMARY_IN_PROGRESS = "Summary generation in progress.";
+    static final String MSG_UNABLE_TO_LOAD_SUMMARY = "Unable to load summary.";
+    private static final String MSG_UNABLE_TO_ENSURE_TABLE = "Unable to ensure dashboard_daily_summary table";
+    private static final String MSG_UNABLE_TO_ENSURE_SUGGESTED_COLUMN = "Unable to ensure suggested_next_action column";
+    private static final String MSG_DETECTED_STALE_SEQUENCE_AND_RETRY = "Detected stale dashboard_daily_summary id sequence after import. Realigned sequence and retrying upsert.";
+    private static final String MSG_RETRY_AFTER_SEQUENCE_REALIGN_FAILED = "Retry after sequence realignment failed for dashboard_daily_summary upsert";
+    private static final String MSG_UNABLE_REALIGN_SEQUENCE = "Unable to realign dashboard_daily_summary id sequence";
+    private static final String MSG_UNABLE_FETCH_DAILY_SUMMARY = "Unable to fetch dashboard daily summary";
+    private static final String MSG_CHARACTER_STREAM_DECODE_FAILED_COL = "Character stream decode failed for column ";
+    private static final String MSG_CHARACTER_STREAM_DECODE_FAILED_COL_INDEX = "Character stream decode failed for column index ";
+    private static final String MSG_RS_GET_CHARACTER_STREAM_COL = "ResultSet#getCharacterStream(String) failed for column ";
+    private static final String MSG_RS_GET_CHARACTER_STREAM_COL_INDEX = "ResultSet#getCharacterStream(int) failed for column index ";
+    private static final String MSG_RS_GET_BYTES_COL = "ResultSet#getBytes(String) failed for column ";
+    private static final String MSG_RS_GET_BYTES_COL_INDEX = "ResultSet#getBytes(int) failed for column index ";
+    private static final String MSG_RS_GET_STRING_COL = "ResultSet#getString(String) failed for column ";
+    private static final String MSG_RS_GET_STRING_COL_INDEX = "ResultSet#getString(int) failed for column index ";
+    private static final String MSG_RS_GET_OBJECT_COL = "ResultSet#getObject(String) failed for column ";
+    private static final String MSG_RS_GET_OBJECT_COL_INDEX = "ResultSet#getObject(int) failed for column index ";
+    private static final String MSG_UNABLE_PARSE_INT_FOR_COL = "Unable to parse integer value for column ";
+    private static final String MSG_TS_SQL_PARSE_FALLBACK = "Timestamp SQL parse fallback to Instant parser for column ";
+    private static final String MSG_INVALID_TS_FOR_COL = "Invalid timestamp value for column ";
+    private static final String MSG_INVALID_DATE_FOR_COL = "Invalid date value for column ";
+    private static final String MSG_OUT_OF_RANGE_TS_FOR_COL = "Out-of-range timestamp value for column ";
+    private static final String UNKNOWN_COLUMN = "<unknown>";
+    private static final String MSG_SUMMARY_STILL_GENERATING = "Summary is still generating. Wait for completion, then review low-performing areas and rerun checks.";
+    private static final String MSG_REVIEW_LOW_QUALITY = "Review low-quality conversations first and tighten prompt instructions/guardrails for affected widgets.";
+    private static final String MSG_INVESTIGATE_LATENCY = "Investigate response latency by widget and reduce prompt/context size where possible.";
+    private static final String MSG_PROMOTE_UNDERUSED = "Promote underused high-value widgets and add clearer in-app guidance for users.";
+    private static final String TERM_LOW = com.sim.chatserver.util.CommonLiteralConstants.VALUE_LOW;
+    private static final String TERM_SLOW = "slow";
+    private static final String TERM_INCORRECT = "incorrect";
+    private static final String TERM_POOR = "poor";
+    private static final String TERM_INCONSISTENT = "inconsistent";
+    private static final String TERM_HALLUCINATION = "hallucination";
+    private static final String TERM_DELAYED = "delayed";
+    private static final String TERM_TIMEOUT = "timeout";
+    private static final String TERM_LATENCY = "latency";
+    private static final String TERM_UNDERUSED = "underused";
+    private static final String TERM_DECLINE = "decline";
+    private static final String TERM_DROP = "drop";
+    private static final String PK_DAILY_SUMMARY = "dashboard_daily_summary_pkey";
+    private static final String PK_ID_PREFIX = "(id)=";
+    private static final String SQL_REALIGN_SEQ = "SELECT setval(?::regclass, COALESCE((SELECT MAX(id) FROM dashboard_daily_summary), 0) + 1, false)";
+    private static final String REGEX_SIGNED_INT = "^-?\\d+$";
+
+    private static final String DB_COL_STATUS = com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS;
+    private static final String DB_COL_PROGRESS_PCT = "progress_pct";
+    private static final String DB_COL_MESSAGE = com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE;
+    private static final String DB_COL_SUMMARY_OVERALL = "summary_overall";
+    private static final String DB_COL_SUMMARY_QUALITY = "summary_quality";
+    private static final String DB_COL_SUMMARY_RESPONSE = "summary_response";
+    private static final String DB_COL_SUMMARY_USAGE = "summary_usage";
+    private static final String DB_COL_SUGGESTED_NEXT_ACTION = "suggested_next_action";
+    private static final String DB_COL_ENTRY_COUNT = "entry_count";
+    private static final String DB_COL_STARTED_AT = "started_at";
+    private static final String DB_COL_GENERATED_AT = "generated_at";
+    private static final String DB_COL_UPDATED_AT = com.sim.chatserver.util.CommonLiteralConstants.SQL_COL_UPDATED_AT;
+    private static final String DB_COL_SUMMARY_DAY = "summary_day";
+    private static final String DB_COL_SLOT = com.sim.chatserver.util.CommonLiteralConstants.KEY_SLOT;
+    private static final String SUGGESTED_NEXT_ACTION_DEFAULT = "Review Top Terms and Latest Chats to identify one repeated issue and apply a focused prompt update.";
+    private static final String ERROR_UPSERT_DAILY_SUMMARY = "Unable to upsert dashboard daily summary row";
 
     private static final String TABLE_SQL = """
             CREATE TABLE IF NOT EXISTS dashboard_daily_summary (
@@ -58,12 +150,12 @@ public class DashboardDailySummaryStore {
 
     private final DataSource dataSource;
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(SUPPRESS_UNUSED)
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(SUPPRESS_UNUSED)
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
@@ -77,8 +169,8 @@ public class DashboardDailySummaryStore {
             ps.execute();
             ensureSuggestedNextActionColumn(conn);
         } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
-            log.log(Level.SEVERE, "Unable to ensure dashboard_daily_summary table", e);
-            throw new IllegalStateException("Unable to ensure dashboard_daily_summary table", e);
+            log.log(Level.SEVERE, MSG_UNABLE_TO_ENSURE_TABLE, e);
+            throw new IllegalStateException(MSG_UNABLE_TO_ENSURE_TABLE, e);
         }
     }
 
@@ -90,7 +182,7 @@ public class DashboardDailySummaryStore {
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.execute();
         } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
-            log.log(Level.WARNING, "Unable to ensure suggested_next_action column", e);
+            log.log(Level.WARNING, MSG_UNABLE_TO_ENSURE_SUGGESTED_COLUMN, e);
         }
     }
 
@@ -193,21 +285,21 @@ public class DashboardDailySummaryStore {
             }
         } catch (SQLException firstSqlError) {
             if (isDashboardSummaryIdDuplicate(firstSqlError) && realignDashboardSummaryIdSequence()) {
-                log.log(Level.INFO, "Detected stale dashboard_daily_summary id sequence after import. Realigned sequence and retrying upsert.");
+                log.log(Level.INFO, MSG_DETECTED_STALE_SEQUENCE_AND_RETRY);
                 try (Connection retryConn = dataSource.getConnection()) {
                     executeUpsert(retryConn, sql, day, slot, status, progressPct, message, overall, quality, response, usage, suggestedNextAction, entryCount, markStarted, markGenerated);
                     return;
                 } catch (SQLException retrySqlError) {
-                    log.log(Level.WARNING, "Retry after sequence realignment failed for dashboard_daily_summary upsert", retrySqlError);
-                    throw new IllegalStateException("Unable to upsert dashboard daily summary row", retrySqlError);
+                    log.log(Level.WARNING, MSG_RETRY_AFTER_SEQUENCE_REALIGN_FAILED, retrySqlError);
+                    throw new IllegalStateException(ERROR_UPSERT_DAILY_SUMMARY, retrySqlError);
                 }
             }
 
-            log.log(Level.WARNING, "Unable to upsert dashboard daily summary row", firstSqlError);
-            throw new IllegalStateException("Unable to upsert dashboard daily summary row", firstSqlError);
+            log.log(Level.WARNING, ERROR_UPSERT_DAILY_SUMMARY, firstSqlError);
+            throw new IllegalStateException(ERROR_UPSERT_DAILY_SUMMARY, firstSqlError);
         } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
-            log.log(Level.WARNING, "Unable to upsert dashboard daily summary row", e);
-            throw new IllegalStateException("Unable to upsert dashboard daily summary row", e);
+            log.log(Level.WARNING, ERROR_UPSERT_DAILY_SUMMARY, e);
+            throw new IllegalStateException(ERROR_UPSERT_DAILY_SUMMARY, e);
         }
     }
 
@@ -237,7 +329,7 @@ public class DashboardDailySummaryStore {
             ps.setInt(2, slot);
             ps.setString(3, normalizeStatus(status));
             ps.setInt(4, clamp(progressPct));
-            ps.setString(5, message == null ? "" : message);
+            ps.setString(5, message == null ? EMPTY : message);
 
             ps.setString(6, blankToNull(overall));
             ps.setString(7, blankToNull(quality));
@@ -259,8 +351,8 @@ public class DashboardDailySummaryStore {
             String msg = cur.getMessage();
             if (PG_UNIQUE_VIOLATION.equals(sqlState)
                     && msg != null
-                    && msg.contains("dashboard_daily_summary_pkey")
-                    && msg.contains("(id)=")) {
+                    && msg.contains(PK_DAILY_SUMMARY)
+                    && msg.contains(PK_ID_PREFIX)) {
                 return true;
             }
         }
@@ -280,14 +372,14 @@ public class DashboardDailySummaryStore {
                 return false;
             }
 
-            String setSeqSql = "SELECT setval(?::regclass, COALESCE((SELECT MAX(id) FROM dashboard_daily_summary), 0) + 1, false)";
+            String setSeqSql = SQL_REALIGN_SEQ;
             try (PreparedStatement setPs = conn.prepareStatement(setSeqSql)) {
                 setPs.setString(1, sequenceName);
                 setPs.execute();
             }
             return true;
         } catch (SQLException e) {
-            log.log(Level.WARNING, "Unable to realign dashboard_daily_summary id sequence", e);
+            log.log(Level.WARNING, MSG_UNABLE_REALIGN_SEQUENCE, e);
             return false;
         }
     }
@@ -329,93 +421,91 @@ public class DashboardDailySummaryStore {
                 }
             }
 
-            String fallbackSuggested = "Review Top Terms and Latest Chats to identify one repeated issue and apply a focused prompt update.";
-
             return Json.createObjectBuilder()
-                    .add("status", "ok")
-                    .add("summary", Json.createObjectBuilder()
-                            .add("overall", "No summary has been generated yet.")
-                            .add("quality", "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â")
-                            .add("response", "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â")
-                            .add("usage", "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â")
-                            .add("suggestedNextAction", fallbackSuggested)
-                            .add("entryCount", 0))
-                    .add("meta", Json.createObjectBuilder()
-                            .add("day", day.toString())
-                            .add("slot", slot)
-                            .add("generatedAt", "")
-                            .add("startedAt", "")
-                            .add("updatedAt", "")
-                            .add("inProgress", false)
-                            .add("progressPct", 0)
-                            .add("statusText", "idle")
-                            .add("message", "Waiting for scheduled generation.")
-                            .add("fromFallback", false))
+                    .add(KEY_STATUS, STATUS_OK)
+                    .add(KEY_SUMMARY, Json.createObjectBuilder()
+                        .add(KEY_OVERALL, MSG_NO_SUMMARY_YET)
+                        .add(KEY_QUALITY, PLACEHOLDER_DASH)
+                        .add(KEY_RESPONSE, PLACEHOLDER_DASH)
+                        .add(KEY_USAGE, PLACEHOLDER_DASH)
+                        .add(KEY_SUGGESTED_NEXT_ACTION, SUGGESTED_NEXT_ACTION_DEFAULT)
+                            .add(KEY_ENTRY_COUNT, 0))
+                        .add(KEY_META, Json.createObjectBuilder()
+                            .add(KEY_DAY, day.toString())
+                            .add(KEY_SLOT, slot)
+                            .add(KEY_GENERATED_AT, EMPTY)
+                            .add(KEY_STARTED_AT, EMPTY)
+                            .add(KEY_UPDATED_AT, EMPTY)
+                            .add(KEY_IN_PROGRESS, false)
+                            .add(KEY_PROGRESS_PCT, 0)
+                                .add(KEY_STATUS_TEXT, STATUS_IDLE)
+                                .add(KEY_MESSAGE, MSG_WAITING_FOR_SCHEDULED)
+                            .add(KEY_FROM_FALLBACK, false))
                     .build();
 
         } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
-            log.log(Level.WARNING, "Unable to fetch dashboard daily summary", e);
+            log.log(Level.WARNING, MSG_UNABLE_FETCH_DAILY_SUMMARY, e);
             return Json.createObjectBuilder()
-                    .add("status", "error")
-                    .add("message", "Unable to load summary.")
+                    .add(KEY_STATUS, STATUS_ERROR)
+                    .add(KEY_MESSAGE, MSG_UNABLE_TO_LOAD_SUMMARY)
                     .build();
         }
     }
 
     private JsonObject toPayload(ResultSet rs, boolean fromFallback) throws SQLException {
-        String status = value(getSafeString(rs, "status", 20), "idle").toLowerCase();
-        int progress = clamp(getSafeInt(rs, "progress_pct", 0, 100));
-        String message = value(getSafeString(rs, "message", 2000), "");
+        String status = value(getSafeString(rs, DB_COL_STATUS, 20), STATUS_IDLE).toLowerCase();
+        int progress = clamp(getSafeInt(rs, DB_COL_PROGRESS_PCT, 0, 100));
+        String message = value(getSafeString(rs, DB_COL_MESSAGE, 2000), EMPTY);
 
-        String overall = value(getSafeString(rs, "summary_overall", 8000), "");
-        String quality = value(getSafeString(rs, "summary_quality", 4000), "");
-        String response = value(getSafeString(rs, "summary_response", 4000), "");
-        String usage = value(getSafeString(rs, "summary_usage", 4000), "");
-        String suggested = value(getSafeString(rs, "suggested_next_action", 2000), "");
-        int entryCount = getSafeInt(rs, "entry_count", 0, Integer.MAX_VALUE);
+        String overall = value(getSafeString(rs, DB_COL_SUMMARY_OVERALL, 8000), EMPTY);
+        String quality = value(getSafeString(rs, DB_COL_SUMMARY_QUALITY, 4000), EMPTY);
+        String response = value(getSafeString(rs, DB_COL_SUMMARY_RESPONSE, 4000), EMPTY);
+        String usage = value(getSafeString(rs, DB_COL_SUMMARY_USAGE, 4000), EMPTY);
+        String suggested = value(getSafeString(rs, DB_COL_SUGGESTED_NEXT_ACTION, 2000), EMPTY);
+        int entryCount = getSafeInt(rs, DB_COL_ENTRY_COUNT, 0, Integer.MAX_VALUE);
 
-        Timestamp startedAt = getSafeTimestamp(rs, "started_at");
-        Timestamp generatedAt = getSafeTimestamp(rs, "generated_at");
-        Timestamp updatedAt = getSafeTimestamp(rs, "updated_at");
+        Timestamp startedAt = getSafeTimestamp(rs, DB_COL_STARTED_AT);
+        Timestamp generatedAt = getSafeTimestamp(rs, DB_COL_GENERATED_AT);
+        Timestamp updatedAt = getSafeTimestamp(rs, DB_COL_UPDATED_AT);
 
-        boolean inProgress = "running".equals(status) || "queued".equals(status);
+        boolean inProgress = STATUS_RUNNING.equals(status) || STATUS_QUEUED.equals(status);
 
-        if (overall.isBlank() && !"success".equals(status)) {
-            overall = message.isBlank() ? "Summary generation in progress." : message;
+        if (overall.isBlank() && !STATUS_SUCCESS.equals(status)) {
+            overall = message.isBlank() ? MSG_SUMMARY_IN_PROGRESS : message;
         }
         if (quality.isBlank()) {
-            quality = "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â";
+            quality = PLACEHOLDER_DASH;
         }
         if (response.isBlank()) {
-            response = "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â";
+            response = PLACEHOLDER_DASH;
         }
         if (usage.isBlank()) {
-            usage = "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬Â";
+            usage = PLACEHOLDER_DASH;
         }
         if (suggested.isBlank()) {
             suggested = suggestNextAction(status, quality, response, usage);
         }
 
         return Json.createObjectBuilder()
-                .add("status", "ok")
-                .add("summary", Json.createObjectBuilder()
-                        .add("overall", overall)
-                        .add("quality", quality)
-                        .add("response", response)
-                        .add("usage", usage)
-                        .add("suggestedNextAction", suggested)
-                        .add("entryCount", entryCount))
-                .add("meta", Json.createObjectBuilder()
-                        .add("day", getSafeDay(rs, "summary_day"))
-                        .add("slot", getSafeInt(rs, "slot", 0, 3))
-                        .add("generatedAt", fmtTs(generatedAt))
-                        .add("startedAt", fmtTs(startedAt))
-                        .add("updatedAt", fmtTs(updatedAt))
-                        .add("inProgress", inProgress)
-                        .add("progressPct", progress)
-                        .add("statusText", status)
-                        .add("message", message)
-                        .add("fromFallback", fromFallback))
+            .add(KEY_STATUS, STATUS_OK)
+                .add(KEY_SUMMARY, Json.createObjectBuilder()
+                        .add(KEY_OVERALL, overall)
+                    .add(KEY_QUALITY, quality)
+                        .add(KEY_RESPONSE, response)
+                    .add(KEY_USAGE, usage)
+                        .add(KEY_SUGGESTED_NEXT_ACTION, suggested)
+                    .add(KEY_ENTRY_COUNT, entryCount))
+                .add(KEY_META, Json.createObjectBuilder()
+                    .add(KEY_DAY, getSafeDay(rs, DB_COL_SUMMARY_DAY))
+                    .add(KEY_SLOT, getSafeInt(rs, DB_COL_SLOT, 0, 3))
+                        .add(KEY_GENERATED_AT, fmtTs(generatedAt))
+                        .add(KEY_STARTED_AT, fmtTs(startedAt))
+                        .add(KEY_UPDATED_AT, fmtTs(updatedAt))
+                        .add(KEY_IN_PROGRESS, inProgress)
+                    .add(KEY_PROGRESS_PCT, progress)
+                    .add(KEY_STATUS_TEXT, status)
+                        .add(KEY_MESSAGE, message)
+                        .add(KEY_FROM_FALLBACK, fromFallback))
                 .build();
     }
 
@@ -431,7 +521,7 @@ public class DashboardDailySummaryStore {
 
     private String readRawText(ResultSet rs, String column) throws SQLException {
         if (rs == null || column == null || column.isBlank()) {
-            return "";
+            return EMPTY;
         }
 
         try {
@@ -441,23 +531,23 @@ public class DashboardDailySummaryStore {
                     String raw = readAtMostChars(closeable, 8192);
                     return validateCanonicalizedDbText(raw, 8192);
                 } catch (IOException ioEx) {
-                    log.log(Level.FINE, "Character stream decode failed for column " + safeColumnName(column), ioEx);
-                    return "";
+                    log.log(Level.FINE, MSG_CHARACTER_STREAM_DECODE_FAILED_COL + safeColumnName(column), ioEx);
+                    return EMPTY;
                 }
             }
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getCharacterStream(String) failed for column " + safeColumnName(column), ex);
+            log.log(Level.FINE, MSG_RS_GET_CHARACTER_STREAM_COL + safeColumnName(column), ex);
         }
 
         try {
             byte[] rawBytes = rs.getBytes(column);
             if (rawBytes == null) {
-                return "";
+                return EMPTY;
             }
             String raw = new String(rawBytes, StandardCharsets.UTF_8);
             return validateCanonicalizedDbText(raw, 8192);
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getBytes(String) failed for column " + safeColumnName(column), ex);
+            log.log(Level.FINE, MSG_RS_GET_BYTES_COL + safeColumnName(column), ex);
         }
 
         try {
@@ -466,7 +556,7 @@ public class DashboardDailySummaryStore {
                 return validateCanonicalizedDbText(raw, 8192);
             }
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getString(String) failed for column " + safeColumnName(column), ex);
+            log.log(Level.FINE, MSG_RS_GET_STRING_COL + safeColumnName(column), ex);
         }
 
         try {
@@ -475,15 +565,15 @@ public class DashboardDailySummaryStore {
                 return validateCanonicalizedDbText(String.valueOf(raw), 8192);
             }
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getObject(String) failed for column " + safeColumnName(column), ex);
+            log.log(Level.FINE, MSG_RS_GET_OBJECT_COL + safeColumnName(column), ex);
         }
 
-        return "";
+        return EMPTY;
     }
 
     private String readRawText(ResultSet rs, int column) throws SQLException {
         if (rs == null || column <= 0) {
-            return "";
+            return EMPTY;
         }
 
         try {
@@ -493,23 +583,23 @@ public class DashboardDailySummaryStore {
                     String raw = readAtMostChars(closeable, 8192);
                     return validateCanonicalizedDbText(raw, 8192);
                 } catch (IOException ioEx) {
-                    log.log(Level.FINE, "Character stream decode failed for column index " + column, ioEx);
-                    return "";
+                    log.log(Level.FINE, MSG_CHARACTER_STREAM_DECODE_FAILED_COL_INDEX + column, ioEx);
+                    return EMPTY;
                 }
             }
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getCharacterStream(int) failed for column index " + column, ex);
+            log.log(Level.FINE, MSG_RS_GET_CHARACTER_STREAM_COL_INDEX + column, ex);
         }
 
         try {
             byte[] rawBytes = rs.getBytes(column);
             if (rawBytes == null) {
-                return "";
+                return EMPTY;
             }
             String raw = new String(rawBytes, StandardCharsets.UTF_8);
             return validateCanonicalizedDbText(raw, 8192);
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getBytes(int) failed for column index " + column, ex);
+            log.log(Level.FINE, MSG_RS_GET_BYTES_COL_INDEX + column, ex);
         }
 
         try {
@@ -518,7 +608,7 @@ public class DashboardDailySummaryStore {
                 return validateCanonicalizedDbText(raw, 8192);
             }
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getString(int) failed for column index " + column, ex);
+            log.log(Level.FINE, MSG_RS_GET_STRING_COL_INDEX + column, ex);
         }
 
         try {
@@ -527,15 +617,15 @@ public class DashboardDailySummaryStore {
                 return validateCanonicalizedDbText(String.valueOf(raw), 8192);
             }
         } catch (SQLException ex) {
-            log.log(Level.FINE, "ResultSet#getObject(int) failed for column index " + column, ex);
+            log.log(Level.FINE, MSG_RS_GET_OBJECT_COL_INDEX + column, ex);
         }
 
-        return "";
+        return EMPTY;
     }
 
     private String sanitizeText(String value, int maxLen) {
         if (value == null) {
-            return "";
+            return EMPTY;
         }
         String normalized = validateCanonicalizedDbText(value, maxLen > 0 ? maxLen : 0);
         if (maxLen > 0 && normalized.length() > maxLen) {
@@ -550,14 +640,14 @@ public class DashboardDailySummaryStore {
         }
 
         String raw = sanitizeText(readRawText(rs, column), 64);
-        if (raw == null || raw.isBlank() || !raw.matches("^-?\\d+$")) {
+        if (raw == null || raw.isBlank() || !raw.matches(REGEX_SIGNED_INT)) {
             return min;
         }
         int value;
         try {
             value = Integer.parseInt(raw);
         } catch (NumberFormatException ex) {
-            log.log(Level.FINE, "Unable to parse integer value for column " + safeColumnName(column), ex);
+            log.log(Level.FINE, MSG_UNABLE_PARSE_INT_FOR_COL + safeColumnName(column), ex);
             return min;
         }
         if (value < min) {
@@ -583,25 +673,25 @@ public class DashboardDailySummaryStore {
             try {
                 value = Timestamp.valueOf(text.replace('T', ' '));
             } catch (IllegalArgumentException ex) {
-                log.log(Level.FINE, "Timestamp SQL parse fallback to Instant parser for column " + safeColumnName(column), ex);
+                log.log(Level.FINE, MSG_TS_SQL_PARSE_FALLBACK + safeColumnName(column), ex);
                 value = Timestamp.from(Instant.parse(text));
             }
             Instant instant = validateInstant(value.toInstant(), column);
             return instant == null ? null : Timestamp.from(instant);
         } catch (IllegalArgumentException | DateTimeException e) {
-            log.log(Level.FINE, "Invalid timestamp value for column " + safeColumnName(column), e);
+            log.log(Level.FINE, MSG_INVALID_TS_FOR_COL + safeColumnName(column), e);
             return null;
         }
     }
 
     private String getSafeDay(ResultSet rs, String column) throws SQLException {
         if (rs == null || column == null || column.isBlank()) {
-            return "";
+            return EMPTY;
         }
 
         String text = sanitizeText(getSafeString(rs, column, 64), 64);
         if (text == null || text.isBlank()) {
-            return "";
+            return EMPTY;
         }
 
         String dateText = text.trim();
@@ -612,18 +702,18 @@ public class DashboardDailySummaryStore {
         try {
             LocalDate localDay = LocalDate.parse(dateText);
             if (localDay.isBefore(MIN_ALLOWED_DAY) || localDay.isAfter(MAX_ALLOWED_DAY)) {
-                return "";
+                return EMPTY;
             }
             return localDay.toString();
         } catch (IllegalArgumentException | DateTimeException e) {
-            log.log(Level.FINE, "Invalid date value for column " + safeColumnName(column), e);
-            return "";
+            log.log(Level.FINE, MSG_INVALID_DATE_FOR_COL + safeColumnName(column), e);
+            return EMPTY;
         }
     }
 
     private String safeColumnName(String column) {
         if (column == null || column.isBlank()) {
-            return "<unknown>";
+            return UNKNOWN_COLUMN;
         }
         return column;
     }
@@ -635,11 +725,11 @@ public class DashboardDailySummaryStore {
 
     private String validateDbText(String value, int maxLen) {
         if (value == null || value.isBlank()) {
-            return "";
+            return EMPTY;
         }
         String normalized = ServletRequestParamUtil.normalizeBodyText(value, maxLen, false);
         if (normalized.isBlank()) {
-            return "";
+            return EMPTY;
         }
         StringBuilder safe = new StringBuilder(normalized.length());
         for (int i = 0; i < normalized.length(); i++) {
@@ -658,7 +748,7 @@ public class DashboardDailySummaryStore {
         }
         LocalDate day = instant.atZone(ZoneId.systemDefault()).toLocalDate();
         if (day.isBefore(MIN_ALLOWED_DAY) || day.isAfter(MAX_ALLOWED_DAY)) {
-            log.log(Level.FINE, "Out-of-range timestamp value for column " + safeColumnName(column));
+            log.log(Level.FINE, MSG_OUT_OF_RANGE_TS_FOR_COL + safeColumnName(column));
             return null;
         }
         return instant;
@@ -666,7 +756,7 @@ public class DashboardDailySummaryStore {
 
     private String readAtMostChars(Reader reader, int maxChars) throws IOException {
         if (maxChars <= 0) {
-            return "";
+            return EMPTY;
         }
         StringBuilder builder = new StringBuilder(Math.min(maxChars, 256));
         char[] buffer = new char[256];
@@ -684,24 +774,24 @@ public class DashboardDailySummaryStore {
     }
 
     private String suggestNextAction(String status, String quality, String response, String usage) {
-        String st = value(status, "idle").toLowerCase();
-        String q = value(quality, "").toLowerCase();
-        String r = value(response, "").toLowerCase();
-        String u = value(usage, "").toLowerCase();
+        String st = value(status, STATUS_IDLE).toLowerCase();
+        String q = value(quality, EMPTY).toLowerCase();
+        String r = value(response, EMPTY).toLowerCase();
+        String u = value(usage, EMPTY).toLowerCase();
 
-        if ("running".equals(st) || "queued".equals(st)) {
-            return "Summary is still generating. Wait for completion, then review low-performing areas and rerun checks.";
+        if (STATUS_RUNNING.equals(st) || STATUS_QUEUED.equals(st)) {
+            return MSG_SUMMARY_STILL_GENERATING;
         }
-        if (containsAny(q, "low", "inconsistent", "hallucination", "incorrect", "poor")) {
-            return "Review low-quality conversations first and tighten prompt instructions/guardrails for affected widgets.";
+        if (containsAny(q, TERM_LOW, TERM_INCONSISTENT, TERM_HALLUCINATION, TERM_INCORRECT, TERM_POOR)) {
+            return MSG_REVIEW_LOW_QUALITY;
         }
-        if (containsAny(r, "slow", "latency", "timeout", "delayed")) {
-            return "Investigate response latency by widget and reduce prompt/context size where possible.";
+        if (containsAny(r, TERM_SLOW, TERM_LATENCY, TERM_TIMEOUT, TERM_DELAYED)) {
+            return MSG_INVESTIGATE_LATENCY;
         }
-        if (containsAny(u, "low", "drop", "decline", "underused")) {
-            return "Promote underused high-value widgets and add clearer in-app guidance for users.";
+        if (containsAny(u, TERM_LOW, TERM_DROP, TERM_DECLINE, TERM_UNDERUSED)) {
+            return MSG_PROMOTE_UNDERUSED;
         }
-        return "Review Top Terms and Latest Chats to identify one repeated issue and apply a focused prompt update.";
+        return SUGGESTED_NEXT_ACTION_DEFAULT;
     }
 
     private boolean containsAny(String text, String... terms) {
@@ -718,18 +808,18 @@ public class DashboardDailySummaryStore {
 
     private String fmtTs(Timestamp ts) {
         if (ts == null) {
-            return "";
+            return EMPTY;
         }
         return UI_TS_FMT.format(ts.toInstant().atZone(ZoneId.systemDefault()).toLocalDateTime());
     }
 
     private String normalizeStatus(String status) {
-        String s = status == null ? "idle" : status.trim().toLowerCase();
+        String s = status == null ? STATUS_IDLE : status.trim().toLowerCase();
         return switch (s) {
-            case "queued", "running", "success", "error", "idle" ->
+            case STATUS_QUEUED, STATUS_RUNNING, STATUS_SUCCESS, STATUS_ERROR, STATUS_IDLE ->
                 s;
             default ->
-                "idle";
+                STATUS_IDLE;
         };
     }
 

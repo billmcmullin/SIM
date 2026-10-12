@@ -2,6 +2,8 @@ package com.sim.chatserver.config;
 
 public class ServerConfig {
 
+    private static final String SUPPRESS_UNUSED = com.sim.chatserver.util.CommonLiteralConstants.SUPPRESS_UNUSED;
+
     private String serverHost;
     private int serverPort;
     private String connectionInfo;
@@ -29,12 +31,12 @@ public class ServerConfig {
     private String awsAccessKeyId;
     private String awsSecretAccessKey;
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(SUPPRESS_UNUSED)
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(SUPPRESS_UNUSED)
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }

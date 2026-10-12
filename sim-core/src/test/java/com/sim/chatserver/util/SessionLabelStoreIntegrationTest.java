@@ -17,7 +17,7 @@ import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
 import com.sim.chatserver.config.Database;
-import com.sim.chatserver.util.SessionLabelStore.SessionLabel;
+import com.sim.chatserver.util.SessionLabel;
 
 class SessionLabelStoreIntegrationTest {
 

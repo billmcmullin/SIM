@@ -34,16 +34,22 @@ import com.sim.chatserver.model.review.MapBatchResult;
 import com.sim.chatserver.model.review.ReduceRequest;
 import com.sim.chatserver.model.review.ReduceResult;
 import com.sim.chatserver.security.review.ReviewOutputValidator;
+import com.sim.chatserver.security.review.ReviewValidationResult;
 import com.sim.chatserver.security.review.TrustedUrlValidator;
+import com.sim.chatserver.security.review.ValidationResult;
+import com.sim.chatserver.service.JobResult;
+import com.sim.chatserver.service.OrchestrationResult;
 import com.sim.chatserver.service.PromptTemplateService;
 import com.sim.chatserver.service.ReviewContextBuilderService;
 import com.sim.chatserver.service.ReviewSamplingService;
 import com.sim.chatserver.service.ReviewJobService;
 import com.sim.chatserver.service.WidgetReviewMapReduceOrchestrator;
 import com.sim.chatserver.service.WorkspaceClient;
-import com.sim.chatserver.service.WorkspaceClient.WorkspaceResponse;
+import com.sim.chatserver.service.WorkspaceResponse;
 import com.sim.chatserver.startup.AppDataSourceHolder;
+import com.sim.chatserver.util.CommonLiteralConstants;
 import com.sim.chatserver.util.JsonRequestParserUtil;
+import com.sim.chatserver.util.TextIoSanitizerUtil;
 import com.sim.chatserver.util.ThrowableUtil;
 import com.sim.chatserver.web.util.JsonPrimaryTextUtil;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
@@ -63,6 +69,9 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "WidgetReviewManualMessageServlet", urlPatterns = {"/dashboard/drilldown/widget-review/manual-message"})
 public class WidgetReviewManualMessageServlet extends HttpServlet {
 
@@ -73,8 +82,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     private static final int MAX_CONTEXT_ENTRIES_HARD_CAP = Integer.MAX_VALUE;
     private static final int MAX_SESSION_ID_CHARS = 200;
     private static final int MAX_JSON_PAYLOAD_BYTES = 128 * 1024;
-    private static final Set<String> ALLOWED_MODES = Set.of("chat", "query", "automatic");
-    private static final Map<String, String> ENV = new ProcessBuilder().environment();
+    private static final Set<String> ALLOWED_MODES = Set.of(com.sim.chatserver.util.CommonLiteralConstants.DEFAULT_MODE_CHAT, com.sim.chatserver.util.CommonLiteralConstants.FIELD_QUERY, "automatic");
+    private static final String CSV_SEPARATOR = ",";
 
         private static ReviewRuntime runtime() {
         return RuntimeHolder.INSTANCE;
@@ -84,77 +93,6 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     public void init() throws ServletException {
         super.init();
         log.log(Level.INFO, "[manual-message][init] loaded config: {0}", RuntimeHolder.INSTANCE.mrConfig);
-    }
-
-    private static final class ReviewRuntime {
-        final MapReduceConfig mrConfig;
-        final WorkspaceClient workspaceClient;
-        final WidgetReviewMapReduceOrchestrator orchestrator;
-        final PromptTemplateService promptTemplateService;
-        final ReviewContextBuilderService reviewContextBuilderService;
-        final ReviewOutputValidator reviewOutputValidator;
-        final TrustedUrlValidator trustedUrlValidator;
-
-        private ReviewRuntime() {
-            MapReduceConfig loadedConfig = MapReduceConfig.load();
-            HttpClient client = HttpClient.newBuilder()
-                .version(HttpClient.Version.HTTP_1_1)
-                .connectTimeout(Duration.ofSeconds(20))
-                .build();
-
-            WorkspaceClient configuredWorkspaceClient = new WorkspaceClient(
-                client,
-                loadedConfig.getWorkspaceMaxRetries(),
-                loadedConfig.getWorkspaceTimeout()
-            );
-
-            PromptTemplateService configuredPromptTemplateService = new PromptTemplateService();
-            ReviewContextBuilderService configuredReviewContextBuilderService = new ReviewContextBuilderService(new ReviewSamplingService());
-            ReviewOutputValidator configuredReviewOutputValidator = new ReviewOutputValidator();
-
-            Set<String> allowedHosts = parseCsvToSet(ENV.get("REVIEW_TRUSTED_HOSTS"));
-            Set<String> allowedSuffixes = parseCsvToSet(ENV.get("REVIEW_TRUSTED_HOST_SUFFIXES"));
-            boolean allowPrivate = Boolean.parseBoolean(defaultIfBlank(ENV.get("REVIEW_ALLOW_PRIVATE_NETWORKS"), "false"));
-            TrustedUrlValidator configuredTrustedUrlValidator = new TrustedUrlValidator(allowedHosts, allowedSuffixes, allowPrivate);
-
-            WidgetReviewMapReduceOrchestrator configuredOrchestrator = new WidgetReviewMapReduceOrchestrator(
-                configuredWorkspaceClient,
-                configuredReviewContextBuilderService,
-                configuredPromptTemplateService,
-                configuredReviewOutputValidator,
-                loadedConfig.getBatchSize(),
-                loadedConfig.getMaxParallel(),
-                loadedConfig.getMapMessageMaxChars(),
-                loadedConfig.getMapContextMaxChars(),
-                loadedConfig.getReduceMessageMaxChars(),
-                loadedConfig.getReduceContextMaxChars(),
-                loadedConfig.getRetryContextChars(),
-                loadedConfig.getRetryMessageMaxChars(),
-                loadedConfig.getMaxCoveragePasses(),
-                loadedConfig.getMinBatchSize(),
-                loadedConfig.getSegmentPromptChars(),
-                loadedConfig.getSegmentResponseChars(),
-                loadedConfig.getReduceInitialChunkSize(),
-                loadedConfig.getReduceMinChunkSize(),
-                loadedConfig.getReduceMaxLevels(),
-                loadedConfig.getReduceChunkSummaryMaxChars(),
-                loadedConfig.getFinalReduceMaxSummaries(),
-                loadedConfig.getFinalReduceSummaryMaxChars(),
-                loadedConfig.getFinalReduceMaxAttempts()
-            );
-
-            this.mrConfig = loadedConfig;
-            this.workspaceClient = configuredWorkspaceClient;
-            this.promptTemplateService = configuredPromptTemplateService;
-            this.reviewContextBuilderService = configuredReviewContextBuilderService;
-            this.reviewOutputValidator = configuredReviewOutputValidator;
-            this.trustedUrlValidator = configuredTrustedUrlValidator;
-            this.orchestrator = configuredOrchestrator;
-        }
-    }
-
-    private static final class RuntimeHolder {
-        static final ReviewRuntime INSTANCE = new ReviewRuntime();
     }
 
     @Override
@@ -176,14 +114,14 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             executeManualRequest(resp, requestId, startNanos, requestContext, targetContext);
     
         } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
-            java.util.logging.Logger.getLogger("OWASP")
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doPost", e);
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                    .log(java.util.logging.Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_POST, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -198,38 +136,38 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             req.setCharacterEncoding(StandardCharsets.UTF_8.name());
         } catch (java.io.UnsupportedEncodingException ex) {
             log.log(Level.WARNING, "UTF-8 character encoding was not accepted", ex);
-            respondWithError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+            respondWithError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
             return null;
         }
 
         if (!ServletRequestParamUtil.hasValidContentLength(req, MAX_JSON_PAYLOAD_BYTES)) {
-            respondWithError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
+            respondWithError(resp, HttpServletResponse.SC_BAD_REQUEST, com.sim.chatserver.util.CommonLiteralConstants.MSG_INVALID_JSON_PAYLOAD);
             return null;
         }
 
         JsonObject payload = JsonRequestParserUtil.parseObject(req, MAX_JSON_PAYLOAD_BYTES);
         if (payload == null || payload.isEmpty()) {
-            respondWithError(resp, HttpServletResponse.SC_BAD_REQUEST, "Invalid JSON payload.");
+            respondWithError(resp, HttpServletResponse.SC_BAD_REQUEST, com.sim.chatserver.util.CommonLiteralConstants.MSG_INVALID_JSON_PAYLOAD);
             return null;
         }
 
-        String userMessage = payload.getString("message", "").trim();
+        String userMessage = payload.getString(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "").trim();
         if (userMessage.isEmpty()) {
             respondWithError(resp, HttpServletResponse.SC_BAD_REQUEST, "message is required.");
             return null;
         }
 
-        String mode = payload.getString("mode", "chat").trim().toLowerCase(Locale.ROOT);
+        String mode = payload.getString(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MODE, com.sim.chatserver.util.CommonLiteralConstants.DEFAULT_MODE_CHAT).trim().toLowerCase(Locale.ROOT);
         if (!ALLOWED_MODES.contains(mode)) {
-            mode = "chat";
+            mode = com.sim.chatserver.util.CommonLiteralConstants.DEFAULT_MODE_CHAT;
         }
 
-        String sessionId = payload.getString("sessionId", "").trim();
+        String sessionId = payload.getString(com.sim.chatserver.util.CommonLiteralConstants.FIELD_SESSION_ID, "").trim();
         if (sessionId.length() > MAX_SESSION_ID_CHARS) {
-            sessionId = safeSlice(sessionId, 0, MAX_SESSION_ID_CHARS);
+            sessionId = TextIoSanitizerUtil.safeSlice(sessionId, 0, MAX_SESSION_ID_CHARS);
         }
 
-        boolean requestReset = payload.getBoolean("requestReset", payload.getBoolean("reset", false));
+        boolean requestReset = payload.getBoolean("requestReset", payload.getBoolean(com.sim.chatserver.util.CommonLiteralConstants.VALUE_RESET, false));
         boolean async = payload.getBoolean("async", false);
         List<SelectedEntry> selectedEntries = parseSelectedEntries(payload);
         JsonArray normalizedAttachments = normalizeAttachments(payload);
@@ -285,7 +223,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         String targetUrl = stripTrailingSlash(baseUrl) + String.format(CHAT_API_PATH_TEMPLATE, encodedSlug);
         targetUrl = canonicalizeForValidation(targetUrl);
 
-        TrustedUrlValidator.ValidationResult trust = runtime().trustedUrlValidator.validate(targetUrl);
+        ValidationResult trust = runtime().trustedUrlValidator.validate(targetUrl);
         if (!trust.isValid()) {
             log.log(Level.WARNING, "[manual-message][{0}] blocked untrusted targetUrl reason={1}", new Object[]{requestId, trust.getReason()});
             respondWithError(resp, HttpServletResponse.SC_BAD_REQUEST, "Workspace URL failed trust validation.");
@@ -361,46 +299,6 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         }
     }
 
-    private static final class ManualRequestContext {
-
-        private final String userMessage;
-        private final String mode;
-        private final String sessionId;
-        private final boolean requestReset;
-        private final boolean async;
-        private final List<SelectedEntry> selectedEntries;
-        private final JsonArray normalizedAttachments;
-
-        private ManualRequestContext(
-                String userMessage,
-                String mode,
-                String sessionId,
-                boolean requestReset,
-                boolean async,
-                List<SelectedEntry> selectedEntries,
-                JsonArray normalizedAttachments
-        ) {
-            this.userMessage = userMessage;
-            this.mode = mode;
-            this.sessionId = sessionId;
-            this.requestReset = requestReset;
-            this.async = async;
-            this.selectedEntries = selectedEntries;
-            this.normalizedAttachments = normalizedAttachments;
-        }
-    }
-
-    private static final class WorkspaceTargetContext {
-
-        private final String targetUrl;
-        private final String apiKey;
-
-        private WorkspaceTargetContext(String targetUrl, String apiKey) {
-            this.targetUrl = targetUrl;
-            this.apiKey = apiKey;
-        }
-    }
-
     private boolean shouldUseMapReduce(List<SelectedEntry> selectedEntries) {
         int n = selectedEntries == null ? 0 : selectedEntries.size();
 
@@ -453,22 +351,22 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         ));
 
         resp.setStatus(HttpServletResponse.SC_ACCEPTED);
-        resp.setContentType("application/json; charset=UTF-8");
+        resp.setContentType(CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON_UTF8);
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
         try {
             resp.getWriter().write(Json.createObjectBuilder()
-                    .add("status", "accepted")
-                    .add("requestId", requestId)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "accepted")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_REQUEST_ID, requestId)
                     .add("jobId", jobId)
                     .build()
                     .toString());
         } catch (IOException e) {
             log.log(Level.FINE, "Unable to write async accepted response", e);
-            respondWithError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Unable to write response.");
+            respondWithError(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_UNABLE_TO_WRITE_RESPONSE);
         }
     }
 
-        private ReviewJobService.JobResult executeAsyncJob(
+        private JobResult executeAsyncJob(
             ReviewJobService jobs,
             String jobId,
             String targetUrl,
@@ -524,18 +422,18 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             Thread.currentThread().interrupt();
             }
             log.log(Level.WARNING, "[manual-message][" + requestId + "] async execution failed", e);
-            return new ReviewJobService.JobResult(
+            return new JobResult(
                 500, false, "Failed",
                 e.getMessage() == null ? "Async execution failed." : e.getMessage(),
                 0, 0, 1, 0,
                 List.of(), List.of(), List.of(),
                 List.of(), List.of(),
-                "", "", "application/json"
+                "", "", com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON
             );
         }
         }
 
-        private ReviewJobService.JobResult executeSinglePassAsyncJob(
+        private JobResult executeSinglePassAsyncJob(
             ReviewJobService jobs,
             String jobId,
             String targetUrl,
@@ -553,57 +451,17 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             targetUrl, apiKey, userMessage, mode, sessionId, requestReset, attachments, selectedEntries, requestId
         );
 
-        int httpStatus = upstream == null ? 500 : upstream.statusCode();
-        String body = upstream == null ? "" : upstream.body();
-        String contentType = upstream == null ? "application/json" : defaultIfBlank(upstream.contentType(), "application/json");
-        String finalReport = extractPrimaryText(body);
-        String finalReportForValidation = canonicalizeForValidation(finalReport);
-
-        List<String> usedIdsFromText = extractUsedIdsFromText(finalReportForValidation, allIds);
-        List<String> usedIds = !usedIdsFromText.isEmpty() ? usedIdsFromText : List.of();
-        List<String> missingIds = subtract(allIds, usedIds);
-
-        ReviewOutputValidator.ValidationResult finalValidation
-            = runtime().reviewOutputValidator.validateFinalReportHierarchical(finalReportForValidation, allIds, runtime().mrConfig.getReduceMessageMaxChars());
-        boolean metadataMismatch = hasCoverageMetadataMismatch(finalValidation);
-
-        boolean coverageComplete = missingIds.isEmpty() && !metadataMismatch;
-        boolean httpOk = upstream != null && httpStatus < 400;
-        boolean ok = httpOk && coverageComplete;
-
-        String completionMsg = ok
-            ? "Completed"
-            : (httpOk
-                ? ("Completed with partial coverage (missing=" + missingIds.size() + ')')
-                : ("Completed with upstream errors (status=" + httpStatus + ')'));
-
-        String errMsg = ok ? ""
-            : (!httpOk
-                ? "Upstream returned status " + httpStatus
-                : (metadataMismatch ? "Coverage metadata mismatch." : "Coverage incomplete."));
-
-        List<String> warnings = new ArrayList<>();
-        if (!coverageComplete) {
-            warnings.add("coverage incomplete");
-        }
-        if (metadataMismatch) {
-            warnings.add("coverage metadata mismatch");
-        }
+        ReviewJobComputation completion = computeJobComputation(upstream, allIds, null, null);
 
         jobs.updateReduceProgress(
-            jobId, 1, 1, ok ? 0 : 1, 0,
-            allIds, usedIds, missingIds, List.of(), completionMsg
+            jobId, 1, 1, completion.ok ? 0 : 1, 0,
+            allIds, completion.usedIds, completion.missingIds, List.of(), completion.completionMsg
         );
 
-        return new ReviewJobService.JobResult(
-            httpStatus, ok, completionMsg, errMsg,
-            1, 1, ok ? 0 : 1, 0,
-            allIds, usedIds, missingIds, List.of(), warnings,
-            finalReport, body, contentType
-        );
+        return completion.toJobResult(1, 1, completion.ok ? 0 : 1, 0, allIds, List.of());
         }
 
-    private ReviewJobService.JobResult executeMapReduceAsyncJob(
+    private JobResult executeMapReduceAsyncJob(
             ReviewJobService jobs,
             String jobId,
             String targetUrl,
@@ -637,39 +495,114 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         );
 
         WorkspaceResponse upstream = mr.response;
-        WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration = mr.orchestration;
+        OrchestrationResult orchestration = mr.orchestration;
         ReduceResult reduceResult = orchestration == null ? null : orchestration.reduceResult();
-
-        int httpStatus = upstream == null ? 500 : upstream.statusCode();
-        String body = upstream == null ? "" : upstream.body();
-        String contentType = upstream == null ? "application/json" : defaultIfBlank(upstream.contentType(), "application/json");
-        String finalReport = extractPrimaryText(body);
-        String finalReportForValidation = canonicalizeForValidation(finalReport);
 
         List<String> missingIds = reduceResult != null
                 ? distinctIds(reduceResult.getMissingChatIds())
                 : distinctIds(orchestration == null ? allIds : orchestration.missingChatIds());
         missingIds = intersect(allIds, missingIds);
         List<String> usedIds = subtract(allIds, missingIds);
+        ReviewJobComputation completion = computeJobComputation(upstream, allIds, usedIds, missingIds);
 
-        ReviewOutputValidator.ValidationResult finalValidation
-                = runtime().reviewOutputValidator.validateFinalReportHierarchical(finalReportForValidation, allIds, runtime().mrConfig.getReduceMessageMaxChars());
-        boolean metadataMismatch = hasCoverageMetadataMismatch(finalValidation);
+        int totalBatches = orchestration == null ? 0 : orchestration.totalBatches();
+        int failedBatches = orchestration == null ? 1 : orchestration.failedBatchIndexes().size();
+        int completedBatches = orchestration == null ? 0 : (orchestration.totalBatches() - orchestration.failedBatchIndexes().size());
+        List<Integer> failedBatchIndexes = orchestration == null ? List.of() : orchestration.failedBatchIndexes();
 
+        jobs.updateReduceProgress(
+                jobId,
+            totalBatches,
+            completedBatches,
+            failedBatches,
+                0,
+            allIds, completion.usedIds, completion.missingIds,
+            failedBatchIndexes,
+            completion.completionMsg
+        );
+
+        return completion.toJobResult(totalBatches, completedBatches, failedBatches, 0, allIds, failedBatchIndexes);
+    }
+
+        private ReviewJobComputation computeJobComputation(
+            WorkspaceResponse upstream,
+            List<String> allIds,
+            List<String> usedIdsOverride,
+            List<String> missingIdsOverride
+        ) {
+        int httpStatus = upstream == null ? 500 : upstream.statusCode();
+        String body = upstream == null ? "" : upstream.body();
+        String contentType = upstream == null ? com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON : defaultIfBlank(upstream.contentType(), com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON);
+        String finalReport = extractPrimaryText(body);
+        String normalizedFinalReport = Normalizer.normalize(defaultIfBlank(finalReport, ""), Normalizer.Form.NFKC);
+        String finalReportForValidation = validateTaintedRequestBody(canonicalizeForValidation(normalizedFinalReport));
+
+        List<String> usedIds;
+        List<String> missingIds;
+        if (usedIdsOverride == null || missingIdsOverride == null) {
+            List<String> usedIdsFromText = extractUsedIdsFromText(finalReportForValidation, allIds);
+            usedIds = !usedIdsFromText.isEmpty() ? usedIdsFromText : List.of();
+            missingIds = subtract(allIds, usedIds);
+        } else {
+            usedIds = distinctIds(usedIdsOverride);
+            missingIds = intersect(allIds, distinctIds(missingIdsOverride));
+        }
+
+        boolean metadataMismatch = hasMetadataMismatch(finalReportForValidation, allIds);
         boolean coverageComplete = missingIds.isEmpty() && !metadataMismatch;
         boolean httpOk = upstream != null && httpStatus < 400;
         boolean ok = httpOk && coverageComplete;
 
-        String completionMsg = ok
-                ? "Completed"
-                : (httpOk
-                    ? ("Completed with partial coverage (missing=" + missingIds.size() + ')')
-                    : ("Completed with upstream errors (status=" + httpStatus + ')'));
-        String errMsg = ok ? ""
-                : (!httpOk
-                    ? "Upstream returned status " + httpStatus
-                    : (metadataMismatch ? "Coverage metadata mismatch." : "Coverage incomplete."));
+        String completionMsg = completionMessage(ok, httpOk, httpStatus, missingIds.size());
+        String errMsg = errorMessage(ok, httpOk, httpStatus, metadataMismatch);
+        List<String> warnings = coverageWarnings(coverageComplete, metadataMismatch);
 
+        return new ReviewJobComputation(
+            httpStatus,
+            ok,
+            completionMsg,
+            errMsg,
+            usedIds,
+            missingIds,
+            warnings,
+            finalReport,
+            body,
+            contentType
+        );
+        }
+
+    private boolean hasMetadataMismatch(String finalReportForValidation, List<String> allIds) {
+            String normalizedReportForValidation = canonicalizeForValidation(defaultIfBlank(finalReportForValidation, ""));
+        ReviewValidationResult finalValidation = runtime()
+                .reviewOutputValidator
+                .validateFinalReportHierarchical(
+                normalizedReportForValidation,
+                        allIds,
+                        runtime().mrConfig.getReduceMessageMaxChars());
+        return hasCoverageMetadataMismatch(finalValidation);
+    }
+
+    private String completionMessage(boolean ok, boolean httpOk, int httpStatus, int missingCount) {
+        if (ok) {
+            return "Completed";
+        }
+        if (httpOk) {
+            return "Completed with partial coverage (missing=" + missingCount + ')';
+        }
+        return "Completed with upstream errors (status=" + httpStatus + ')';
+    }
+
+    private String errorMessage(boolean ok, boolean httpOk, int httpStatus, boolean metadataMismatch) {
+        if (ok) {
+            return "";
+        }
+        if (!httpOk) {
+            return "Upstream returned status " + httpStatus;
+        }
+        return metadataMismatch ? "Coverage metadata mismatch." : "Coverage incomplete.";
+    }
+
+    private List<String> coverageWarnings(boolean coverageComplete, boolean metadataMismatch) {
         List<String> warnings = new ArrayList<>();
         if (!coverageComplete) {
             warnings.add("coverage incomplete");
@@ -677,29 +610,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (metadataMismatch) {
             warnings.add("coverage metadata mismatch");
         }
-
-        jobs.updateReduceProgress(
-                jobId,
-                orchestration == null ? 0 : orchestration.totalBatches(),
-                orchestration == null ? 0 : (orchestration.totalBatches() - orchestration.failedBatchIndexes().size()),
-                orchestration == null ? 1 : orchestration.failedBatchIndexes().size(),
-                0,
-                allIds, usedIds, missingIds,
-                orchestration == null ? List.of() : orchestration.failedBatchIndexes(),
-                completionMsg
-        );
-
-        return new ReviewJobService.JobResult(
-                httpStatus, ok, completionMsg, errMsg,
-                orchestration == null ? 0 : orchestration.totalBatches(),
-                orchestration == null ? 0 : (orchestration.totalBatches() - orchestration.failedBatchIndexes().size()),
-                orchestration == null ? 1 : orchestration.failedBatchIndexes().size(),
-                0,
-                allIds, usedIds, missingIds,
-                orchestration == null ? List.of() : orchestration.failedBatchIndexes(),
-                warnings,
-                finalReport, body, contentType
-        );
+        return warnings;
     }
 
     private WidgetReviewMapReduceOrchestrator.ProgressListener createProgressListener(
@@ -755,7 +666,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                         Math.max(liveFailedBatches.get(), 0),
                         0,
                         allIds, List.of(), List.of(), List.of(),
-                        "Batch " + batchIndex + ' ' + (success ? "completed" : "failed")
+                        "Batch " + batchIndex + ' ' + (success ? "completed" : com.sim.chatserver.util.CommonLiteralConstants.STATUS_FAILED)
                         + " - " + liveCompletedBatches.get() + '/' + Math.max(1, liveTotalBatches.get())
                         + " complete"
                 );
@@ -815,7 +726,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                         Math.max(liveFailedBatches.get(), 0),
                         0,
                         allIds, List.of(), List.of(), List.of(),
-                        phaseText + ' ' + (success ? "completed" : "failed") + " (HTTP " + httpStatus + ')'
+                        phaseText + ' ' + (success ? "completed" : com.sim.chatserver.util.CommonLiteralConstants.STATUS_FAILED) + " (HTTP " + httpStatus + ')'
                 );
             }
 
@@ -841,7 +752,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                         Math.max(liveFailedBatches.get(), 0),
                         0,
                         allIds, List.of(), List.of(), List.of(),
-                        "Reduce " + (success ? "completed" : "failed") + " (status=" + httpStatus + ')'
+                        "Reduce " + (success ? "completed" : com.sim.chatserver.util.CommonLiteralConstants.STATUS_FAILED) + " (status=" + httpStatus + ')'
                 );
             }
         };
@@ -884,7 +795,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
         String text = extractPrimaryText(response.body());
         String textForValidation = canonicalizeForValidation(text);
-        ReviewOutputValidator.ValidationResult validation = runtime().reviewOutputValidator.validateFinalReport(textForValidation, runtime().mrConfig.getSinglePassMessageMaxChars());
+        ReviewValidationResult validation = runtime().reviewOutputValidator.validateFinalReport(textForValidation, runtime().mrConfig.getSinglePassMessageMaxChars());
         if (!validation.isValid()) {
             log.log(Level.WARNING, "[manual-message][{0}][single-pass] final validation errors={1}", new Object[]{requestId, validation.getErrors()});
         } else if (!validation.getWarnings().isEmpty()) {
@@ -921,7 +832,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             WidgetReviewMapReduceOrchestrator.ProgressListener progressListener
     ) {
 
-        WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration;
+        OrchestrationResult orchestration;
         try {
             orchestration = WidgetReviewOrchestrationRunner.run(
                     runtime().orchestrator,
@@ -978,7 +889,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
         String finalText = extractPrimaryText(finalResp.body());
         String finalTextForValidation = canonicalizeForValidation(finalText);
-        ReviewOutputValidator.ValidationResult finalValidation
+        ReviewValidationResult finalValidation
             = runtime().reviewOutputValidator.validateFinalReportHierarchical(finalTextForValidation, allIds, runtime().mrConfig.getReduceMessageMaxChars());
 
         if (!finalValidation.isValid()) {
@@ -1063,7 +974,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             }
             resp.setContentType(contentType);
         } else {
-            resp.setContentType("application/json; charset=UTF-8");
+            resp.setContentType(CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON_UTF8);
         }
 
         resp.setCharacterEncoding(StandardCharsets.UTF_8.name());
@@ -1077,7 +988,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                 try {
                     resp.sendError(HttpServletResponse.SC_BAD_GATEWAY, "Unable to stream workspace response.");
                 } catch (IOException ioe) {
-                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                    log.log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_FAILED, ioe);
                 }
             }
         }
@@ -1105,12 +1016,12 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     }
 
     private List<String> extractUsedIdsFromText(String text, List<String> expected) {
-        ReviewOutputValidator.ValidationResult v
+        ReviewValidationResult v
                 = runtime().reviewOutputValidator.validateFinalReportHierarchical(text == null ? "" : text, expected, runtime().mrConfig.getReduceMessageMaxChars());
         return distinctIds(v.getFoundChatIds());
     }
 
-    private boolean hasCoverageMetadataMismatch(ReviewOutputValidator.ValidationResult validation) {
+    private boolean hasCoverageMetadataMismatch(ReviewValidationResult validation) {
         if (validation == null || validation.getErrors() == null) {
             return false;
         }
@@ -1184,16 +1095,16 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     }
 
     private JsonArray normalizeAttachments(JsonObject payload) {
-        if (payload == null || !payload.containsKey("attachments")) {
+        if (payload == null || !payload.containsKey(com.sim.chatserver.util.CommonLiteralConstants.FIELD_ATTACHMENTS)) {
             return Json.createArrayBuilder().build();
         }
 
-        JsonValue raw = payload.get("attachments");
+        JsonValue raw = payload.get(com.sim.chatserver.util.CommonLiteralConstants.FIELD_ATTACHMENTS);
         if (raw == null || raw.getValueType() != JsonValue.ValueType.ARRAY) {
             return Json.createArrayBuilder().build();
         }
 
-        JsonArray input = payload.getJsonArray("attachments");
+        JsonArray input = payload.getJsonArray(com.sim.chatserver.util.CommonLiteralConstants.FIELD_ATTACHMENTS);
         var out = Json.createArrayBuilder();
 
         for (JsonValue v : input) {
@@ -1202,7 +1113,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             }
             JsonObject o = v.asJsonObject();
 
-            String name = o.getString("name", "").trim();
+            String name = o.getString(com.sim.chatserver.util.CommonLiteralConstants.FIELD_NAME, "").trim();
             String mime = o.getString("mime", "").trim();
             String contentString = o.getString("contentString", "").trim();
 
@@ -1211,7 +1122,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             }
 
             out.add(Json.createObjectBuilder()
-                    .add("name", name)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_NAME, name)
                     .add("mime", mime)
                     .add("contentString", contentString)
                     .build());
@@ -1225,7 +1136,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         }
         String marker = LS + LS + "Selected chats context:" + LS;
         int idx = userMessage.indexOf(marker);
-        return idx >= 0 ? safeSlice(userMessage, 0, idx).trim() : userMessage.trim();
+        return idx >= 0 ? TextIoSanitizerUtil.safeSlice(userMessage, 0, idx).trim() : userMessage.trim();
     }
 
     private List<SelectedEntry> parseSelectedEntries(JsonObject payload) {
@@ -1254,11 +1165,11 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             }
 
             JsonObject obj = value.asJsonObject();
-            String chatId = str(obj, "chatId");
-            String prompt = str(obj, "prompt");
-            String response = str(obj, "response");
-            String createdAt = str(obj, "createdAt");
-            String sid = str(obj, "sessionId");
+            String chatId = str(obj, com.sim.chatserver.util.CommonLiteralConstants.FIELD_CHAT_ID);
+            String prompt = str(obj, com.sim.chatserver.util.CommonLiteralConstants.FIELD_PROMPT);
+            String response = str(obj, com.sim.chatserver.util.CommonLiteralConstants.FIELD_RESPONSE);
+            String createdAt = str(obj, com.sim.chatserver.util.CommonLiteralConstants.FIELD_CREATED_AT);
+            String sid = str(obj, com.sim.chatserver.util.CommonLiteralConstants.FIELD_SESSION_ID);
 
             if (chatId.isBlank() && prompt.isBlank() && response.isBlank()) {
                 continue;
@@ -1299,10 +1210,10 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
 
         String normalized = host.trim();
         StringBuilder builder = new StringBuilder();
-        if (normalized.contains("://")) {
+        if (normalized.contains(com.sim.chatserver.util.CommonLiteralConstants.SCHEME_SEPARATOR)) {
             builder.append(normalized); 
         }else {
-            builder.append("https://").append(normalized);
+            builder.append(com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTPS).append(normalized);
         }
 
         boolean hasPort = normalized.matches(".*:\\d+$");
@@ -1323,14 +1234,14 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             return "";
         }
         s = s.replaceFirst("^(https?://)+(https?://)", "$2");
-        s = s.replace("https://https://", "https://")
-                .replace("http://http://", "http://")
-                .replace("http://https://", "https://")
-                .replace("https://http://", "http://");
+        s = s.replace("https://https://", com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTPS)
+                .replace("http://http://", com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTP)
+                .replace("http://https://", com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTPS)
+                .replace("https://http://", com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTP);
 
         try {
             if (runtime().trustedUrlValidator != null) {
-                TrustedUrlValidator.ValidationResult trust = runtime().trustedUrlValidator.validate(s);
+                ValidationResult trust = runtime().trustedUrlValidator.validate(s);
                 if (!trust.isValid()) {
                     return "";
                 }
@@ -1349,8 +1260,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             }
 
             return port > 0
-                    ? scheme.toLowerCase(Locale.ROOT) + "://" + host.toLowerCase(Locale.ROOT) + (char) 58 + port
-                    : scheme.toLowerCase(Locale.ROOT) + "://" + host.toLowerCase(Locale.ROOT);
+                    ? scheme.toLowerCase(Locale.ROOT) + com.sim.chatserver.util.CommonLiteralConstants.SCHEME_SEPARATOR + host.toLowerCase(Locale.ROOT) + (char) 58 + port
+                    : scheme.toLowerCase(Locale.ROOT) + com.sim.chatserver.util.CommonLiteralConstants.SCHEME_SEPARATOR + host.toLowerCase(Locale.ROOT);
         } catch (IllegalArgumentException e) {
             log.log(Level.FINE, "Invalid base URL", e);
             return "";
@@ -1366,7 +1277,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             return null;
         }
         String lowered = normalized.toLowerCase(Locale.ROOT);
-        if (!lowered.startsWith("http://") && !lowered.startsWith("https://")) {
+        if (!lowered.startsWith(com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTP) && !lowered.startsWith(com.sim.chatserver.util.CommonLiteralConstants.URL_PREFIX_HTTPS)) {
             return null;
         }
         if (normalized.contains(" ") || normalized.contains("\t")) {
@@ -1394,7 +1305,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             return "";
         }
         if (normalized.length() > MAX_JSON_PAYLOAD_BYTES) {
-            return safeSlice(normalized, 0, MAX_JSON_PAYLOAD_BYTES);
+            return TextIoSanitizerUtil.safeSlice(normalized, 0, MAX_JSON_PAYLOAD_BYTES);
         }
         return normalized;
     }
@@ -1413,7 +1324,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         }
         String normalized = safe.toString();
         if (normalized.length() > MAX_JSON_PAYLOAD_BYTES) {
-            return safeSlice(normalized, 0, MAX_JSON_PAYLOAD_BYTES);
+            return TextIoSanitizerUtil.safeSlice(normalized, 0, MAX_JSON_PAYLOAD_BYTES);
         }
         return normalized;
     }
@@ -1430,13 +1341,13 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
     }
 
     private String stripTrailingSlash(String value) {
-        return value.endsWith("/") ? safeSlice(value, 0, value.length() - 1) : value;
+        return value.endsWith("/") ? TextIoSanitizerUtil.safeSlice(value, 0, value.length() - 1) : value;
     }
 
     private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            respondWithError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+            respondWithError(resp, HttpServletResponse.SC_UNAUTHORIZED, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED);
             return false;
         }
         return true;
@@ -1449,9 +1360,9 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             log.log(Level.WARNING, "Unable to write manual-message error response", e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(status, message == null ? "Request failed." : message);
+                    resp.sendError(status, message == null ? com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_FAILED : message);
                 } catch (IOException ioe) {
-                    log.log(Level.FINE, "Fallback sendError failed", ioe);
+                    log.log(Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_FAILED, ioe);
                 }
             }
         }
@@ -1461,29 +1372,14 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         if (value == null || maxChars <= 0) {
             return "";
         }
-        return value.length() <= maxChars ? value : safeSlice(value, 0, maxChars);
-    }
-
-    private static String safeSlice(String value, int beginIndex, int endIndex) {
-        if (value == null) {
-            return "";
-        }
-        int start = Math.max(0, Math.min(beginIndex, value.length()));
-        int end = Math.max(start, Math.min(endIndex, value.length()));
-        int length = end - start;
-        if (length <= 0) {
-            return "";
-        }
-        char[] copied = new char[length];
-        value.getChars(start, end, copied, 0);
-        return new String(copied);
+        return value.length() <= maxChars ? value : TextIoSanitizerUtil.safeSlice(value, 0, maxChars);
     }
 
     private static Set<String> parseCsvToSet(String csv) {
         if (csv == null || csv.isBlank()) {
             return Set.of();
         }
-        String[] parts = csv.split(",");
+        String[] parts = csv.split(CSV_SEPARATOR);
         java.util.Set<String> out = new java.util.HashSet<>();
         for (String p : parts) {
             if (p != null && !p.isBlank()) {
@@ -1497,14 +1393,222 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
         return (value == null || value.isBlank()) ? fallback : value;
     }
 
-    private static final class MapReduceExecutionResult {
-
-        final WorkspaceResponse response;
-        final WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration;
-
-        private MapReduceExecutionResult(WorkspaceResponse response, WidgetReviewMapReduceOrchestrator.OrchestrationResult orchestration) {
-            this.response = response;
-            this.orchestration = orchestration;
-        }
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
     }
 }
+
+final class WorkspaceTargetContext {
+
+    final String targetUrl;
+    final String apiKey;
+
+    WorkspaceTargetContext(String targetUrl, String apiKey) {
+        this.targetUrl = targetUrl;
+        this.apiKey = apiKey;
+    }
+}
+
+final class RuntimeHolder {
+    static final ReviewRuntime INSTANCE = new ReviewRuntime();
+}
+
+final class ReviewRuntime {
+    private static final String ENV_REVIEW_TRUSTED_HOSTS = "REVIEW_TRUSTED_HOSTS";
+    private static final String ENV_REVIEW_TRUSTED_HOST_SUFFIXES = "REVIEW_TRUSTED_HOST_SUFFIXES";
+    private static final String ENV_REVIEW_ALLOW_PRIVATE_NETWORKS = "REVIEW_ALLOW_PRIVATE_NETWORKS";
+    private static final String DEFAULT_ALLOW_PRIVATE_NETWORKS = com.sim.chatserver.util.CommonLiteralConstants.VALUE_FALSE;
+    private static final String CSV_SEPARATOR = ",";
+    private static final Map<String, String> ENV = new ProcessBuilder().environment();
+
+    final MapReduceConfig mrConfig;
+    final WorkspaceClient workspaceClient;
+    final WidgetReviewMapReduceOrchestrator orchestrator;
+    final PromptTemplateService promptTemplateService;
+    final ReviewContextBuilderService reviewContextBuilderService;
+    final ReviewOutputValidator reviewOutputValidator;
+    final TrustedUrlValidator trustedUrlValidator;
+
+    ReviewRuntime() {
+        MapReduceConfig loadedConfig = MapReduceConfig.load();
+        HttpClient client = HttpClient.newBuilder()
+            .version(HttpClient.Version.HTTP_1_1)
+            .connectTimeout(Duration.ofSeconds(20))
+            .build();
+
+        WorkspaceClient configuredWorkspaceClient = new WorkspaceClient(
+            client,
+            loadedConfig.getWorkspaceMaxRetries(),
+            loadedConfig.getWorkspaceTimeout()
+        );
+
+        PromptTemplateService configuredPromptTemplateService = new PromptTemplateService();
+        ReviewContextBuilderService configuredReviewContextBuilderService = new ReviewContextBuilderService(new ReviewSamplingService());
+        ReviewOutputValidator configuredReviewOutputValidator = new ReviewOutputValidator();
+
+        Set<String> allowedHosts = parseCsvToSet(ENV.get(ENV_REVIEW_TRUSTED_HOSTS));
+        Set<String> allowedSuffixes = parseCsvToSet(ENV.get(ENV_REVIEW_TRUSTED_HOST_SUFFIXES));
+        boolean allowPrivate = Boolean.parseBoolean(defaultIfBlank(ENV.get(ENV_REVIEW_ALLOW_PRIVATE_NETWORKS), DEFAULT_ALLOW_PRIVATE_NETWORKS));
+        TrustedUrlValidator configuredTrustedUrlValidator = new TrustedUrlValidator(allowedHosts, allowedSuffixes, allowPrivate);
+
+        WidgetReviewMapReduceOrchestrator configuredOrchestrator = new WidgetReviewMapReduceOrchestrator(
+            configuredWorkspaceClient,
+            configuredReviewContextBuilderService,
+            configuredPromptTemplateService,
+            configuredReviewOutputValidator,
+            loadedConfig.getBatchSize(),
+            loadedConfig.getMaxParallel(),
+            loadedConfig.getMapMessageMaxChars(),
+            loadedConfig.getMapContextMaxChars(),
+            loadedConfig.getReduceMessageMaxChars(),
+            loadedConfig.getReduceContextMaxChars(),
+            loadedConfig.getRetryContextChars(),
+            loadedConfig.getRetryMessageMaxChars(),
+            loadedConfig.getMaxCoveragePasses(),
+            loadedConfig.getMinBatchSize(),
+            loadedConfig.getSegmentPromptChars(),
+            loadedConfig.getSegmentResponseChars(),
+            loadedConfig.getReduceInitialChunkSize(),
+            loadedConfig.getReduceMinChunkSize(),
+            loadedConfig.getReduceMaxLevels(),
+            loadedConfig.getReduceChunkSummaryMaxChars(),
+            loadedConfig.getFinalReduceMaxSummaries(),
+            loadedConfig.getFinalReduceSummaryMaxChars(),
+            loadedConfig.getFinalReduceMaxAttempts()
+        );
+
+        this.mrConfig = loadedConfig;
+        this.workspaceClient = configuredWorkspaceClient;
+        this.promptTemplateService = configuredPromptTemplateService;
+        this.reviewContextBuilderService = configuredReviewContextBuilderService;
+        this.reviewOutputValidator = configuredReviewOutputValidator;
+        this.trustedUrlValidator = configuredTrustedUrlValidator;
+        this.orchestrator = configuredOrchestrator;
+    }
+
+    private static Set<String> parseCsvToSet(String csv) {
+        if (csv == null || csv.isBlank()) {
+            return Set.of();
+        }
+        String[] parts = csv.split(CSV_SEPARATOR);
+        java.util.Set<String> out = new java.util.HashSet<>();
+        for (String p : parts) {
+            if (p != null && !p.isBlank()) {
+                out.add(p.trim().toLowerCase(Locale.ROOT));
+            }
+        }
+        return out;
+    }
+
+    private static String defaultIfBlank(String value, String fallback) {
+        return (value == null || value.isBlank()) ? fallback : value;
+    }
+}
+
+final class MapReduceExecutionResult {
+
+    final WorkspaceResponse response;
+    final OrchestrationResult orchestration;
+
+    MapReduceExecutionResult(WorkspaceResponse response, OrchestrationResult orchestration) {
+        this.response = response;
+        this.orchestration = orchestration;
+    }
+}
+
+final class ReviewJobComputation {
+
+    final int httpStatus;
+    final boolean ok;
+    final String completionMsg;
+    final String errMsg;
+    final List<String> usedIds;
+    final List<String> missingIds;
+    final List<String> warnings;
+    final String finalReport;
+    final String body;
+    final String contentType;
+
+    ReviewJobComputation(
+            int httpStatus,
+            boolean ok,
+            String completionMsg,
+            String errMsg,
+            List<String> usedIds,
+            List<String> missingIds,
+            List<String> warnings,
+            String finalReport,
+            String body,
+            String contentType
+    ) {
+        this.httpStatus = httpStatus;
+        this.ok = ok;
+        this.completionMsg = completionMsg;
+        this.errMsg = errMsg;
+        this.usedIds = usedIds;
+        this.missingIds = missingIds;
+        this.warnings = warnings;
+        this.finalReport = finalReport;
+        this.body = body;
+        this.contentType = contentType;
+    }
+
+    JobResult toJobResult(
+            int totalBatches,
+            int completedBatches,
+            int failedBatches,
+            int retries,
+            List<String> allIds,
+            List<Integer> failedBatchIndexes
+    ) {
+        return new JobResult(
+                httpStatus,
+                ok,
+                completionMsg,
+                errMsg,
+                totalBatches,
+                completedBatches,
+                failedBatches,
+                retries,
+                allIds,
+                usedIds,
+                missingIds,
+                failedBatchIndexes,
+                warnings,
+                finalReport,
+                body,
+                contentType
+        );
+    }
+}
+
+final class ManualRequestContext {
+
+    final String userMessage;
+    final String mode;
+    final String sessionId;
+    final boolean requestReset;
+    final boolean async;
+    final List<SelectedEntry> selectedEntries;
+    final JsonArray normalizedAttachments;
+
+    ManualRequestContext(
+            String userMessage,
+            String mode,
+            String sessionId,
+            boolean requestReset,
+            boolean async,
+            List<SelectedEntry> selectedEntries,
+            JsonArray normalizedAttachments
+    ) {
+        this.userMessage = userMessage;
+        this.mode = mode;
+        this.sessionId = sessionId;
+        this.requestReset = requestReset;
+        this.async = async;
+        this.selectedEntries = selectedEntries;
+        this.normalizedAttachments = normalizedAttachments;
+    }
+}
+
+

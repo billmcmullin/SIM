@@ -14,6 +14,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.model.SelectedEntry;
+import com.sim.chatserver.util.CommonLiteralConstants;
 
 public class ReviewContextBuilderService {
 
@@ -38,17 +39,112 @@ public class ReviewContextBuilderService {
 
     private static final int MAX_OMITTED_IDS_LIST = 1200;
     private static final int MAX_SEGMENTS_PER_ENTRY = 256;
+    private static final String LINE_FEED = String.valueOf(com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED);
     private static final String LINE_SEPARATOR = System.lineSeparator();
     private static final String DOUBLE_LINE_SEPARATOR = LINE_SEPARATOR + LINE_SEPARATOR;
+    private static final String VALUE_UNKNOWN = com.sim.chatserver.util.CommonLiteralConstants.MARKER_UNKNOWN;
+    private static final String VALUE_NONE = "(none)";
+    private static final String VALUE_EMPTY = com.sim.chatserver.util.CommonLiteralConstants.MARKER_EMPTY_PARENS;
+    private static final String TRUNCATED_PREFIX = "... (";
+    private static final String SECTION_PER_CHAT_EVIDENCE = "Per-chat evidence:";
+    private static final String SECTION_MAP_REDUCE_CONTEXT = "Map-Reduce synthesis context";
+    private static final String HEADING_CHAT = "### Chat ";
+    private static final String LABEL_CREATED_AT = "- Created At: ";
+    private static final String LABEL_SESSION_ID = "- Session ID: ";
+    private static final String LABEL_PROMPT = "- Prompt:";
+    private static final String LABEL_RESPONSE = "- Response:";
+    private static final String META_ALL_SELECTED_IDS_COUNT = "- all_selected_ids_count: ";
+    private static final String META_MISSING_IDS_COUNT = "- missing_ids_count: ";
+    private static final String META_EXACT_TOTAL_SELECTED = "- exact_total_selected: ";
+    private static final String META_EXACT_BATCH_IDS = "- exact_batch_ids: ";
+    private static final String MSG_MAP_METADATA_TOO_LARGE = "Map batch metadata does not fit maxChars; reduce batch size and retry.";
+    private static final String MSG_COVERAGE_METADATA_TOO_LARGE = "Coverage metadata does not fit maxChars; reduce batch size and retry.";
+    private static final String EMPTY = "";
+    private static final String SUPPRESS_UNUSED = com.sim.chatserver.util.CommonLiteralConstants.SUPPRESS_UNUSED;
+    private static final String SECTION_SELECTED_CHATS_CONTEXT = "Selected chats context";
+    private static final String LABEL_TOTAL_SELECTED = "- total_selected: ";
+    private static final String LABEL_SAMPLED_FOR_EVIDENCE = "- sampled_for_evidence: ";
+    private static final String LABEL_OMITTED_INLINE_EVIDENCE = "- omitted_from_inline_evidence: ";
+    private static final String SECTION_COVERAGE_INDEX = "Coverage index (sampled subset):";
+    private static final String SUFFIX_SAMPLED_TRUNCATED = " sampled chat blocks truncated by size)";
+    private static final String SECTION_DETERMINISTIC_COVERAGE = "Deterministic coverage metadata:";
+    private static final String LABEL_EXACT_INCLUDED_COUNT = "- exact_included_count: ";
+    private static final String LABEL_EXACT_OMITTED_COUNT = "- exact_omitted_count: ";
+    private static final String LABEL_EXACT_INCLUDED_IDS = "- exact_included_ids: ";
+    private static final String LABEL_EXACT_OMITTED_IDS = "- exact_omitted_ids: ";
+    private static final String SECTION_CARRY_FORWARD_IDS = "Carry-forward IDs (not in inline evidence):";
+    private static final String SECTION_BATCH_SIGNALS = "Batch signals:";
+    private static final String MSG_MAP_BATCH_INVALID_PREFIX = "Map batch invalid: expected IDs not present in batch entries: ";
+    private static final String MSG_MAP_BATCH_HEADER_TOO_LARGE = "Map batch header does not fit maxChars; reduce batch size and retry.";
+    private static final String LABEL_BATCH = "- batch: ";
+    private static final String LABEL_ENTRIES_IN_BATCH = "- entries_in_batch: ";
+    private static final String LABEL_QUERY_TERMS = "- query_terms: ";
+    private static final String LABEL_EXPECTED_CHAT_IDS = "- expected_chat_ids: ";
+    private static final String RULE_STRICT_HEADING = "- strict_heading_rule: use '### Chat [id]' for every expected ID";
+    private static final String SECTION_MAP_BATCH_CONTEXT = "Map batch context";
+    private static final String MSG_EXPECTED_IDS_LINE_TOO_LARGE = "Expected IDs line does not fit maxChars; reduce batch size and retry.";
+    private static final String MSG_STRICT_RULE_LINE_TOO_LARGE = "Strict rule line does not fit maxChars; reduce batch size and retry.";
+    private static final String MSG_COVERAGE_HEADER_TOO_LARGE = "Coverage metadata header does not fit maxChars; reduce batch size and retry.";
+    private static final String MSG_PER_CHAT_HEADER_TOO_LARGE = "Per-chat evidence header does not fit maxChars; reduce batch size and retry.";
+    private static final String MSG_MAP_CONTEXT_TOO_LARGE = "Map batch context too large before including all entries; reduce batch size and retry.";
+    private static final String SECTION_DETERMINISTIC_BATCH_COVERAGE = "Deterministic batch coverage metadata:";
+    private static final String LABEL_EXACT_BATCH_TOTAL = "- exact_batch_total: ";
+    private static final String LABEL_EXACT_BATCH_INCLUDED = "- exact_batch_included: ";
+    private static final String LABEL_EXACT_BATCH_OMITTED = "- exact_batch_omitted: ";
+    private static final String LABEL_EXACT_EXPECTED_IDS = "- exact_expected_ids: ";
+    private static final String LABEL_EXACT_BATCH_INCLUDED_IDS = "- exact_batch_included_ids: ";
+    private static final String LABEL_EXACT_BATCH_OMITTED_IDS = "- exact_batch_omitted_ids: ";
+    private static final String MSG_MAP_BATCH_COVERAGE_INCOMPLETE = "Map batch coverage incomplete; omitted IDs present. Re-batch required.";
+    private static final String LABEL_MAP_OUTPUTS_ZERO = "- map_outputs: 0";
+    private static final String LABEL_FAILED_BATCH_INDEXES = "- failed_batch_indexes: ";
+    private static final String LABEL_USER_REQUEST = "- user_request: ";
+    private static final String LABEL_MAP_OUTPUTS_COUNT = "- map_outputs_count: ";
+    private static final String LABEL_ALL_SELECTED_IDS_PREVIEW = "- all_selected_ids_preview: ";
+    private static final String LABEL_MISSING_IDS_PREVIEW = "- missing_ids_preview: ";
+    private static final String SECTION_MAP_OUTPUTS_TRUNCATED = "Map outputs (truncated):";
+    private static final String HEADING_BATCH_OUTPUT = "### Batch Output ";
+    private static final String SUFFIX_BATCH_OUTPUTS_OMITTED = " batch outputs omitted/truncated for token safety)";
+    private static final String SECTION_DETERMINISTIC_METADATA = "Deterministic metadata (use exactly; do not estimate):";
+    private static final String LABEL_EXACT_TOTAL_BATCHES = "- exact_total_batches: ";
+    private static final String LABEL_EXACT_BATCH_INDEX = "- exact_batch_index: ";
+    private static final String LABEL_EXACT_BATCH_SIZE = "- exact_batch_size: ";
+    private static final String SEGMENT_PREFIX = "[segment ";
+    private static final String SEGMENT_SUFFIX = "] ";
+    private static final String VALUE_QUESTION_MARK = "?";
+    private static final String HASH_INDEX_TRUNCATED_AT = "hash index truncated at ";
+    private static final String BRACKETS_EMPTY = "[]";
+    private static final String BRACKET_OPEN = "[";
+    private static final String COMMA_SPACE = ", ";
+    private static final String COMMA_ELLIPSIS = ", ...";
+    private static final String LIST_NONE = "- (none)";
+    private static final String SUFFIX_ADDITIONAL_OMITTED_IDS = " additional omitted IDs not listed)";
+    private static final String LIST_BULLET = "- ";
+    private static final String LABEL_BATCH_PREFIX = "- Batch ";
+    private static final String LABEL_BATCH_SIZE = " size=";
+    private static final String LABEL_AVG_PROMPT_CHARS = " avgPromptChars=";
+    private static final String LABEL_AVG_RESPONSE_CHARS = " avgResponseChars=";
+    private static final String LABEL_MATCHED_TERMS = " matchedTerms=";
+    private static final String MSG_BATCH_SIGNALS_OMITTED = "... (remaining batch signals omitted due to size)";
+    private static final String REGEX_WHITESPACE = CommonLiteralConstants.REGEX_WHITESPACE;
+    private static final String SINGLE_SPACE = " ";
+    private static final String ELLIPSIS = CommonLiteralConstants.ELLIPSIS;
+    private static final String ALGO_SHA_256 = "SHA-256";
+    private static final String MSG_SHA256_UNAVAILABLE = "SHA-256 algorithm unavailable, falling back to hashCode";
+        private static final ReviewContextStrategy STRATEGY_SMALL =
+            new ReviewContextStrategy(100, 30, 15, 20, MAX_HASH_LINES_SMALL);
+        private static final ReviewContextStrategy STRATEGY_MEDIUM =
+            new ReviewContextStrategy(140, 35, 20, 35, MAX_HASH_LINES_MEDIUM);
+        private static final ReviewContextStrategy STRATEGY_LARGE =
+            new ReviewContextStrategy(180, 40, 20, 40, MAX_HASH_LINES_LARGE);
 
     private final ReviewSamplingService samplingService;
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(SUPPRESS_UNUSED)
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(SUPPRESS_UNUSED)
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
@@ -67,12 +163,12 @@ public class ReviewContextBuilderService {
 
     public String buildContext(String userMessage, List<SelectedEntry> entries, int maxChars) {
         if (entries == null || entries.isEmpty() || maxChars <= 0) {
-            return "";
+            return EMPTY;
         }
 
         final int total = entries.size();
         List<String> terms = samplingService.keywordTerms(userMessage, MAX_TERMS);
-        Strategy strategy = chooseStrategy(total);
+        ReviewContextStrategy strategy = chooseStrategy(total);
 
         List<SelectedEntry> sample = samplingService.stratifiedSample(
                 entries, userMessage, strategy.topRelevantCount, strategy.newestCount, strategy.oldestCount, strategy.randomCount
@@ -80,19 +176,19 @@ public class ReviewContextBuilderService {
 
         StringBuilder sb = new StringBuilder();
 
-        appendWithinLimit(sb, "Selected chats context" + LINE_SEPARATOR, maxChars);
-        appendWithinLimit(sb, "- total_selected: " + total + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars);
-        appendWithinLimit(sb, "- sampled_for_evidence: " + sample.size() + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars);
-        appendWithinLimit(sb, "- omitted_from_inline_evidence: " + Math.max(0, total - sample.size()) + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars);
+        appendWithinLimit(sb, SECTION_SELECTED_CHATS_CONTEXT + LINE_SEPARATOR, maxChars);
+        appendWithinLimit(sb, LABEL_TOTAL_SELECTED + total + LINE_FEED, maxChars);
+        appendWithinLimit(sb, LABEL_SAMPLED_FOR_EVIDENCE + sample.size() + LINE_FEED, maxChars);
+        appendWithinLimit(sb, LABEL_OMITTED_INLINE_EVIDENCE + Math.max(0, total - sample.size()) + LINE_FEED, maxChars);
 
-        appendWithinLimit(sb, LINE_SEPARATOR + "Coverage index (sampled subset):" + LINE_SEPARATOR, maxChars);
+        appendWithinLimit(sb, LINE_SEPARATOR + SECTION_COVERAGE_INDEX + LINE_SEPARATOR, maxChars);
         appendWithinLimit(sb, buildHashIndex(sample, strategy.maxHashLines), maxChars);
 
-        appendWithinLimit(sb, LINE_SEPARATOR + "Per-chat evidence:" + LINE_SEPARATOR, maxChars);
+        appendWithinLimit(sb, LINE_SEPARATOR + SECTION_PER_CHAT_EVIDENCE + LINE_SEPARATOR, maxChars);
         int omittedBlocks = 0;
         List<String> includedIds = new ArrayList<>();
         for (SelectedEntry e : sample) {
-            String id = normalizeId(safe(e.getChatId(), "(unknown)"));
+            String id = normalizeId(safe(e.getChatId(), VALUE_UNKNOWN));
             String block = formatEvidenceBlockCompressed(e);
             if (appendWithinLimit(sb, block + DOUBLE_LINE_SEPARATOR, maxChars)) {
                 includedIds.add(id);
@@ -101,26 +197,26 @@ public class ReviewContextBuilderService {
             }
         }
         if (omittedBlocks > 0) {
-            appendWithinLimit(sb, "... (" + omittedBlocks + " sampled chat blocks truncated by size)" + LINE_SEPARATOR, maxChars);
+            appendWithinLimit(sb, TRUNCATED_PREFIX + omittedBlocks + SUFFIX_SAMPLED_TRUNCATED + LINE_SEPARATOR, maxChars);
         }
 
         List<String> omittedIds = computeOmittedIds(entries, includedIds);
         if (sb.length() < maxChars - 350) {
-            appendWithinLimit(sb, LINE_SEPARATOR + "Deterministic coverage metadata:" + LINE_SEPARATOR, maxChars);
-            appendWithinLimit(sb, "- exact_total_selected: " + total + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars);
-            appendWithinLimit(sb, "- exact_included_count: " + includedIds.size() + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars);
-            appendWithinLimit(sb, "- exact_omitted_count: " + omittedIds.size() + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars);
-            appendWithinLimit(sb, "- exact_included_ids: " + toBracketedIds(includedIds, 500) + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars);
-            appendWithinLimit(sb, "- exact_omitted_ids: " + toBracketedIds(omittedIds, MAX_OMITTED_IDS_LIST) + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars);
+            appendWithinLimit(sb, LINE_SEPARATOR + SECTION_DETERMINISTIC_COVERAGE + LINE_SEPARATOR, maxChars);
+            appendWithinLimit(sb, META_EXACT_TOTAL_SELECTED + total + LINE_FEED, maxChars);
+            appendWithinLimit(sb, LABEL_EXACT_INCLUDED_COUNT + includedIds.size() + LINE_FEED, maxChars);
+            appendWithinLimit(sb, LABEL_EXACT_OMITTED_COUNT + omittedIds.size() + LINE_FEED, maxChars);
+            appendWithinLimit(sb, LABEL_EXACT_INCLUDED_IDS + toBracketedIds(includedIds, 500) + LINE_FEED, maxChars);
+            appendWithinLimit(sb, LABEL_EXACT_OMITTED_IDS + toBracketedIds(omittedIds, MAX_OMITTED_IDS_LIST) + LINE_FEED, maxChars);
         }
 
         if (sb.length() < maxChars - 300) {
-            appendWithinLimit(sb, LINE_SEPARATOR + "Carry-forward IDs (not in inline evidence):" + LINE_SEPARATOR, maxChars);
+            appendWithinLimit(sb, LINE_SEPARATOR + SECTION_CARRY_FORWARD_IDS + LINE_SEPARATOR, maxChars);
             appendWithinLimit(sb, buildOmittedIds(omittedIds, maxChars - sb.length()), maxChars);
         }
 
         if (sb.length() < maxChars - 220) {
-            appendWithinLimit(sb, LINE_SEPARATOR + "Batch signals:" + LINE_SEPARATOR, maxChars);
+            appendWithinLimit(sb, LINE_SEPARATOR + SECTION_BATCH_SIGNALS + LINE_SEPARATOR, maxChars);
             appendWithinLimit(sb, buildBatchSignals(sample, terms, maxChars - sb.length()), maxChars);
         }
 
@@ -160,7 +256,7 @@ public class ReviewContextBuilderService {
             List<String> expectedChatIds
     ) {
         if (batch == null || batch.isEmpty() || maxChars <= 0) {
-            return "";
+            return EMPTY;
         }
 
         List<String> terms = samplingService.keywordTerms(userMessage, MAX_TERMS);
@@ -174,45 +270,45 @@ public class ReviewContextBuilderService {
             unexpected.remove(batchId);
         }
         if (!unexpected.isEmpty()) {
-            throw new IllegalArgumentException("Map batch invalid: expected IDs not present in batch entries: " + unexpected);
+            throw new IllegalArgumentException(MSG_MAP_BATCH_INVALID_PREFIX + unexpected);
         }
 
         StringBuilder sb = new StringBuilder();
 
-        mustAppendWithinLimit(sb, "Map batch context" + LINE_SEPARATOR, maxChars, "Map batch header does not fit maxChars; reduce batch size and retry.");
-        mustAppendWithinLimit(sb, "- batch: " + batchIndex + '/' + totalBatches + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars, "Map batch metadata does not fit maxChars; reduce batch size and retry.");
-        mustAppendWithinLimit(sb, "- entries_in_batch: " + batch.size() + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars, "Map batch metadata does not fit maxChars; reduce batch size and retry.");
-        mustAppendWithinLimit(sb, "- query_terms: " + terms + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars, "Map batch metadata does not fit maxChars; reduce batch size and retry.");
-        mustAppendWithinLimit(sb, "- expected_chat_ids: " + toBracketedIds(expected, 5000) + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars, "Expected IDs line does not fit maxChars; reduce batch size and retry.");
-        mustAppendWithinLimit(sb, "- strict_heading_rule: use '### Chat [id]' for every expected ID" + LINE_SEPARATOR, maxChars, "Strict rule line does not fit maxChars; reduce batch size and retry.");
+    mustAppendWithinLimit(sb, SECTION_MAP_BATCH_CONTEXT + LINE_SEPARATOR, maxChars, MSG_MAP_BATCH_HEADER_TOO_LARGE);
+        mustAppendWithinLimit(sb, LABEL_BATCH + batchIndex + '/' + totalBatches + LINE_FEED, maxChars, MSG_MAP_METADATA_TOO_LARGE);
+        mustAppendWithinLimit(sb, LABEL_ENTRIES_IN_BATCH + batch.size() + LINE_FEED, maxChars, MSG_MAP_METADATA_TOO_LARGE);
+        mustAppendWithinLimit(sb, LABEL_QUERY_TERMS + terms + LINE_FEED, maxChars, MSG_MAP_METADATA_TOO_LARGE);
+    mustAppendWithinLimit(sb, LABEL_EXPECTED_CHAT_IDS + toBracketedIds(expected, 5000) + LINE_FEED, maxChars, MSG_EXPECTED_IDS_LINE_TOO_LARGE);
+    mustAppendWithinLimit(sb, RULE_STRICT_HEADING + LINE_SEPARATOR, maxChars, MSG_STRICT_RULE_LINE_TOO_LARGE);
 
-        mustAppendWithinLimit(sb, LINE_SEPARATOR + "Per-chat evidence:" + LINE_SEPARATOR, maxChars, "Per-chat evidence header does not fit maxChars; reduce batch size and retry.");
+        mustAppendWithinLimit(sb, LINE_SEPARATOR + SECTION_PER_CHAT_EVIDENCE + LINE_SEPARATOR, maxChars, MSG_PER_CHAT_HEADER_TOO_LARGE);
 
         List<String> includedIds = new ArrayList<>();
         for (SelectedEntry e : batch) {
-            String id = normalizeId(safe(e.getChatId(), "(unknown)"));
+            String id = normalizeId(safe(e.getChatId(), VALUE_UNKNOWN));
             String block = formatEvidenceBlockFull(e) + DOUBLE_LINE_SEPARATOR;
 
             mustAppendWithinLimit(
                     sb, block, maxChars,
-                    "Map batch context too large before including all entries; reduce batch size and retry."
+                    MSG_MAP_CONTEXT_TOO_LARGE
             );
             includedIds.add(id);
         }
 
         List<String> omittedIds = computeOmittedIdsByBatch(batchIds, includedIds);
 
-        mustAppendWithinLimit(sb, LINE_SEPARATOR + "Deterministic batch coverage metadata:" + LINE_SEPARATOR, maxChars, "Coverage metadata header does not fit maxChars; reduce batch size and retry.");
-        mustAppendWithinLimit(sb, "- exact_batch_total: " + batchIds.size() + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars, "Coverage metadata does not fit maxChars; reduce batch size and retry.");
-        mustAppendWithinLimit(sb, "- exact_batch_included: " + includedIds.size() + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars, "Coverage metadata does not fit maxChars; reduce batch size and retry.");
-        mustAppendWithinLimit(sb, "- exact_batch_omitted: " + omittedIds.size() + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars, "Coverage metadata does not fit maxChars; reduce batch size and retry.");
-        mustAppendWithinLimit(sb, "- exact_batch_ids: " + toBracketedIds(batchIds, 5000) + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars, "Coverage metadata does not fit maxChars; reduce batch size and retry.");
-        mustAppendWithinLimit(sb, "- exact_expected_ids: " + toBracketedIds(expected, 5000) + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars, "Coverage metadata does not fit maxChars; reduce batch size and retry.");
-        mustAppendWithinLimit(sb, "- exact_batch_included_ids: " + toBracketedIds(includedIds, 5000) + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars, "Coverage metadata does not fit maxChars; reduce batch size and retry.");
-        mustAppendWithinLimit(sb, "- exact_batch_omitted_ids: " + toBracketedIds(omittedIds, 5000) + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars, "Coverage metadata does not fit maxChars; reduce batch size and retry.");
+        mustAppendWithinLimit(sb, LINE_SEPARATOR + SECTION_DETERMINISTIC_BATCH_COVERAGE + LINE_SEPARATOR, maxChars, MSG_COVERAGE_HEADER_TOO_LARGE);
+        mustAppendWithinLimit(sb, LABEL_EXACT_BATCH_TOTAL + batchIds.size() + LINE_FEED, maxChars, MSG_COVERAGE_METADATA_TOO_LARGE);
+        mustAppendWithinLimit(sb, LABEL_EXACT_BATCH_INCLUDED + includedIds.size() + LINE_FEED, maxChars, MSG_COVERAGE_METADATA_TOO_LARGE);
+        mustAppendWithinLimit(sb, LABEL_EXACT_BATCH_OMITTED + omittedIds.size() + LINE_FEED, maxChars, MSG_COVERAGE_METADATA_TOO_LARGE);
+        mustAppendWithinLimit(sb, META_EXACT_BATCH_IDS + toBracketedIds(batchIds, 5000) + LINE_FEED, maxChars, MSG_COVERAGE_METADATA_TOO_LARGE);
+        mustAppendWithinLimit(sb, LABEL_EXACT_EXPECTED_IDS + toBracketedIds(expected, 5000) + LINE_FEED, maxChars, MSG_COVERAGE_METADATA_TOO_LARGE);
+        mustAppendWithinLimit(sb, LABEL_EXACT_BATCH_INCLUDED_IDS + toBracketedIds(includedIds, 5000) + LINE_FEED, maxChars, MSG_COVERAGE_METADATA_TOO_LARGE);
+        mustAppendWithinLimit(sb, LABEL_EXACT_BATCH_OMITTED_IDS + toBracketedIds(omittedIds, 5000) + LINE_FEED, maxChars, MSG_COVERAGE_METADATA_TOO_LARGE);
 
         if (!omittedIds.isEmpty()) {
-            throw new IllegalArgumentException("Map batch coverage incomplete; omitted IDs present. Re-batch required.");
+            throw new IllegalArgumentException(MSG_MAP_BATCH_COVERAGE_INCOMPLETE);
         }
 
         return trimTo(sb.toString(), maxChars);
@@ -235,7 +331,7 @@ public class ReviewContextBuilderService {
             int maxChars
     ) {
         if (maxChars <= 0) {
-            return "";
+            return EMPTY;
         }
 
         List<String> allDistinct = distinctIds(allSelectedIds);
@@ -243,13 +339,13 @@ public class ReviewContextBuilderService {
 
         if (mapOutputs == null || mapOutputs.isEmpty()) {
             StringBuilder fallback = new StringBuilder();
-            appendWithinLimit(fallback, "Map-Reduce synthesis context" + LINE_SEPARATOR, maxChars);
-            appendWithinLimit(fallback, "- map_outputs: 0" + LINE_SEPARATOR, maxChars);
-            appendWithinLimit(fallback, "- failed_batch_indexes: " + safeListInt(failedBatchIndexes) + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars);
-            appendWithinLimit(fallback, "- all_selected_ids_count: " + allDistinct.size() + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars);
-            appendWithinLimit(fallback, "- missing_ids_count: " + missingDistinct.size() + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars);
-            appendWithinLimit(fallback, "- user_request: " + safe(userMessage, "") + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars);
-                appendWithinLimit(fallback, """
+            appendWithinLimit(fallback, SECTION_MAP_REDUCE_CONTEXT + LINE_SEPARATOR, maxChars);
+            appendWithinLimit(fallback, LABEL_MAP_OUTPUTS_ZERO + LINE_SEPARATOR, maxChars);
+            appendWithinLimit(fallback, LABEL_FAILED_BATCH_INDEXES + safeListInt(failedBatchIndexes) + LINE_FEED, maxChars);
+            appendWithinLimit(fallback, META_ALL_SELECTED_IDS_COUNT + allDistinct.size() + LINE_FEED, maxChars);
+            appendWithinLimit(fallback, META_MISSING_IDS_COUNT + missingDistinct.size() + LINE_FEED, maxChars);
+            appendWithinLimit(fallback, LABEL_USER_REQUEST + safe(userMessage, EMPTY) + LINE_FEED, maxChars);
+            appendWithinLimit(fallback, """
 
                     Synthesis instruction:
                     - No batch outputs were available.
@@ -260,17 +356,17 @@ public class ReviewContextBuilderService {
         }
 
         StringBuilder sb = new StringBuilder();
-        appendWithinLimit(sb, "Map-Reduce synthesis context" + LINE_SEPARATOR, maxChars);
-        appendWithinLimit(sb, "- map_outputs_count: " + mapOutputs.size() + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars);
-        appendWithinLimit(sb, "- failed_batch_indexes: " + safeListInt(failedBatchIndexes) + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars);
-        appendWithinLimit(sb, "- all_selected_ids_count: " + allDistinct.size() + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars);
-        appendWithinLimit(sb, "- missing_ids_count: " + missingDistinct.size() + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars);
+        appendWithinLimit(sb, SECTION_MAP_REDUCE_CONTEXT + LINE_SEPARATOR, maxChars);
+        appendWithinLimit(sb, LABEL_MAP_OUTPUTS_COUNT + mapOutputs.size() + LINE_FEED, maxChars);
+        appendWithinLimit(sb, LABEL_FAILED_BATCH_INDEXES + safeListInt(failedBatchIndexes) + LINE_FEED, maxChars);
+        appendWithinLimit(sb, META_ALL_SELECTED_IDS_COUNT + allDistinct.size() + LINE_FEED, maxChars);
+        appendWithinLimit(sb, META_MISSING_IDS_COUNT + missingDistinct.size() + LINE_FEED, maxChars);
 
-        appendWithinLimit(sb, "- all_selected_ids_preview: " + toBracketedIds(allDistinct, MAX_IDS_PREVIEW_IN_REDUCE) + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars);
-        appendWithinLimit(sb, "- missing_ids_preview: " + toBracketedIds(missingDistinct, MAX_IDS_PREVIEW_IN_REDUCE) + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars);
-        appendWithinLimit(sb, "- user_request: " + safe(userMessage, "") + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED, maxChars);
+        appendWithinLimit(sb, LABEL_ALL_SELECTED_IDS_PREVIEW + toBracketedIds(allDistinct, MAX_IDS_PREVIEW_IN_REDUCE) + LINE_FEED, maxChars);
+        appendWithinLimit(sb, LABEL_MISSING_IDS_PREVIEW + toBracketedIds(missingDistinct, MAX_IDS_PREVIEW_IN_REDUCE) + LINE_FEED, maxChars);
+        appendWithinLimit(sb, LABEL_USER_REQUEST + safe(userMessage, EMPTY) + LINE_FEED, maxChars);
 
-        appendWithinLimit(sb, LINE_SEPARATOR + "Map outputs (truncated):" + LINE_SEPARATOR, maxChars);
+        appendWithinLimit(sb, LINE_SEPARATOR + SECTION_MAP_OUTPUTS_TRUNCATED + LINE_SEPARATOR, maxChars);
 
         int included = 0;
         int omitted = 0;
@@ -282,8 +378,8 @@ public class ReviewContextBuilderService {
                 break;
             }
 
-            String clean = trimTo(safe(out, ""), MAX_MAP_OUTPUT_ITEM_CHARS);
-            String block = "### Batch Output " + idx + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED + clean + DOUBLE_LINE_SEPARATOR;
+            String clean = trimTo(safe(out, EMPTY), MAX_MAP_OUTPUT_ITEM_CHARS);
+            String block = HEADING_BATCH_OUTPUT + idx + LINE_FEED + clean + DOUBLE_LINE_SEPARATOR;
             if (!appendWithinLimit(sb, block, maxChars)) {
                 omitted++;
             } else {
@@ -294,7 +390,7 @@ public class ReviewContextBuilderService {
 
         if (omitted > 0 || included < mapOutputs.size()) {
             int notIncluded = Math.max(0, mapOutputs.size() - included);
-            appendWithinLimit(sb, "... (" + notIncluded + " batch outputs omitted/truncated for token safety)" + LINE_SEPARATOR, maxChars);
+            appendWithinLimit(sb, TRUNCATED_PREFIX + notIncluded + SUFFIX_BATCH_OUTPUTS_OMITTED + LINE_SEPARATOR, maxChars);
         }
 
         appendWithinLimit(sb, """
@@ -316,12 +412,12 @@ public class ReviewContextBuilderService {
     final String buildBatchDeterministicHeader(int totalSelected, int totalBatches, int batchIndex, List<SelectedEntry> batch) {
         List<String> batchIds = extractKnownIds(batch);
         StringBuilder sb = new StringBuilder(192);
-        sb.append("Deterministic metadata (use exactly; do not estimate):").append(LINE_SEPARATOR);
-        sb.append("- exact_total_selected: ").append(totalSelected).append(System.lineSeparator());
-        sb.append("- exact_total_batches: ").append(totalBatches).append(System.lineSeparator());
-        sb.append("- exact_batch_index: ").append(batchIndex).append(System.lineSeparator());
-        sb.append("- exact_batch_size: ").append(batchIds.size()).append(System.lineSeparator());
-        sb.append("- exact_batch_ids: ").append(batchIds).append(System.lineSeparator());
+        sb.append(SECTION_DETERMINISTIC_METADATA).append(LINE_SEPARATOR);
+        sb.append(META_EXACT_TOTAL_SELECTED).append(totalSelected).append(System.lineSeparator());
+        sb.append(LABEL_EXACT_TOTAL_BATCHES).append(totalBatches).append(System.lineSeparator());
+        sb.append(LABEL_EXACT_BATCH_INDEX).append(batchIndex).append(System.lineSeparator());
+        sb.append(LABEL_EXACT_BATCH_SIZE).append(batchIds.size()).append(System.lineSeparator());
+        sb.append(META_EXACT_BATCH_IDS).append(batchIds).append(System.lineSeparator());
         return sb.toString();
     }
 
@@ -344,13 +440,13 @@ public class ReviewContextBuilderService {
 
         List<SelectedEntry> out = new ArrayList<>(segments);
         for (int i = 0; i < segments; i++) {
-            String p = i < pSegs.size() ? pSegs.get(i) : "";
-            String r = i < rSegs.size() ? rSegs.get(i) : "";
+            String p = i < pSegs.size() ? pSegs.get(i) : EMPTY;
+            String r = i < rSegs.size() ? rSegs.get(i) : EMPTY;
 
             out.add(new SelectedEntry(
                     entry.getChatId(),
-                    "[segment " + (i + 1) + '/' + segments + "] " + p,
-                    "[segment " + (i + 1) + '/' + segments + "] " + r,
+                    SEGMENT_PREFIX + (i + 1) + '/' + segments + SEGMENT_SUFFIX + p,
+                    SEGMENT_PREFIX + (i + 1) + '/' + segments + SEGMENT_SUFFIX + r,
                     entry.getCreatedAt(),
                     entry.getSessionId()
             ));
@@ -370,7 +466,7 @@ public class ReviewContextBuilderService {
     }
 
     private List<String> splitText(String text, int chunkSize) {
-        String normalized = safe(text, "").trim();
+        String normalized = safe(text, EMPTY).trim();
         if (normalized.isEmpty()) {
             return List.of();
         }
@@ -391,42 +487,42 @@ public class ReviewContextBuilderService {
         return parts;
     }
 
-    private Strategy chooseStrategy(int total) {
+    private ReviewContextStrategy chooseStrategy(int total) {
         if (total <= 120) {
-            return new Strategy("small", 100, 30, 15, 20, MAX_HASH_LINES_SMALL);
+            return STRATEGY_SMALL;
         }
         if (total <= 500) {
-            return new Strategy("medium", 140, 35, 20, 35, MAX_HASH_LINES_MEDIUM);
+            return STRATEGY_MEDIUM;
         }
-        return new Strategy("large", 180, 40, 20, 40, MAX_HASH_LINES_LARGE);
+        return STRATEGY_LARGE;
     }
 
     private String formatEvidenceBlockCompressed(SelectedEntry e) {
-        String id = normalizeId(safe(e.getChatId(), "(unknown)"));
-        String createdAt = safe(e.getCreatedAt(), "?");
-        String sessionId = safe(e.getSessionId(), "(none)");
+        String id = normalizeId(safe(e.getChatId(), VALUE_UNKNOWN));
+        String createdAt = safe(e.getCreatedAt(), VALUE_QUESTION_MARK);
+        String sessionId = safe(e.getSessionId(), VALUE_NONE);
         String prompt = compressText(e.getPrompt(), PROMPT_SNIPPET_CHARS);
         String response = compressText(e.getResponse(), RESPONSE_SNIPPET_CHARS);
 
-        return "### Chat " + id + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED
-                + "- Created At: " + createdAt + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED
-                + "- Session ID: " + sessionId + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED
-            + "- Prompt:" + LINE_SEPARATOR + prompt + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED
-            + "- Response:" + LINE_SEPARATOR + response;
+        return HEADING_CHAT + id + LINE_FEED
+                + LABEL_CREATED_AT + createdAt + LINE_FEED
+                + LABEL_SESSION_ID + sessionId + LINE_FEED
+            + LABEL_PROMPT + LINE_SEPARATOR + prompt + LINE_FEED
+            + LABEL_RESPONSE + LINE_SEPARATOR + response;
     }
 
     private String formatEvidenceBlockFull(SelectedEntry e) {
-        String id = normalizeId(safe(e.getChatId(), "(unknown)"));
-        String createdAt = safe(e.getCreatedAt(), "?");
-        String sessionId = safe(e.getSessionId(), "(none)");
-        String prompt = safe(e.getPrompt(), "(empty)").trim();
-        String response = safe(e.getResponse(), "(empty)").trim();
+        String id = normalizeId(safe(e.getChatId(), VALUE_UNKNOWN));
+        String createdAt = safe(e.getCreatedAt(), VALUE_QUESTION_MARK);
+        String sessionId = safe(e.getSessionId(), VALUE_NONE);
+        String prompt = safe(e.getPrompt(), VALUE_EMPTY).trim();
+        String response = safe(e.getResponse(), VALUE_EMPTY).trim();
 
-        return "### Chat " + id + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED
-                + "- Created At: " + createdAt + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED
-                + "- Session ID: " + sessionId + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED
-            + "- Prompt:" + LINE_SEPARATOR + prompt + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED
-            + "- Response:" + LINE_SEPARATOR + response;
+        return HEADING_CHAT + id + LINE_FEED
+                + LABEL_CREATED_AT + createdAt + LINE_FEED
+                + LABEL_SESSION_ID + sessionId + LINE_FEED
+            + LABEL_PROMPT + LINE_SEPARATOR + prompt + LINE_FEED
+            + LABEL_RESPONSE + LINE_SEPARATOR + response;
     }
 
     private String buildHashIndex(List<SelectedEntry> sample, int maxLines) {
@@ -436,12 +532,12 @@ public class ReviewContextBuilderService {
 
         for (SelectedEntry e : sample) {
             if (count >= limit) {
-                out.append("... (hash index truncated at ").append(limit).append(')').append(LINE_SEPARATOR);
+                out.append(TRUNCATED_PREFIX).append(HASH_INDEX_TRUNCATED_AT).append(limit).append(')').append(LINE_SEPARATOR);
                 break;
             }
-            out.append(normalizeId(safe(e.getChatId(), "(unknown)")))
+            out.append(normalizeId(safe(e.getChatId(), VALUE_UNKNOWN)))
                     .append('|')
-                    .append(sha1Hex(safe(e.getPrompt(), "")))
+                    .append(sha1Hex(safe(e.getPrompt(), EMPTY)))
                     .append(System.lineSeparator());
             count++;
         }
@@ -454,7 +550,7 @@ public class ReviewContextBuilderService {
             return new ArrayList<>(ids);
         }
         for (SelectedEntry e : entries) {
-            String id = normalizeId(safe(e.getChatId(), ""));
+            String id = normalizeId(safe(e.getChatId(), EMPTY));
             if (!id.isBlank()) {
                 ids.add(id);
             }
@@ -479,7 +575,7 @@ public class ReviewContextBuilderService {
         Set<String> included = new HashSet<>(distinctIds(includedIds));
         List<String> omitted = new ArrayList<>();
         for (SelectedEntry e : all) {
-            String id = normalizeId(safe(e.getChatId(), ""));
+            String id = normalizeId(safe(e.getChatId(), EMPTY));
             if (id.isBlank()) {
                 continue;
             }
@@ -504,20 +600,20 @@ public class ReviewContextBuilderService {
     private String toBracketedIds(List<String> ids, int max) {
         List<String> clean = distinctIds(ids);
         if (clean.isEmpty()) {
-            return "[]";
+            return BRACKETS_EMPTY;
         }
 
-        StringBuilder sb = new StringBuilder("[");
+        StringBuilder sb = new StringBuilder(BRACKET_OPEN);
         int count = 0;
         for (String id : clean) {
             if (count > 0) {
-                sb.append(", ");
+                sb.append(COMMA_SPACE);
             }
             sb.append(id);
             count++;
             if (count >= max) {
                 if (count < clean.size()) {
-                    sb.append(", ...");
+                    sb.append(COMMA_ELLIPSIS);
                 }
                 break;
             }
@@ -528,31 +624,31 @@ public class ReviewContextBuilderService {
 
     private String safeListInt(List<Integer> values) {
         if (values == null || values.isEmpty()) {
-            return "[]";
+            return BRACKETS_EMPTY;
         }
         return values.toString();
     }
 
     private String buildOmittedIds(List<String> omittedIds, int budget) {
         if (budget <= 0) {
-            return "";
+            return EMPTY;
         }
         List<String> clean = distinctIds(omittedIds);
         if (clean.isEmpty()) {
-            return "- (none)" + LINE_SEPARATOR;
+            return LIST_NONE + LINE_SEPARATOR;
         }
 
         StringBuilder sb = new StringBuilder();
         int emitted = 0;
         for (String id : clean) {
             if (emitted >= MAX_OMITTED_IDS_LIST) {
-                String tail = "... (" + (clean.size() - emitted) + " additional omitted IDs not listed)" + LINE_SEPARATOR;
+                String tail = TRUNCATED_PREFIX + (clean.size() - emitted) + SUFFIX_ADDITIONAL_OMITTED_IDS + LINE_SEPARATOR;
                 if (sb.length() + tail.length() <= budget) {
                     sb.append(tail);
                 }
                 break;
             }
-            String line = "- " + id + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED;
+            String line = LIST_BULLET + id + LINE_FEED;
             if (sb.length() + line.length() > budget) {
                 break;
             }
@@ -564,7 +660,7 @@ public class ReviewContextBuilderService {
 
     private String buildBatchSignals(List<SelectedEntry> sample, List<String> terms, int budget) {
         if (sample.isEmpty() || budget <= 0) {
-            return "";
+            return EMPTY;
         }
 
         final int batchSize = 25;
@@ -583,8 +679,8 @@ public class ReviewContextBuilderService {
             Set<String> matched = new HashSet<>();
 
             for (SelectedEntry e : slice) {
-                String p = safe(e.getPrompt(), "");
-                String r = safe(e.getResponse(), "");
+                String p = safe(e.getPrompt(), EMPTY);
+                String r = safe(e.getResponse(), EMPTY);
                 pChars += p.length();
                 rChars += r.length();
                 matched.addAll(samplingService.matchedTerms(e, terms));
@@ -593,16 +689,16 @@ public class ReviewContextBuilderService {
                 int avgPromptChars = slice.isEmpty() ? 0 : (pChars / slice.size());
                 int avgResponseChars = slice.isEmpty() ? 0 : (rChars / slice.size());
                 String line = new StringBuilder(128)
-                    .append("- Batch ").append(b + 1).append('/').append(batches)
-                    .append(" size=").append(slice.size())
-                    .append(" avgPromptChars=").append(avgPromptChars)
-                    .append(" avgResponseChars=").append(avgResponseChars)
-                    .append(" matchedTerms=").append(matched)
+                    .append(LABEL_BATCH_PREFIX).append(b + 1).append('/').append(batches)
+                    .append(LABEL_BATCH_SIZE).append(slice.size())
+                    .append(LABEL_AVG_PROMPT_CHARS).append(avgPromptChars)
+                    .append(LABEL_AVG_RESPONSE_CHARS).append(avgResponseChars)
+                    .append(LABEL_MATCHED_TERMS).append(matched)
                     .append(System.lineSeparator())
                     .toString();
 
             if (out.length() + line.length() > budget) {
-                out.append("... (remaining batch signals omitted due to size)").append(LINE_SEPARATOR);
+                out.append(MSG_BATCH_SIGNALS_OMITTED).append(LINE_SEPARATOR);
                 break;
             }
             out.append(line);
@@ -637,18 +733,21 @@ public class ReviewContextBuilderService {
 
     private String compressText(String text, int maxChars) {
         if (text == null || text.isBlank()) {
-            return "(empty)";
+            return VALUE_EMPTY;
         }
-        String normalized = text.replaceAll("\\s+", " ").trim();
+        String normalized = text.replaceAll(REGEX_WHITESPACE, SINGLE_SPACE).trim();
         if (normalized.length() <= maxChars) {
             return normalized;
         }
-        return new String(normalized.toCharArray(), 0, Math.max(0, maxChars - 1)) + "ÃƒÂ¢Ã¢â€šÂ¬Ã‚Â¦";
+        if (maxChars <= ELLIPSIS.length()) {
+            return new String(ELLIPSIS.toCharArray(), 0, Math.max(0, maxChars));
+        }
+        return new String(normalized.toCharArray(), 0, maxChars - ELLIPSIS.length()) + ELLIPSIS;
     }
 
     private String trimTo(String value, int maxChars) {
         if (value == null || maxChars <= 0) {
-            return "";
+            return EMPTY;
         }
         return value.length() <= maxChars ? value : new String(value.toCharArray(), 0, maxChars);
     }
@@ -658,13 +757,13 @@ public class ReviewContextBuilderService {
     }
 
     private String normalizeId(String id) {
-        return id == null ? "" : id.trim().toLowerCase(Locale.ROOT);
+        return id == null ? EMPTY : id.trim().toLowerCase(Locale.ROOT);
     }
 
     private String sha1Hex(String value) {
         try {
-            MessageDigest md = MessageDigest.getInstance("SHA-256");
-            byte[] bytes = md.digest((value == null ? "" : value).getBytes(StandardCharsets.UTF_8));
+            MessageDigest md = MessageDigest.getInstance(ALGO_SHA_256);
+            byte[] bytes = md.digest((value == null ? EMPTY : value).getBytes(StandardCharsets.UTF_8));
             StringBuilder sb = new StringBuilder(bytes.length * 2);
             for (byte b : bytes) {
                 int v = b & 0xFF;
@@ -672,8 +771,8 @@ public class ReviewContextBuilderService {
             }
             return sb.toString();
         } catch (NoSuchAlgorithmException ex) {
-            log.log(Level.FINE, "SHA-256 algorithm unavailable, falling back to hashCode", ex);
-            return Integer.toHexString((value == null ? "" : value).hashCode());
+            log.log(Level.FINE, MSG_SHA256_UNAVAILABLE, ex);
+            return Integer.toHexString((value == null ? EMPTY : value).hashCode());
         }
     }
 
@@ -682,24 +781,7 @@ public class ReviewContextBuilderService {
         sb.append(Character.forDigit(value & 0x0F, 16));
     }
 
-    static final class Strategy {
 
-        @SuppressWarnings("unused")
-        final String name;
-        final int topRelevantCount;
-        final int newestCount;
-        final int oldestCount;
-        final int randomCount;
-        final int maxHashLines;
 
-        private Strategy(String name, int topRelevantCount, int newestCount, int oldestCount, int randomCount, int maxHashLines) {
-            this.name = name;
-            this.topRelevantCount = topRelevantCount;
-            this.newestCount = newestCount;
-            this.oldestCount = oldestCount;
-            this.randomCount = randomCount;
-            this.maxHashLines = maxHashLines;
-        }
-    }
 }
 

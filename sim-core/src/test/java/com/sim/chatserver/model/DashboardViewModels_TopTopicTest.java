@@ -2,14 +2,14 @@ package com.sim.chatserver.model;
 
 import org.junit.jupiter.api.Test;
 
-import com.sim.chatserver.model.DashboardViewModels.TopTopic;
+import com.sim.chatserver.model.TopTopic;
 
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 /**
  * Parasoft Jtest UTA: Test class for TopTopic
  *
- * @see com.sim.chatserver.model.DashboardViewModels.TopTopic
+ * @see com.sim.chatserver.model.TopTopic
  * @author bmcmullin
  */
 public class DashboardViewModels_TopTopicTest
@@ -18,7 +18,7 @@ public class DashboardViewModels_TopTopicTest
     /**
      * Parasoft Jtest UTA: Test for getLabel()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.TopTopic#getLabel()
+     * @see com.sim.chatserver.model.TopTopic#getLabel()
      * @author bmcmullin
      */
     @Test
@@ -50,7 +50,7 @@ public class DashboardViewModels_TopTopicTest
     /**
      * Parasoft Jtest UTA: Test for getToday()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.TopTopic#getToday()
+     * @see com.sim.chatserver.model.TopTopic#getToday()
      * @author bmcmullin
      */
     @Test
@@ -82,7 +82,7 @@ public class DashboardViewModels_TopTopicTest
     /**
      * Parasoft Jtest UTA: Test for getTotal()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.TopTopic#getTotal()
+     * @see com.sim.chatserver.model.TopTopic#getTotal()
      * @author bmcmullin
      */
     @Test
@@ -114,7 +114,7 @@ public class DashboardViewModels_TopTopicTest
     /**
      * Parasoft Jtest UTA: Test for getYesterday()
      *
-     * @see com.sim.chatserver.model.DashboardViewModels.TopTopic#getYesterday()
+     * @see com.sim.chatserver.model.TopTopic#getYesterday()
      * @author bmcmullin
      */
     @Test
@@ -143,3 +143,4 @@ public class DashboardViewModels_TopTopicTest
 
     }
 }
+

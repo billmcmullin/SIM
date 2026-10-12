@@ -15,13 +15,15 @@ import java.util.logging.Logger;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
-import com.sim.chatserver.model.DashboardViewModels.TermSummary;
+import com.sim.chatserver.model.TermSummary;
 import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermMatcher;
 import com.sim.chatserver.term.TermsStore;
 import com.sim.chatserver.term.TextSanitizer;
+import com.sim.chatserver.util.CommonLiteralConstants;
 import com.sim.chatserver.util.DashboardDbUtil;
+import com.sim.chatserver.util.SqlLiteralConstants;
 import com.sim.chatserver.util.SqlTimeUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 
@@ -36,16 +38,41 @@ public class DashboardTermService {
 
     private static final Logger LOG = Logger.getLogger(DashboardTermService.class.getCanonicalName());
 
-    public static final String OTHER_PARASOFT_LABEL = "Other Parasoft Match";
+    private static final String UNUSED_SUPPRESSION = com.sim.chatserver.util.CommonLiteralConstants.SUPPRESS_UNUSED;
+    private static final String MSG_LOAD_ALL_TERMS_FALLBACK = "loadAllTerms fallback to empty list";
+    private static final String SQL_SELECT_CHAT_ROWS = SqlLiteralConstants.SQL_SELECT_WIDGET_CHAT_PROMPT_RESPONSE_CREATED_SESSION_FROM;
+    private static final String SQL_WHERE_CREATED_AT_RANGE = SqlLiteralConstants.SQL_WHERE_CREATED_AT_RANGE;
+    private static final String COL_WIDGET_CHAT_ID = SqlLiteralConstants.COL_WIDGET_CHAT_ID;
+    private static final String COL_PROMPT = SqlLiteralConstants.COL_PROMPT;
+    private static final String COL_RESPONSE_TEXT = SqlLiteralConstants.COL_RESPONSE_TEXT;
+    private static final String COL_CREATED_AT = SqlLiteralConstants.COL_CREATED_AT;
+    private static final String COL_SESSION_ID = SqlLiteralConstants.COL_SESSION_ID;
+    private static final String EMPTY = "";
+    private static final String MSG_TERM_PATTERN_EVALUATION_FAILED = "Term pattern evaluation failed";
+    private static final String EMPTY_JSON_ARRAY = "[]";
+    private static final String JSON_ARRAY_START = "[";
+    private static final String DEFAULT_COUNT_TEXT = "0";
+    private static final String MSG_TERM_COUNT_PARSE_FALLBACK = "Unable to parse term count; using zero fallback";
+    private static final String JSON_LABEL_PREFIX = "{\"label\":\"";
+    private static final String JSON_COUNT_PART = "\",\"count\":";
+    private static final String JSON_TERM_PART = ",\"term\":\"";
+    private static final String JSON_OBJECT_SUFFIX = "\"}";
+    private static final String ESCAPE_BACKSLASH_FROM = "\\";
+    private static final String ESCAPE_BACKSLASH_TO = CommonLiteralConstants.JSON_ESCAPE_BACKSLASH_TO;
+    private static final String ESCAPE_QUOTE_FROM = "\"";
+    private static final String ESCAPE_QUOTE_TO = CommonLiteralConstants.JSON_ESCAPE_QUOTE_TO;
+    private static final String ESCAPE_NEWLINE_TO = CommonLiteralConstants.JSON_ESCAPE_NEWLINE_TO;
+
+    public static final String OTHER_PARASOFT_LABEL = TermsStore.OTHER_PARASOFT_LABEL;
 
     private final TermsStore termsStore;
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(UNUSED_SUPPRESSION)
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(UNUSED_SUPPRESSION)
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
@@ -60,7 +87,7 @@ public class DashboardTermService {
             List<TermDefinition> terms = termsStore.listAll();
             return terms == null ? List.of() : terms;
         } catch (SQLException | IllegalStateException e) {
-            LOG.log(Level.FINE, "loadAllTerms fallback to empty list", e);
+            LOG.log(Level.FINE, MSG_LOAD_ALL_TERMS_FALLBACK, e);
             return List.of();
         }
     }
@@ -165,11 +192,11 @@ public class DashboardTermService {
     ) throws SQLException {
         String sql;
         if (useDateRange) {
-            sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
+            sql = SQL_SELECT_CHAT_ROWS
                     + DashboardDbUtil.quoteIdentifier(tableName)
-                    + " WHERE created_at >= ? AND created_at < ?";
+                + SQL_WHERE_CREATED_AT_RANGE;
         } else {
-            sql = "SELECT widget_chat_id, prompt, response_text, created_at, session_id FROM "
+            sql = SQL_SELECT_CHAT_ROWS
                     + DashboardDbUtil.quoteIdentifier(tableName);
         }
 
@@ -181,19 +208,19 @@ public class DashboardTermService {
 
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    String chatId = rs.getString("widget_chat_id");
+                    String chatId = rs.getString(COL_WIDGET_CHAT_ID);
                     if (chatId == null) {
-                        chatId = "";
+                        chatId = EMPTY;
                     }
 
-                    String prompt = rs.getString("prompt");
+                    String prompt = rs.getString(COL_PROMPT);
                     if (prompt == null) {
-                        prompt = "";
+                        prompt = EMPTY;
                     }
 
-                    String response = rs.getString("response_text");
-                    Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, "created_at");
-                    String sessionId = rs.getString("session_id");
+                    String response = rs.getString(COL_RESPONSE_TEXT);
+                    Timestamp createdAt = SqlTimeUtil.safeTimestamp(rs, COL_CREATED_AT);
+                    String sessionId = rs.getString(COL_SESSION_ID);
 
                     String snapshotTerm = resolveSnapshotTerm(prompt, activeTerms, compiledPatterns);
                     TermChatSnapshot snapshot = new TermChatSnapshot(
@@ -235,7 +262,7 @@ public class DashboardTermService {
                     }
                 }
             } catch (IllegalStateException ex) {
-                LOG.log(Level.FINE, "Term pattern evaluation failed", ex);
+                LOG.log(Level.FINE, MSG_TERM_PATTERN_EVALUATION_FAILED, ex);
             }
         }
 
@@ -244,19 +271,19 @@ public class DashboardTermService {
 
     final String toChartJson(TermSummary summary) {
         if (summary == null || summary.getTermCounts().isEmpty()) {
-            return "[]";
+            return EMPTY_JSON_ARRAY;
         }
 
-        StringBuilder out = new StringBuilder("[");
+        StringBuilder out = new StringBuilder(JSON_ARRAY_START);
         boolean first = true;
         for (Map.Entry<String, Integer> entry : summary.getTermCounts().entrySet()) {
-            String label = entry.getKey() == null ? "" : entry.getKey();
-            String countText = Objects.toString(entry.getValue(), "0");
+            String label = entry.getKey() == null ? EMPTY : entry.getKey();
+            String countText = Objects.toString(entry.getValue(), DEFAULT_COUNT_TEXT);
             int count;
             try {
                 count = Integer.parseInt(countText);
             } catch (NumberFormatException ex) {
-                LOG.log(Level.FINE, "Unable to parse term count; using zero fallback", ex);
+                LOG.log(Level.FINE, MSG_TERM_COUNT_PARSE_FALLBACK, ex);
                 count = 0;
             }
             String escaped = escapeJson(label);
@@ -266,22 +293,23 @@ public class DashboardTermService {
             }
             first = false;
 
-            out.append("{\"label\":\"")
+            out.append(JSON_LABEL_PREFIX)
                     .append(escaped)
-                    .append("\",\"count\":")
+                    .append(JSON_COUNT_PART)
                     .append(count)
-                    .append(",\"term\":\"")
+                    .append(JSON_TERM_PART)
                     .append(escaped)
-                    .append("\"}");
+                    .append(JSON_OBJECT_SUFFIX);
         }
         out.append(']');
         return out.toString();
     }
 
     private String escapeJson(String value) {
-        return value.replace("\\", "\\\\")
-                .replace("\"", "\\\"")
-                .replace(System.lineSeparator(), "\\n")
-                .replace(System.lineSeparator(), "");
+        return value.replace(ESCAPE_BACKSLASH_FROM, ESCAPE_BACKSLASH_TO)
+                .replace(ESCAPE_QUOTE_FROM, ESCAPE_QUOTE_TO)
+                .replace(System.lineSeparator(), ESCAPE_NEWLINE_TO)
+                .replace(System.lineSeparator(), EMPTY);
     }
 }
+

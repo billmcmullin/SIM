@@ -1,5 +1,6 @@
 package com.sim.chatserver.web.dashboard.summary;
 
+import com.sim.chatserver.util.SessionLabel;
 import java.io.IOException;
 import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
@@ -19,6 +20,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 
 import com.sim.chatserver.service.dashboard.DashboardSessionAggregationQueryService;
+import com.sim.chatserver.service.dashboard.SessionAccumulatorData;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.util.SessionLabelStore;
 import com.sim.chatserver.web.dashboard.sessions.DashboardSessionDataUtil;
@@ -38,11 +40,14 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 @WebServlet(name = "DashboardBootstrapServlet", urlPatterns = {"/dashboard/bootstrap.json"})
 public class DashboardBootstrapServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(DashboardBootstrapServlet.class.getCanonicalName());
-    private static final DateTimeFormatter ENTRY_FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
+    private static final DateTimeFormatter ENTRY_FORMATTER = DateTimeFormatter.ofPattern(com.sim.chatserver.util.CommonLiteralConstants.DATETIME_PATTERN_SECONDS);
     private static final int ACTIVE_DAYS = 7;
     private static final int SESSION_LIMIT = 10;
     private static final String SUMMARY_STORE_KEY = DashboardBootstrapServlet.class.getCanonicalName() + ".summaryStore";
@@ -52,22 +57,18 @@ public class DashboardBootstrapServlet extends HttpServlet {
     @Override
     public void init() throws ServletException {
         super.init();
-        try {
-            DashboardDailySummaryStore initializedStore = ensureSummaryStoreInitialized();
-            if (initializedStore == null) {
-                throw new IllegalStateException("Summary store is unavailable");
-            }
-        } catch (IllegalStateException e) {
-            throw new ServletException("Failed to initialize daily summary store", e);
+        DashboardDailySummaryStore initializedStore = ensureSummaryStoreInitialized();
+        if (initializedStore == null) {
+            throw new ServletException("Failed to initialize daily summary store");
         }
     }
 
     @Override
     protected void doGet(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
             writeJson(resp, HttpServletResponse.SC_UNAUTHORIZED,
-                    Json.createObjectBuilder().add("status", "unauthorized").build());
+                    Json.createObjectBuilder().add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.TEXT_UNAUTHORIZED).build());
             return;
         }
 
@@ -75,29 +76,29 @@ public class DashboardBootstrapServlet extends HttpServlet {
 
         JsonObject sessionsPayload = buildSessionsData(req);
         if (sessionsPayload == null) {
-            sections.add("sessions", Json.createObjectBuilder()
-                    .add("status", "error")
-                    .add("message", "Unable to load sessions."));
+            sections.add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_SESSIONS, Json.createObjectBuilder()
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Unable to load sessions."));
         } else {
-            sections.add("sessions", Json.createObjectBuilder()
-                    .add("status", "ok")
+            sections.add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_SESSIONS, Json.createObjectBuilder()
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
                     .add("data", sessionsPayload));
         }
 
         JsonObject summaryPayload = buildSummaryData();
         if (summaryPayload == null) {
-            sections.add("summary", Json.createObjectBuilder()
-                    .add("status", "error")
-                    .add("message", "Unable to load summary."));
+            sections.add(com.sim.chatserver.util.CommonLiteralConstants.LABEL_SUMMARY, Json.createObjectBuilder()
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, DashboardDailySummaryStore.MSG_UNABLE_TO_LOAD_SUMMARY));
         } else {
-            sections.add("summary", Json.createObjectBuilder()
-                    .add("status", "ok")
+            sections.add(com.sim.chatserver.util.CommonLiteralConstants.LABEL_SUMMARY, Json.createObjectBuilder()
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
                     .add("data", summaryPayload));
         }
 
         JsonObject payload = Json.createObjectBuilder()
-                .add("status", "ok")
-                .add("generatedAt", Instant.now().toString())
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
+            .add(DashboardDailySummaryStore.KEY_GENERATED_AT, Instant.now().toString())
                 .add("sections", sections)
                 .build();
 
@@ -114,16 +115,16 @@ public class DashboardBootstrapServlet extends HttpServlet {
         }
 
         try {
-            Map<String, DashboardSessionAggregationQueryService.SessionAccumulatorData> accumulators =
+            Map<String, SessionAccumulatorData> accumulators =
                 SESSION_QUERY_SERVICE.collectAccumulators(widgets, null);
-            Map<String, SessionLabelStore.SessionLabel> labels = SessionLabelStore.mapDisplayNames(accumulators.keySet());
+            Map<String, SessionLabel> labels = SessionLabelStore.mapDisplayNames(accumulators.keySet());
             Map<String, String> widgetNames = DashboardSessionDataUtil.mapWidgetDisplayNames(widgets);
 
             int totalUsers = accumulators.size();
             Instant cutoff = Instant.now().minusSeconds(ACTIVE_DAYS * 24L * 60L * 60L);
 
             int inactiveUsers = 0;
-            for (DashboardSessionAggregationQueryService.SessionAccumulatorData acc : accumulators.values()) {
+            for (SessionAccumulatorData acc : accumulators.values()) {
                 if (acc != null && acc.lastEntry != null && acc.lastEntry.toInstant().isBefore(cutoff)) {
                     inactiveUsers++;
                 }
@@ -132,7 +133,7 @@ public class DashboardBootstrapServlet extends HttpServlet {
 
             Instant cutoffYesterday = Instant.now().minusSeconds((ACTIVE_DAYS + 1L) * 24L * 60L * 60L);
             int inactiveUsersYesterday = 0;
-            for (DashboardSessionAggregationQueryService.SessionAccumulatorData acc : accumulators.values()) {
+            for (SessionAccumulatorData acc : accumulators.values()) {
                 if (acc == null || acc.lastEntry == null || acc.lastEntry.toInstant().isBefore(cutoffYesterday)) {
                     inactiveUsersYesterday++;
                 }
@@ -144,17 +145,17 @@ public class DashboardBootstrapServlet extends HttpServlet {
                     ? (activeUsers > 0 ? 100.0 : 0.0)
                     : (activeUsersDelta * 100.0) / activeUsersYesterday;
             String activeUsersDirection = activeUsersDelta > 0 ? "up"
-                    : activeUsersDelta < 0 ? "down"
+                    : activeUsersDelta < 0 ? com.sim.chatserver.util.CommonLiteralConstants.VALUE_DOWN_LOWER
                             : "flat";
 
             JsonArrayBuilder sessionsArray = Json.createArrayBuilder();
             accumulators.entrySet()
                     .stream()
-                    .sorted(Comparator.<Map.Entry<String, DashboardSessionAggregationQueryService.SessionAccumulatorData>>comparingInt(e -> -e.getValue().count))
+                    .sorted(Comparator.<Map.Entry<String, SessionAccumulatorData>>comparingInt(e -> -e.getValue().count))
                     .limit(SESSION_LIMIT)
                     .forEach(entry -> {
                         String sessionId = entry.getKey();
-                        DashboardSessionAggregationQueryService.SessionAccumulatorData acc = entry.getValue();
+                        SessionAccumulatorData acc = entry.getValue();
                         String last = formatTimestamp(acc.lastEntry);
                         String topWidget = DashboardSessionDataUtil.pickTopWidgetName(acc.widgetCounts, widgetNames);
                         String displayLabel = SessionLabelStore.resolveDisplayLabel(sessionId, labels.get(sessionId));
@@ -162,9 +163,9 @@ public class DashboardBootstrapServlet extends HttpServlet {
                                 + "/dashboard/sessions/drilldown/session-review?sessionId="
                                 + URLEncoder.encode(sessionId, StandardCharsets.UTF_8);
                         JsonObjectBuilder obj = Json.createObjectBuilder()
-                                .add("sessionId", sessionId)
-                                .add("displayLabel", displayLabel)
-                                .add("count", acc.count)
+                                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_SESSION_ID, sessionId)
+                                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_DISPLAY_LABEL, displayLabel)
+                                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_COUNT, acc.count)
                                 .add("last", last)
                                 .add("topWidgetName", topWidget)
                                 .add("reviewUrl", reviewUrl);
@@ -172,8 +173,8 @@ public class DashboardBootstrapServlet extends HttpServlet {
                     });
 
             return Json.createObjectBuilder()
-                    .add("status", "ok")
-                    .add("total", totalUsers)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_TOTAL, totalUsers)
                     .add("activeDays", ACTIVE_DAYS)
                     .add("activeUsers", activeUsers)
                     .add("activeUsersYesterday", activeUsersYesterday)
@@ -181,7 +182,7 @@ public class DashboardBootstrapServlet extends HttpServlet {
                     .add("activeUsersDeltaPct", activeUsersDeltaPct)
                     .add("activeUsersDirection", activeUsersDirection)
                     .add("inactiveUsers", inactiveUsers)
-                    .add("sessions", sessionsArray)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_SESSIONS, sessionsArray)
                     .build();
         } catch (SQLException | IllegalStateException e) {
             log.log(Level.WARNING, "Unable to compute sessions for dashboard bootstrap", e);
@@ -219,7 +220,7 @@ public class DashboardBootstrapServlet extends HttpServlet {
 
     private String formatTimestamp(Timestamp ts) {
         if (ts == null) {
-            return "—";
+            return "Ã¢â‚¬â€";
         }
         return ts.toInstant()
                 .atZone(ZoneId.systemDefault())
@@ -272,6 +273,11 @@ public class DashboardBootstrapServlet extends HttpServlet {
                 log.log(Level.FINE, "Unable to send fallback dashboard bootstrap error", sendErrorFailure);
             }
         }
+    }
+
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
     }
 
 }

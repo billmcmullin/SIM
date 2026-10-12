@@ -33,10 +33,51 @@ import com.sim.chatserver.config.Database;
 import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 final class DatabaseBackupService {
+
+    private static final String EMPTY = "";
     private static final Logger log = Logger.getLogger(DatabaseBackupService.class.getCanonicalName());
     private static final String LS = System.lineSeparator();
+    private static final String MESSAGE_BACKUP_OUTPUT_STREAM_UNAVAILABLE = "Backup output stream is unavailable.";
+    private static final String MESSAGE_FAILED_EXPORTING_TABLE = "Failed exporting table: ";
+    private static final String MESSAGE_UNABLE_TO_READ_CELL_VALUE = "Unable to read cell value.";
+    private static final String MESSAGE_EXPORT_COMPLETED_PREFIX = "Data backup export completed. Exported tables=";
+    private static final String MESSAGE_EXPORT_SKIPPED_PREFIX = ", skipped=";
+    private static final String MESSAGE_EXPORT_FAILED = "Data backup export failed";
+    private static final String MESSAGE_UNABLE_TO_LIST_TABLES = "Unable to list exportable tables.";
+    private static final String MESSAGE_UNABLE_TO_WRITE_MANIFEST = "Unable to write backup manifest.";
+    private static final String MESSAGE_UNABLE_TO_LIST_COLUMNS_PREFIX = "Unable to list columns for table: ";
+    private static final String MESSAGE_UNABLE_TO_READ_BINARY_CELL = "Unable to read binary cell value.";
+    private static final String MESSAGE_INVALID_SQL_IDENTIFIER = com.sim.chatserver.util.CommonLiteralConstants.MSG_INVALID_SQL_IDENTIFIER;
+    private static final String LOG_TIMESTAMP_PARSE_INSTANT_FAILED = "Timestamp parse via Instant failed";
+    private static final String LOG_TIMESTAMP_PARSE_OFFSET_FAILED = "Timestamp parse via OffsetDateTime failed";
+    private static final String LOG_TIMESTAMP_PARSE_VALUE_OF_FAILED = "Timestamp parse via Timestamp.valueOf failed";
+    private static final String LOG_DATE_PARSE_LOCALDATE_FAILED = "Date parse via LocalDate failed";
+    private static final String LOG_DATE_PARSE_OFFSET_FAILED = "Date parse via OffsetDateTime failed";
+    private static final String LOG_DATE_PARSE_INSTANT_FAILED = "Date parse via Instant failed";
+    private static final String SQL_SELECT = com.sim.chatserver.util.CommonLiteralConstants.SQL_SELECT_PREFIX;
+    private static final String SQL_FROM = " FROM ";
+    private static final String SQL_LIST_TABLE_COLUMNS = "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name=? ORDER BY ordinal_position";
+    private static final String ZIP_PATH_TABLES = "tables/";
+    private static final String ZIP_EXT_CSV = ".csv";
+    private static final String ZIP_FILE_MANIFEST = "manifest.json";
+    private static final String MANIFEST_LINE_FORMAT_VERSION = "  \"formatVersion\": 1,";
+    private static final String MANIFEST_LINE_TYPE = "  \"type\": \"raw-data-export\",";
+    private static final String MANIFEST_LINE_GENERATED_AT_PREFIX = "  \"generatedAt\": \"";
+    private static final String MANIFEST_LINE_SCHEMA = "  \"schema\": \"public\",";
+    private static final String MANIFEST_LINE_EXPORTED_COUNT_PREFIX = "  \"exportedTableCount\": ";
+    private static final String MANIFEST_LINE_SKIPPED_COUNT_PREFIX = "  \"skippedTableCount\": ";
+    private static final String MANIFEST_LINE_EXPORTED_TABLES_PREFIX = "  \"exportedTables\": ";
+    private static final String MANIFEST_LINE_SKIPPED_TABLES_PREFIX = "  \"skippedTables\": ";
+    private static final String COMMA = ",";
+    private static final String JSON_ARRAY_OPEN = "[";
+    private static final String BACKSLASH = "\\";
+    private static final String ESCAPED_BACKSLASH = com.sim.chatserver.util.CommonLiteralConstants.JSON_ESCAPE_BACKSLASH_TO;
+    private static final String ESCAPED_DOUBLE_QUOTE = com.sim.chatserver.util.CommonLiteralConstants.JSON_ESCAPE_QUOTE_TO;
+    private static final String DELIMITER_COMMA_SPACE = ", ";
+    private static final String DOUBLE_QUOTE = "\"";
+    private static final String DOUBLE_DOUBLE_QUOTE = com.sim.chatserver.util.CommonLiteralConstants.DOUBLE_QUOTE_ESCAPED;
 
-    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile("^[A-Za-z_][A-Za-z0-9_]{0,62}$");
+    private static final Pattern SAFE_SQL_IDENTIFIER = Pattern.compile(com.sim.chatserver.util.CommonLiteralConstants.SQL_IDENTIFIER_REGEX);
     private static final DateTimeFormatter ISO_INSTANT_FMT = DateTimeFormatter.ISO_INSTANT;
     private static final int MAX_CELL_TEXT_LENGTH = 65535;
     private static final int MAX_BINARY_BYTES = 2 * 1024 * 1024;
@@ -47,7 +88,7 @@ final class DatabaseBackupService {
 
     void exportBackup(OutputStream outputStream, String generatedAt) {
         if (outputStream == null) {
-            throw new IllegalStateException("Backup output stream is unavailable.");
+            throw new IllegalStateException(MESSAGE_BACKUP_OUTPUT_STREAM_UNAVAILABLE);
         }
 
         try (Connection conn = Database.getConnection(); ZipOutputStream zip = new ZipOutputStream(outputStream, StandardCharsets.UTF_8)) {
@@ -61,15 +102,15 @@ final class DatabaseBackupService {
                     exported.add(table);
                 } catch (IllegalStateException tableErr) {
                     skipped.add(table);
-                    log.log(Level.WARNING, "Failed exporting table: " + table, tableErr);
+                    log.log(Level.WARNING, MESSAGE_FAILED_EXPORTING_TABLE + table, tableErr);
                 }
             }
 
             writeManifest(zip, exported, skipped, generatedAt);
             zip.finish();
-            log.info(() -> "Data backup export completed. Exported tables=" + exported.size() + ", skipped=" + skipped.size());
+            log.info(() -> MESSAGE_EXPORT_COMPLETED_PREFIX + exported.size() + MESSAGE_EXPORT_SKIPPED_PREFIX + skipped.size());
         } catch (SQLException | IOException | IllegalStateException e) {
-            throw new IllegalStateException("Data backup export failed", e);
+            throw new IllegalStateException(MESSAGE_EXPORT_FAILED, e);
         }
     }
 
@@ -91,7 +132,7 @@ final class DatabaseBackupService {
                 out.add(table);
             }
         } catch (SQLException e) {
-            throw new IllegalStateException("Unable to list exportable tables.", e);
+            throw new IllegalStateException(MESSAGE_UNABLE_TO_LIST_TABLES, e);
         }
         return out;
     }
@@ -103,58 +144,83 @@ final class DatabaseBackupService {
                 return;
             }
 
-            String projected = String.join(", ", columns.stream().map(this::quoteIdent).toList());
-            String sql = "SELECT " + projected + " FROM " + quoteIdent(tableName);
+            String projected = String.join(DELIMITER_COMMA_SPACE, columns.stream().map(this::quoteIdent).toList());
+            String sql = SQL_SELECT + projected + SQL_FROM + quoteIdent(tableName);
 
-            try (PreparedStatement ps = conn.prepareStatement(sql, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
-                ps.setFetchSize(1000);
-                try (ResultSet rs = ps.executeQuery()) {
-                    ResultSetMetaData md = rs.getMetaData();
-                    int cols = md.getColumnCount();
-
-                    zip.putNextEntry(new ZipEntry("tables/" + tableName + ".csv"));
-                    try (OutputStreamWriter writer = new OutputStreamWriter(new NonClosingOutputStream(zip), StandardCharsets.UTF_8)) {
-                        for (int columnIndex = 1; columnIndex <= cols; columnIndex++) {
-                            if (columnIndex > 1) {
-                                writer.write(',');
-                            }
-                            writer.write(csvEscape(md.getColumnLabel(columnIndex)));
-                        }
-                        writer.write(com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED);
-
-                        while (rs.next()) {
-                            for (int columnIndex = 1; columnIndex <= cols; columnIndex++) {
-                                if (columnIndex > 1) {
-                                    writer.write(',');
-                                }
-                                writer.write(csvEscape(readCellAsText(rs, md, columnIndex)));
-                            }
-                            writer.write(com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED);
-                        }
-
-                        writer.flush();
-                    }
-                    zip.closeEntry();
-                }
-            }
+            writeQueryResultsAsCsv(conn, zip, tableName, sql);
         } catch (SQLException | IOException e) {
-            throw new IllegalStateException("Failed exporting table: " + tableName, e);
+            throw new IllegalStateException(MESSAGE_FAILED_EXPORTING_TABLE + tableName, e);
+        }
+    }
+
+    private void writeQueryResultsAsCsv(Connection conn,
+            ZipOutputStream zip,
+            String tableName,
+            String sql) throws SQLException, IOException {
+        try (PreparedStatement ps = conn.prepareStatement(sql, ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
+            ps.setFetchSize(1000);
+            try (ResultSet rs = ps.executeQuery()) {
+                writeResultSetAsCsv(zip, tableName, rs);
+            }
+        }
+    }
+
+    private void writeResultSetAsCsv(ZipOutputStream zip,
+            String tableName,
+            ResultSet rs) throws SQLException, IOException {
+        ResultSetMetaData metadata = rs.getMetaData();
+        int columnCount = metadata.getColumnCount();
+
+        zip.putNextEntry(new ZipEntry(ZIP_PATH_TABLES + tableName + ZIP_EXT_CSV));
+        try (OutputStreamWriter writer = new OutputStreamWriter(new NonClosingOutputStream(zip), StandardCharsets.UTF_8)) {
+            writeCsvHeader(writer, metadata, columnCount);
+            writeCsvRows(writer, rs, metadata, columnCount);
+            writer.flush();
+        } finally {
+            zip.closeEntry();
+        }
+    }
+
+    private void writeCsvHeader(OutputStreamWriter writer,
+            ResultSetMetaData metadata,
+            int columnCount) throws SQLException, IOException {
+        for (int columnIndex = 1; columnIndex <= columnCount; columnIndex++) {
+            if (columnIndex > 1) {
+                writer.write(',');
+            }
+            writer.write(csvEscape(metadata.getColumnLabel(columnIndex)));
+        }
+        writer.write(com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED);
+    }
+
+    private void writeCsvRows(OutputStreamWriter writer,
+            ResultSet rs,
+            ResultSetMetaData metadata,
+            int columnCount) throws SQLException, IOException {
+        while (rs.next()) {
+            for (int columnIndex = 1; columnIndex <= columnCount; columnIndex++) {
+                if (columnIndex > 1) {
+                    writer.write(',');
+                }
+                writer.write(csvEscape(readCellAsText(rs, metadata, columnIndex)));
+            }
+            writer.write(com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED);
         }
     }
 
     private void writeManifest(ZipOutputStream zip, List<String> exported, List<String> skipped, String generatedAt) {
         try {
-            zip.putNextEntry(new ZipEntry("manifest.json"));
+            zip.putNextEntry(new ZipEntry(ZIP_FILE_MANIFEST));
             try (OutputStreamWriter writer = new OutputStreamWriter(new NonClosingOutputStream(zip), StandardCharsets.UTF_8)) {
                 writer.write('{' + LS);
-                writer.write("  \"formatVersion\": 1," + LS);
-                writer.write("  \"type\": \"raw-data-export\"," + LS);
-                writer.write("  \"generatedAt\": \"" + jsonEscape(generatedAt) + '\"' + ',' + LS);
-                writer.write("  \"schema\": \"public\"," + LS);
-                writer.write("  \"exportedTableCount\": " + exported.size() + ',' + LS);
-                writer.write("  \"skippedTableCount\": " + skipped.size() + ',' + LS);
-                writer.write("  \"exportedTables\": " + toJsonArray(exported) + ',' + LS);
-                writer.write("  \"skippedTables\": " + toJsonArray(skipped));
+                writer.write(MANIFEST_LINE_FORMAT_VERSION + LS);
+                writer.write(MANIFEST_LINE_TYPE + LS);
+                writer.write(MANIFEST_LINE_GENERATED_AT_PREFIX + jsonEscape(generatedAt) + '\"' + ',' + LS);
+                writer.write(MANIFEST_LINE_SCHEMA + LS);
+                writer.write(MANIFEST_LINE_EXPORTED_COUNT_PREFIX + exported.size() + ',' + LS);
+                writer.write(MANIFEST_LINE_SKIPPED_COUNT_PREFIX + skipped.size() + ',' + LS);
+                writer.write(MANIFEST_LINE_EXPORTED_TABLES_PREFIX + toJsonArray(exported) + ',' + LS);
+                writer.write(MANIFEST_LINE_SKIPPED_TABLES_PREFIX + toJsonArray(skipped));
                 writer.write(com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED);
                 writer.write('}' + LS);
 
@@ -162,13 +228,13 @@ final class DatabaseBackupService {
             }
             zip.closeEntry();
         } catch (IOException e) {
-            throw new IllegalStateException("Unable to write backup manifest.", e);
+            throw new IllegalStateException(MESSAGE_UNABLE_TO_WRITE_MANIFEST, e);
         }
     }
 
     private List<String> listTableColumns(Connection conn, String tableName) {
         List<String> out = new ArrayList<>();
-        String sql = "SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name=? ORDER BY ordinal_position";
+        String sql = SQL_LIST_TABLE_COLUMNS;
         try (PreparedStatement ps = conn.prepareStatement(sql)) {
             ps.setString(1, tableName);
             try (ResultSet rs = ps.executeQuery()) {
@@ -180,7 +246,7 @@ final class DatabaseBackupService {
                 }
             }
         } catch (SQLException e) {
-            throw new IllegalStateException("Unable to list columns for table: " + tableName, e);
+            throw new IllegalStateException(MESSAGE_UNABLE_TO_LIST_COLUMNS_PREFIX + tableName, e);
         }
         return out;
     }
@@ -190,23 +256,23 @@ final class DatabaseBackupService {
             int sqlType = md.getColumnType(columnIndex);
             if (sqlType == Types.BINARY || sqlType == Types.VARBINARY || sqlType == Types.LONGVARBINARY) {
                 byte[] bytes = readValidatedBinary(rs, columnIndex);
-                return bytes == null || bytes.length == 0 ? "" : Base64.getEncoder().encodeToString(bytes);
+                return bytes == null || bytes.length == 0 ? EMPTY : Base64.getEncoder().encodeToString(bytes);
             }
 
             if (sqlType == Types.TIMESTAMP || sqlType == Types.TIMESTAMP_WITH_TIMEZONE) {
                 Timestamp ts = parseTimestamp(readValidatedCellText(rs, columnIndex));
-                return ts == null ? "" : ISO_INSTANT_FMT.format(ts.toInstant());
+                return ts == null ? EMPTY : ISO_INSTANT_FMT.format(ts.toInstant());
             }
 
             if (sqlType == Types.DATE) {
                 LocalDate localDate = parseLocalDate(readValidatedCellText(rs, columnIndex));
-                return localDate == null ? "" : localDate.toString();
+                return localDate == null ? EMPTY : localDate.toString();
             }
 
             String value = readValidatedCellText(rs, columnIndex);
-            return value == null ? "" : value;
+            return value == null ? EMPTY : value;
         } catch (SQLException e) {
-            throw new IllegalStateException("Unable to read cell value.", e);
+            throw new IllegalStateException(MESSAGE_UNABLE_TO_READ_CELL_VALUE, e);
         }
     }
 
@@ -225,7 +291,7 @@ final class DatabaseBackupService {
             }
             return null;
         } catch (SQLException e) {
-            throw new IllegalStateException("Unable to read cell value.", e);
+            throw new IllegalStateException(MESSAGE_UNABLE_TO_READ_CELL_VALUE, e);
         }
     }
 
@@ -237,7 +303,7 @@ final class DatabaseBackupService {
             byte[] bytes = rs.getBytes(columnIndex);
             return validateTaintedBinary(sanitizeBinary(bytes));
         } catch (SQLException e) {
-            throw new IllegalStateException("Unable to read binary cell value.", e);
+            throw new IllegalStateException(MESSAGE_UNABLE_TO_READ_BINARY_CELL, e);
         }
     }
 
@@ -250,7 +316,7 @@ final class DatabaseBackupService {
         String canonicalSanitized = canonicalizeCellText(sanitized);
         String normalizedInput = ServletRequestParamUtil.normalizeBodyText(canonicalSanitized, MAX_CELL_TEXT_LENGTH, false);
         if (normalizedInput == null || normalizedInput.isEmpty()) {
-            return "";
+            return EMPTY;
         }
         StringBuilder safe = new StringBuilder(normalizedInput.length());
         for (int i = 0; i < normalizedInput.length(); i++) {
@@ -272,25 +338,25 @@ final class DatabaseBackupService {
 
     private String csvEscape(String value) {
         if (value == null) {
-            return "";
+            return EMPTY;
         }
-        boolean needsQuotes = value.contains(",") || value.contains("\"") || value.contains(System.lineSeparator()) || value.contains(System.lineSeparator());
-        String escaped = value.replace("\"", "\"\"");
+        boolean needsQuotes = value.contains(COMMA) || value.contains(DOUBLE_QUOTE) || value.contains(System.lineSeparator()) || value.contains(System.lineSeparator());
+        String escaped = value.replace(DOUBLE_QUOTE, DOUBLE_DOUBLE_QUOTE);
         return needsQuotes ? '"' + escaped + '"' : escaped;
     }
 
     private String quoteIdent(String identifier) {
         if (identifier == null || !SAFE_SQL_IDENTIFIER.matcher(identifier).matches()) {
-            throw new IllegalArgumentException("Invalid SQL identifier");
+            throw new IllegalArgumentException(MESSAGE_INVALID_SQL_IDENTIFIER);
         }
-        return '"' + identifier.replace("\"", "\"\"") + '"';
+        return '"' + identifier.replace(DOUBLE_QUOTE, DOUBLE_DOUBLE_QUOTE) + '"';
     }
 
     private String toJsonArray(List<String> values) {
-        StringBuilder sb = new StringBuilder("[");
+        StringBuilder sb = new StringBuilder(JSON_ARRAY_OPEN);
         for (int i = 0; i < values.size(); i++) {
             if (i > 0) {
-                sb.append(", ");
+                sb.append(DELIMITER_COMMA_SPACE);
             }
             sb.append('"').append(jsonEscape(values.get(i))).append('"');
         }
@@ -300,9 +366,9 @@ final class DatabaseBackupService {
 
     private String jsonEscape(String value) {
         if (value == null) {
-            return "";
+            return EMPTY;
         }
-        return value.replace("\\", "\\\\").replace("\"", "\\\"");
+        return value.replace(BACKSLASH, ESCAPED_BACKSLASH).replace(DOUBLE_QUOTE, ESCAPED_DOUBLE_QUOTE);
     }
 
     private String sanitizeIdentifier(String value) {
@@ -320,7 +386,7 @@ final class DatabaseBackupService {
         if (value == null) {
             return null;
         }
-        String normalized = value.replace('\u0000', ' ').replace(System.lineSeparator(), "");
+        String normalized = value.replace('\u0000', ' ').replace(System.lineSeparator(), EMPTY);
         return normalized.length() > MAX_CELL_TEXT_LENGTH
                 ? safeSlice(normalized, 0, MAX_CELL_TEXT_LENGTH)
                 : normalized;
@@ -346,19 +412,19 @@ final class DatabaseBackupService {
         try {
             return Timestamp.from(Instant.parse(normalized));
         } catch (DateTimeException ex) {
-            log.log(Level.FINE, "Timestamp parse via Instant failed", ex);
+            log.log(Level.FINE, LOG_TIMESTAMP_PARSE_INSTANT_FAILED, ex);
         }
 
         try {
             return Timestamp.from(OffsetDateTime.parse(normalized).toInstant());
         } catch (DateTimeException ex) {
-            log.log(Level.FINE, "Timestamp parse via OffsetDateTime failed", ex);
+            log.log(Level.FINE, LOG_TIMESTAMP_PARSE_OFFSET_FAILED, ex);
         }
 
         try {
             return Timestamp.valueOf(normalized.replace('T', ' '));
         } catch (IllegalArgumentException ex) {
-            log.log(Level.FINE, "Timestamp parse via Timestamp.valueOf failed", ex);
+            log.log(Level.FINE, LOG_TIMESTAMP_PARSE_VALUE_OF_FAILED, ex);
             return null;
         }
     }
@@ -373,14 +439,14 @@ final class DatabaseBackupService {
         try {
             parsed = LocalDate.parse(normalized);
         } catch (DateTimeException ex) {
-            log.log(Level.FINE, "Date parse via LocalDate failed", ex);
+            log.log(Level.FINE, LOG_DATE_PARSE_LOCALDATE_FAILED, ex);
         }
 
         if (parsed == null) {
             try {
                 parsed = OffsetDateTime.parse(normalized).toLocalDate();
             } catch (DateTimeException ex) {
-                log.log(Level.FINE, "Date parse via OffsetDateTime failed", ex);
+                log.log(Level.FINE, LOG_DATE_PARSE_OFFSET_FAILED, ex);
             }
         }
 
@@ -388,7 +454,7 @@ final class DatabaseBackupService {
             try {
                 parsed = Instant.parse(normalized).atOffset(ZoneOffset.UTC).toLocalDate();
             } catch (DateTimeException ex) {
-                log.log(Level.FINE, "Date parse via Instant failed", ex);
+                log.log(Level.FINE, LOG_DATE_PARSE_INSTANT_FAILED, ex);
                 return null;
             }
         }
@@ -401,26 +467,25 @@ final class DatabaseBackupService {
 
     private String safeSlice(String value, int beginIndex, int endIndex) {
         if (value == null || value.isEmpty()) {
-            return "";
+            return EMPTY;
         }
-        int safeBegin = Math.max(0, beginIndex);
-        int safeEnd = Math.max(safeBegin, Math.min(endIndex, value.length()));
-        int length = safeEnd - safeBegin;
-        if (length <= 0) {
-            return "";
+        int start = Math.max(0, Math.min(beginIndex, value.length()));
+        int end = Math.max(start, Math.min(endIndex, value.length()));
+        if (start >= end) {
+            return EMPTY;
         }
-        char[] chars = value.toCharArray();
-        return new String(chars, safeBegin, length);
-    }
-
-    private static final class NonClosingOutputStream extends FilterOutputStream {
-        private NonClosingOutputStream(OutputStream delegate) {
-            super(delegate);
-        }
-
-        @Override
-        public void close() throws IOException {
-            flush();
-        }
+        return new String(value.toCharArray(), start, end - start);
     }
 }
+
+final class NonClosingOutputStream extends FilterOutputStream {
+    NonClosingOutputStream(OutputStream delegate) {
+        super(delegate);
+    }
+
+    @Override
+    public void close() throws IOException {
+        flush();
+    }
+}
+

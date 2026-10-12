@@ -13,6 +13,8 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import java.util.regex.Pattern;
 
+import com.sim.chatserver.util.CommonLiteralConstants;
+
 import jakarta.servlet.http.HttpServletRequest;
 
 /**
@@ -34,9 +36,42 @@ public final class SecurityValidationService {
     private static final Logger log = Logger.getLogger(SecurityValidationService.class.getCanonicalName());
     private static final Pattern IPV4_LITERAL = Pattern.compile("^(?:\\d{1,3}\\.){3}\\d{1,3}$");
     private static final Pattern IPV6_LITERAL_CHARS = Pattern.compile("^[0-9A-Fa-f:]+$");
-    private static final Pattern CONTROL_CHARS = Pattern.compile("[\\u0000-\\u001F\\u007F]");
+    private static final Pattern CONTROL_CHARS = Pattern.compile(com.sim.chatserver.util.CommonLiteralConstants.REGEX_CONTROL_CHARS);
+    private static final char SLASH_CHAR = '/';
+    private static final String EMPTY = "";
+    private static final String DEFAULT_MODE = CommonLiteralConstants.DEFAULT_MODE_CHAT;
+    private static final String JSON_MEDIA_TYPE = CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON;
+    private static final String HTTPS_SCHEME = CommonLiteralConstants.SCHEME_HTTPS;
+    private static final String HTTP_SCHEME = CommonLiteralConstants.SCHEME_HTTP;
+    private static final String MISSING_MARKER = "(missing)";
+    private static final String UNKNOWN_MARKER = CommonLiteralConstants.MARKER_UNKNOWN;
+    private static final String NO_DETAIL_MARKER = "(no detail)";
+    private static final String HOST_DOT_DOT = "..";
+    private static final String IPV6_TRIPLE_COLON = ":::";
+    private static final char COLON_CHAR = IPV6_TRIPLE_COLON.charAt(0);
+    private static final String IPV4_DOT_SPLIT_REGEX = "\\.";
+    private static final String IPV6_FC_PREFIX = "fc";
+    private static final String IPV6_FD_PREFIX = "fd";
+    private static final String IPV6_FE8_PREFIX = "fe8";
+    private static final String IPV6_FE9_PREFIX = "fe9";
+    private static final String IPV6_FEA_PREFIX = "fea";
+    private static final String IPV6_FEB_PREFIX = "feb";
+    private static final String ERR_URL_BLANK = "URL is blank";
+    private static final String ERR_SCHEME_NOT_ALLOWED_PREFIX = "Scheme not allowed: ";
+    private static final String ERR_HOST_MISSING = "Host missing in URL";
+    private static final String ERR_HOST_SANITY_PREFIX = "Host failed sanity check: ";
+    private static final String ERR_HOST_NOT_ALLOW_LIST_PREFIX = "Host not in allow-list: ";
+    private static final String ERR_ALLOW_LIST_SEPARATOR = " | allowList=";
+    private static final String ERR_DNS_NO_ADDRESSES_PREFIX = "DNS resolution returned no addresses for host: ";
+    private static final String ERR_BLOCKED_ADDRESS_PREFIX = "Host resolved to blocked/private address: ";
+    private static final String ERR_URL_EXCEPTION_PREFIX = "URL parse/validation exception: ";
+    private static final String COLON_SPACE = ": ";
+    private static final String ALLOW_LIST_REASON = "Host explicitly allow-listed";
+    private static final String VALIDATED_REASON = "Validated";
+    private static final String LOG_URL_BLOCKED = "validateUpstreamUrl blocked invalid URL";
+    private static final String LOG_INVALID_IPV4_OCTET = "Invalid IPv4 octet encountered while parsing client address.";
 
-    private static final Set<String> DEFAULT_ALLOWED_MODES = Set.of("chat", "query", "automatic");
+    private static final Set<String> DEFAULT_ALLOWED_MODES = Set.of(DEFAULT_MODE, com.sim.chatserver.util.CommonLiteralConstants.FIELD_QUERY, "automatic");
 
     /**
      * If non-empty, upstream host must match this allow-list (exact or subdomain).
@@ -57,7 +92,7 @@ public final class SecurityValidationService {
      */
     private final boolean resolveDnsForValidation;
 
-    private SecurityValidationService() {
+    public SecurityValidationService() {
         this(Set.of(), DEFAULT_ALLOWED_MODES, true, true);
     }
 
@@ -87,10 +122,11 @@ public final class SecurityValidationService {
         }
         int semicolon = ct.indexOf((char) 59);
         String mediaType = (semicolon >= 0 ? ct.substring(0, semicolon) : ct).trim().toLowerCase(Locale.ROOT);
-        if (mediaType.isBlank() || mediaType.indexOf('/') <= 0 || mediaType.charAt(0) == '/' || mediaType.endsWith("/")) {
+        if (mediaType.isBlank() || mediaType.indexOf(SLASH_CHAR) <= 0 || mediaType.charAt(0) == SLASH_CHAR
+                || mediaType.endsWith(String.valueOf(SLASH_CHAR))) {
             return false;
         }
-        return "application/json".equals(mediaType);
+        return JSON_MEDIA_TYPE.equals(mediaType);
     }
 
     private boolean isModeAllowed(String mode) {
@@ -102,7 +138,7 @@ public final class SecurityValidationService {
 
     String normalizeModeOrDefault(String mode, String defaultMode) {
         String safeDefault = (defaultMode == null || defaultMode.isBlank())
-                ? "chat"
+                ? DEFAULT_MODE
                 : defaultMode.trim().toLowerCase(Locale.ROOT);
         return isModeAllowed(mode) ? mode.trim().toLowerCase(Locale.ROOT) : safeDefault;
     }
@@ -120,7 +156,7 @@ public final class SecurityValidationService {
     private UrlValidationResult validateUpstreamUrl(String baseUrl) {
         String canonicalBaseUrl = canonicalizeUrlInput(baseUrl);
         if (canonicalBaseUrl.isBlank()) {
-            return UrlValidationResult.blocked("URL is blank");
+            return UrlValidationResult.blocked(ERR_URL_BLANK);
         }
 
         final String trimmed = canonicalBaseUrl;
@@ -129,23 +165,23 @@ public final class SecurityValidationService {
             URI uri = URI.create(trimmed);
 
             String scheme = lower(uri.getScheme());
-            String safeScheme = (scheme == null || scheme.isBlank()) ? "(missing)" : scheme;
+            String safeScheme = (scheme == null || scheme.isBlank()) ? MISSING_MARKER : scheme;
 
-            if (!"https".equals(scheme) && !"http".equals(scheme)) {
-                return UrlValidationResult.blocked("Scheme not allowed: " + safeScheme);
+            if (!HTTPS_SCHEME.equals(scheme) && !HTTP_SCHEME.equals(scheme)) {
+                return UrlValidationResult.blocked(ERR_SCHEME_NOT_ALLOWED_PREFIX + safeScheme);
             }
 
             String host = lower(uri.getHost());
-            String safeHost = (host == null || host.isBlank()) ? "(missing)" : host;
+            String safeHost = (host == null || host.isBlank()) ? MISSING_MARKER : host;
 
             if (host == null || host.isBlank()) {
-                return UrlValidationResult.blocked("Host missing in URL");
+                return UrlValidationResult.blocked(ERR_HOST_MISSING);
             }
 
             boolean startsOrEndsWithDot = !host.isEmpty()
                     && (host.charAt(0) == '.' || host.charAt(host.length() - 1) == '.');
-            if (host.contains("..") || startsOrEndsWithDot) {
-                return UrlValidationResult.blocked("Host failed sanity check: " + safeHost);
+            if (host.contains(HOST_DOT_DOT) || startsOrEndsWithDot) {
+                return UrlValidationResult.blocked(ERR_HOST_SANITY_PREFIX + safeHost);
             }
 
             boolean hostExplicitlyAllowed = !allowedUpstreamHosts.isEmpty() && isHostAllowed(host);
@@ -153,50 +189,50 @@ public final class SecurityValidationService {
             // If allow-list is configured and host not matched -> reject immediately
             if (!allowedUpstreamHosts.isEmpty() && !hostExplicitlyAllowed) {
                 return UrlValidationResult.blocked(
-                        "Host not in allow-list: " + safeHost + " | allowList=" + allowedUpstreamHosts
+                    ERR_HOST_NOT_ALLOW_LIST_PREFIX + safeHost + ERR_ALLOW_LIST_SEPARATOR + allowedUpstreamHosts
                 );
             }
 
             // If host is explicitly allow-listed, permit without private-range rejection.
             // This supports deployments where upstream is localhost/container-private.
             if (hostExplicitlyAllowed) {
-                return UrlValidationResult.allowed(host, scheme, "Host explicitly allow-listed");
+                return UrlValidationResult.allowed(host, scheme, ALLOW_LIST_REASON);
             }
 
             if (resolveDnsForValidation && blockPrivateNetworkTargets) {
                 InetAddress[] addrs = InetAddress.getAllByName(host);
                 if (addrs == null || addrs.length == 0) {
                     return UrlValidationResult.blocked(
-                            "DNS resolution returned no addresses for host: " + safeHost
+                            ERR_DNS_NO_ADDRESSES_PREFIX + safeHost
                     );
                 }
 
                 for (InetAddress addr : addrs) {
                     if (isBlockedAddress(addr)) {
                         String addrText = (addr == null || addr.getHostAddress() == null)
-                                ? "(unknown)"
+                                ? UNKNOWN_MARKER
                                 : addr.getHostAddress();
                         return UrlValidationResult.blocked(
-                                "Host resolved to blocked/private address: " + addrText
+                                ERR_BLOCKED_ADDRESS_PREFIX + addrText
                         );
                     }
                 }
             }
 
-            return UrlValidationResult.allowed(host, scheme, "Validated");
+            return UrlValidationResult.allowed(host, scheme, VALIDATED_REASON);
         } catch (IllegalArgumentException | UnknownHostException | SecurityException ex) {
             String msg = ex.getMessage();
-            String safeMsg = (msg == null || msg.isBlank()) ? "(no detail)" : msg;
-            log.log(Level.FINE, "validateUpstreamUrl blocked invalid URL", ex);
+            String safeMsg = (msg == null || msg.isBlank()) ? NO_DETAIL_MARKER : msg;
+            log.log(Level.FINE, LOG_URL_BLOCKED, ex);
             return UrlValidationResult.blocked(
-                    "URL parse/validation exception: " + ex.getClass().getSimpleName() + ": " + safeMsg
+                    ERR_URL_EXCEPTION_PREFIX + ex.getClass().getSimpleName() + COLON_SPACE + safeMsg
             );
         }
     }
 
     String extractClientIp(HttpServletRequest req) {
         if (req == null) {
-            return "(unknown)";
+            return UNKNOWN_MARKER;
         }
 
         String remote = canonicalizeInput(req.getRemoteHost(), 255);
@@ -204,7 +240,7 @@ public final class SecurityValidationService {
             return remote;
         }
 
-        return "(unknown)";
+        return UNKNOWN_MARKER;
     }
 
     private boolean isParseableAddress(String value) {
@@ -221,7 +257,7 @@ public final class SecurityValidationService {
         if (!IPV4_LITERAL.matcher(value).matches()) {
             return false;
         }
-        String[] parts = value.split("\\.");
+        String[] parts = value.split(IPV4_DOT_SPLIT_REGEX);
         if (parts.length != 4) {
             return false;
         }
@@ -236,7 +272,7 @@ public final class SecurityValidationService {
             try {
                 octet = Integer.parseInt(part);
             } catch (NumberFormatException ex) {
-                log.log(Level.FINE, "Invalid IPv4 octet encountered while parsing client address.", ex);
+                log.log(Level.FINE, LOG_INVALID_IPV4_OCTET, ex);
                 return false;
             }
             if (octet < 0 || octet > 255) {
@@ -247,13 +283,13 @@ public final class SecurityValidationService {
     }
 
     private boolean isLikelyIpv6Literal(String value) {
-        if (value.length() > 45 || !value.contains(String.valueOf((char) 58))) {
+        if (value.length() > 45 || !value.contains(String.valueOf(COLON_CHAR))) {
             return false;
         }
         if (!IPV6_LITERAL_CHARS.matcher(value).matches()) {
             return false;
         }
-        if (value.contains(":::")) {
+        if (value.contains(IPV6_TRIPLE_COLON)) {
             return false;
         }
         long colonCount = value.chars().filter(ch -> ch == (char) 58).count();
@@ -314,11 +350,12 @@ public final class SecurityValidationService {
 
             String h = a6.getHostAddress().toLowerCase(Locale.ROOT);
             // Unique local fc00::/7
-            if (h.startsWith("fc") || h.startsWith("fd")) {
+            if (h.startsWith(IPV6_FC_PREFIX) || h.startsWith(IPV6_FD_PREFIX)) {
                 return true;
             }
             // Link local fe80::/10
-            if (h.startsWith("fe8") || h.startsWith("fe9") || h.startsWith("fea") || h.startsWith("feb")) {
+            if (h.startsWith(IPV6_FE8_PREFIX) || h.startsWith(IPV6_FE9_PREFIX)
+                    || h.startsWith(IPV6_FEA_PREFIX) || h.startsWith(IPV6_FEB_PREFIX)) {
                 return true;
             }
         }
@@ -350,63 +387,15 @@ public final class SecurityValidationService {
 
     private String canonicalizeInput(String value, int maxLen) {
         if (value == null) {
-            return "";
+            return EMPTY;
         }
         String canonical = Normalizer.normalize(value, Normalizer.Form.NFKC).trim();
         if (canonical.isBlank() || canonical.length() > maxLen) {
-            return "";
+            return EMPTY;
         }
         if (CONTROL_CHARS.matcher(canonical).find()) {
-            return "";
+            return EMPTY;
         }
         return canonical;
-    }
-
-    public static final class UrlValidationResult {
-
-        private final boolean allowed;
-        private final String reason;
-        private final String host;
-        private final String scheme;
-
-        private UrlValidationResult(boolean allowed, String reason, String host, String scheme) {
-            this.allowed = allowed;
-            this.reason = reason;
-            this.host = host;
-            this.scheme = scheme;
-        }
-
-        private static UrlValidationResult allowed(String host, String scheme, String reason) {
-            return new UrlValidationResult(true, reason, host, scheme);
-        }
-
-        private static UrlValidationResult blocked(String reason) {
-            return new UrlValidationResult(false, reason, null, null);
-        }
-
-        private boolean isAllowed() {
-            return allowed;
-        }
-
-        String getReason() {
-            return reason;
-        }
-
-        String getHost() {
-            return host;
-        }
-
-        String getScheme() {
-            return scheme;
-        }
-
-        @Override
-        public String toString() {
-            return "UrlValidationResult{allowed=" + allowed
-                    + ", reason='" + reason + '\''
-                    + ", host='" + host + '\''
-                    + ", scheme='" + scheme + '\''
-                    + '}';
-        }
     }
 }

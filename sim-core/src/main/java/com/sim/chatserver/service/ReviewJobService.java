@@ -28,11 +28,30 @@ import com.sim.chatserver.model.review.ReviewJobStatus;
  * in fixed-window batch mode, all IDs must be covered for success
  *
  * UX progress behavior: - supports step-level status details via message: "Map
- * round 1/3 ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· batch 2/8 running", "Reduce synthesis in progress", etc.
+ * round 1/3 - batch 2/8 running", "Reduce synthesis in progress", etc.
  */
 public class ReviewJobService {
 
     private static final Logger log = Logger.getLogger(ReviewJobService.class.getCanonicalName());
+    private static final String SUPPRESS_UNUSED = com.sim.chatserver.util.CommonLiteralConstants.SUPPRESS_UNUSED;
+    private static final String STATUS_QUEUED = "Queued";
+    private static final String STATUS_CANCELLED = "Cancelled";
+    private static final String STATUS_FAILED = "Failed";
+    private static final String STATUS_COMPLETED = "Completed";
+    private static final String ERR_NULL_RESULT = "Job completed with null result.";
+    private static final String ERR_ASYNC_FAILED_DEFAULT = "Async job failed.";
+    private static final String ERR_CANCELLED_BY_USER = "Job cancelled by user.";
+    private static final String ERR_JOB_FAILED_DEFAULT = "Job failed.";
+    private static final String MSG_REDUCE_IN_PROGRESS = "Reduce synthesis in progress...";
+    private static final String MSG_MAP_ROUND_PREFIX = "Map round ";
+    private static final String MSG_MAP_BATCH_SEPARATOR = " - batch ";
+    private static final String MSG_MAP_RUNNING_SUFFIX = " running...";
+    private static final String MSG_MAP_COMPLETED_SUFFIX = " completed";
+    private static final String LOG_ASYNC_JOB_FAILED_PREFIX = "[review-job][";
+    private static final String LOG_ASYNC_JOB_FAILED_SUFFIX = "] async job failed";
+    private static final String LOG_CANCEL_FUTURE_FAILED = "Unable to cancel review job future cleanly";
+    private static final String MIME_APPLICATION_JSON = com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON;
+    private static final String EMPTY = "";
 
     @FunctionalInterface
     public interface JobTask {
@@ -44,12 +63,12 @@ public class ReviewJobService {
     private final Map<String, ReviewJobStatus> statuses = new ConcurrentHashMap<>();
     private final Map<String, Future<?>> futures = new ConcurrentHashMap<>();
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(SUPPRESS_UNUSED)
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
 
-    @SuppressWarnings("unused")
+    @SuppressWarnings(SUPPRESS_UNUSED)
     private final void writeObject(java.io.ObjectOutputStream out) throws java.io.IOException {
         throw new java.io.NotSerializableException(getClass().getCanonicalName());
     }
@@ -87,7 +106,7 @@ public class ReviewJobService {
                 .totalSelected(Math.max(0, totalSelected))
                 .startedAtEpochMs(now)
                 .updatedAtEpochMs(now)
-                .message("Queued")
+                .message(STATUS_QUEUED)
                 .allSelectedChatIds(List.of())
                 .usedChatIds(List.of())
                 .missingChatIds(List.of())
@@ -100,7 +119,7 @@ public class ReviewJobService {
         Future<?> f = CompletableFuture.supplyAsync(() -> task.run(jobId), executor)
                 .thenAccept(result -> {
                     if (result == null) {
-                        failJob(jobId, 500, "Job completed with null result.");
+                        failJob(jobId, 500, ERR_NULL_RESULT);
                         return;
                     }
                     completeJob(
@@ -125,8 +144,8 @@ public class ReviewJobService {
                 })
                 .exceptionally(ex -> {
                     Throwable cause = ex.getCause() == null ? ex : ex.getCause();
-                    log.log(Level.SEVERE, "[review-job][" + jobId + "] async job failed", cause);
-                    failJob(jobId, 500, cause.getMessage() == null ? "Async job failed." : cause.getMessage());
+                    log.log(Level.SEVERE, LOG_ASYNC_JOB_FAILED_PREFIX + jobId + LOG_ASYNC_JOB_FAILED_SUFFIX, cause);
+                    failJob(jobId, 500, cause.getMessage() == null ? ERR_ASYNC_FAILED_DEFAULT : cause.getMessage());
                     return null;
                 })
                 .whenComplete((unused, ex) -> futures.remove(jobId));
@@ -185,8 +204,8 @@ public class ReviewJobService {
                     .updatedAtEpochMs(now)
                     .finishedAtEpochMs(now)
                     .httpStatus(499)
-                    .message("Cancelled")
-                    .errorMessage("Job cancelled by user.")
+                    .message(STATUS_CANCELLED)
+                    .errorMessage(ERR_CANCELLED_BY_USER)
                     .failedBatchIndexes(old.getFailedBatchIndexes())
                     .warnings(old.getWarnings())
                     .finalReport(old.getFinalReport())
@@ -333,9 +352,9 @@ public class ReviewJobService {
             List<String> usedChatIds,
             List<String> missingChatIds
     ) {
-        String msg = "Map round " + round + '/' + Math.max(1, maxRounds)
-            + " ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· batch " + batchIndex + '/' + Math.max(1, totalBatches)
-                + " running...";
+        String msg = MSG_MAP_ROUND_PREFIX + round + '/' + Math.max(1, maxRounds)
+            + MSG_MAP_BATCH_SEPARATOR + batchIndex + '/' + Math.max(1, totalBatches)
+                + MSG_MAP_RUNNING_SUFFIX;
         updateMapProgress(
                 jobId,
                 totalBatches,
@@ -361,9 +380,9 @@ public class ReviewJobService {
             List<String> usedChatIds,
             List<String> missingChatIds
     ) {
-        String msg = "Map round " + round + '/' + Math.max(1, maxRounds)
-                + " ÃƒÆ’Ã¢â‚¬Å¡Ãƒâ€šÃ‚Â· batch " + batchIndex + '/' + Math.max(1, totalBatches)
-                + " completed";
+        String msg = MSG_MAP_ROUND_PREFIX + round + '/' + Math.max(1, maxRounds)
+            + MSG_MAP_BATCH_SEPARATOR + batchIndex + '/' + Math.max(1, totalBatches)
+            + MSG_MAP_COMPLETED_SUFFIX;
         updateMapProgress(
                 jobId,
                 totalBatches,
@@ -397,7 +416,7 @@ public class ReviewJobService {
                 usedChatIds,
                 missingChatIds,
                 List.of(),
-                "Reduce synthesis in progress..."
+                MSG_REDUCE_IN_PROGRESS
         );
     }
 
@@ -436,8 +455,8 @@ public class ReviewJobService {
                 .updatedAtEpochMs(now)
                 .finishedAtEpochMs(now)
                 .httpStatus(httpStatus)
-                .message("Failed")
-                .errorMessage(errorMessage == null ? "Job failed." : errorMessage)
+                .message(STATUS_FAILED)
+                .errorMessage(errorMessage == null ? ERR_JOB_FAILED_DEFAULT : errorMessage)
                 .failedBatchIndexes(old.getFailedBatchIndexes())
                 .warnings(old.getWarnings())
                 .finalReport(old.getFinalReport())
@@ -543,13 +562,13 @@ public class ReviewJobService {
                 .updatedAtEpochMs(now)
                 .finishedAtEpochMs(now)
                 .httpStatus(httpStatus)
-                .message(message == null ? (finalSuccess ? "Completed" : "Failed") : message)
-                .errorMessage(errorMessage == null ? "" : errorMessage)
+                .message(message == null ? (finalSuccess ? STATUS_COMPLETED : STATUS_FAILED) : message)
+                .errorMessage(errorMessage == null ? EMPTY : errorMessage)
                 .failedBatchIndexes(failedBatchIndexes == null ? List.of() : failedBatchIndexes)
                 .warnings(warnings == null ? List.of() : warnings)
-                .finalReport(finalReport == null ? "" : finalReport)
-                .rawResponseBody(rawResponseBody == null ? "" : rawResponseBody)
-                .contentType(contentType == null || contentType.isBlank() ? "application/json" : contentType)
+                .finalReport(finalReport == null ? EMPTY : finalReport)
+                .rawResponseBody(rawResponseBody == null ? EMPTY : rawResponseBody)
+                .contentType(contentType == null || contentType.isBlank() ? MIME_APPLICATION_JSON : contentType)
                 .build();
 
         statuses.put(jobId, completed);
@@ -586,7 +605,7 @@ public class ReviewJobService {
             try {
                 f.cancel(true);
             } catch (IllegalStateException ex) {
-                log.log(Level.FINE, "Unable to cancel review job future cleanly", ex);
+                log.log(Level.FINE, LOG_CANCEL_FUTURE_FAILED, ex);
             }
         }
         futures.clear();
@@ -650,7 +669,7 @@ public class ReviewJobService {
                 .finishedAtEpochMs(0)
                 .httpStatus(0)
                 .message(message == null ? phase.name() : message)
-                .errorMessage("")
+                .errorMessage(EMPTY)
                 .failedBatchIndexes(failedBatchIndexes == null ? List.of() : failedBatchIndexes)
                 .warnings(warnings == null ? old.getWarnings() : warnings)
                 .finalReport(old.getFinalReport())
@@ -717,139 +736,6 @@ public class ReviewJobService {
         return Math.max(0, Math.min(100, p));
     }
 
-    public static final class JobResult {
-
-        private final int httpStatus;
-        private final boolean success;
-        private final String message;
-        private final String errorMessage;
-
-        private final int totalBatches;
-        private final int completedBatches;
-        private final int failedBatches;
-        private final int retries;
-
-        private final List<String> allSelectedChatIds;
-        private final List<String> usedChatIds;
-        private final List<String> missingChatIds;
-
-        private final List<Integer> failedBatchIndexes;
-        private final List<String> warnings;
-
-        private final String finalReport;
-        private final String rawResponseBody;
-        private final String contentType;
-
-        public JobResult(
-                int httpStatus,
-                boolean success,
-                String message,
-                String errorMessage,
-                int totalBatches,
-                int completedBatches,
-                int failedBatches,
-                int retries,
-                List<String> allSelectedChatIds,
-                List<String> usedChatIds,
-                List<String> missingChatIds,
-                List<Integer> failedBatchIndexes,
-                List<String> warnings,
-                String finalReport,
-                String rawResponseBody,
-                String contentType
-        ) {
-            this.httpStatus = httpStatus;
-            this.success = success;
-            this.message = message == null ? "" : message;
-            this.errorMessage = errorMessage == null ? "" : errorMessage;
-
-            this.totalBatches = Math.max(0, totalBatches);
-            this.completedBatches = Math.max(0, completedBatches);
-            this.failedBatches = Math.max(0, failedBatches);
-            this.retries = Math.max(0, retries);
-
-            this.allSelectedChatIds = allSelectedChatIds == null ? List.of() : List.copyOf(allSelectedChatIds);
-            this.usedChatIds = usedChatIds == null ? List.of() : List.copyOf(usedChatIds);
-            this.missingChatIds = missingChatIds == null ? List.of() : List.copyOf(missingChatIds);
-
-            this.failedBatchIndexes = failedBatchIndexes == null ? List.of() : List.copyOf(failedBatchIndexes);
-            this.warnings = warnings == null ? List.of() : List.copyOf(warnings);
-
-            this.finalReport = finalReport == null ? "" : finalReport;
-            this.rawResponseBody = rawResponseBody == null ? "" : rawResponseBody;
-            this.contentType = contentType == null || contentType.isBlank() ? "application/json" : contentType;
-        }
-
-        private int httpStatus() {
-            return httpStatus;
-        }
-
-        private boolean success() {
-            return success;
-        }
-
-        private String message() {
-            return message;
-        }
-
-        private String errorMessage() {
-            return errorMessage;
-        }
-
-        private int totalBatches() {
-            return totalBatches;
-        }
-
-        private int completedBatches() {
-            return completedBatches;
-        }
-
-        private int failedBatches() {
-            return failedBatches;
-        }
-
-        private int retries() {
-            return retries;
-        }
-
-        int coveragePercent() {
-            return 0;
-        } // compatibility
-
-        boolean coverageComplete() {
-            return missingChatIds.isEmpty();
-        }
-
-        private List<String> allSelectedChatIds() {
-            return allSelectedChatIds;
-        }
-
-        private List<String> usedChatIds() {
-            return usedChatIds;
-        }
-
-        private List<String> missingChatIds() {
-            return missingChatIds;
-        }
-
-        private List<Integer> failedBatchIndexes() {
-            return failedBatchIndexes;
-        }
-
-        private List<String> warnings() {
-            return warnings;
-        }
-
-        private String finalReport() {
-            return finalReport;
-        }
-
-        private String rawResponseBody() {
-            return rawResponseBody;
-        }
-
-        private String contentType() {
-            return contentType;
-        }
-    }
 }
+
+

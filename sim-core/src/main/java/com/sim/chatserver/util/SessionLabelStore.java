@@ -26,6 +26,17 @@ public final class SessionLabelStore {
             ALTER TABLE session_labels
             ADD COLUMN IF NOT EXISTS contact_email VARCHAR(256)
             """;
+    private static final String MSG_ENSURE_TABLE_FAILED = "Unable to ensure session_labels table exists";
+    private static final String MSG_SESSION_ID_REQUIRED = "sessionId is required.";
+    private static final String EMPTY = "";
+    private static final String SQL_PLACEHOLDER = "?";
+    private static final String SQL_JOIN_DELIMITER = ",";
+    private static final String SQL_SELECT_SESSION_LABELS_PREFIX = "SELECT session_id, display_name, contact_email FROM session_labels WHERE session_id IN (";
+    private static final String COL_SESSION_ID = com.sim.chatserver.util.SqlLiteralConstants.COL_SESSION_ID;
+    private static final String COL_DISPLAY_NAME = "display_name";
+    private static final String COL_CONTACT_EMAIL = "contact_email";
+    private static final String OWASP_LOGGER = com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP;
+    private static final String HANDLED_EXCEPTION = com.sim.chatserver.util.CommonLiteralConstants.LOG_HANDLED_EXCEPTION;
 
     private SessionLabelStore() {
         // utility class
@@ -42,17 +53,17 @@ public final class SessionLabelStore {
             create.executeUpdate();
             addContact.executeUpdate();
         } catch (SQLException e) {
-            throw new IllegalStateException("Unable to ensure session_labels table exists", e);
+            throw new IllegalStateException(MSG_ENSURE_TABLE_FAILED, e);
         }
     }
 
     public static void saveLabel(String sessionId, String displayName, String email) throws SQLException {
         if (sessionId == null || sessionId.isBlank()) {
-            throw new IllegalArgumentException("sessionId is required.");
+            throw new IllegalArgumentException(MSG_SESSION_ID_REQUIRED);
         }
         String normalizedSessionId = sessionId.trim();
-        String normalizedDisplayName = displayName == null ? "" : displayName.trim();
-        String normalizedEmail = email == null ? "" : email.trim();
+        String normalizedDisplayName = displayName == null ? EMPTY : displayName.trim();
+        String normalizedEmail = email == null ? EMPTY : email.trim();
 
         try (Connection conn = Database.getConnection(); PreparedStatement ps = conn.prepareStatement("""
                      INSERT INTO session_labels (session_id, display_name, contact_email) VALUES (?, ?, ?)
@@ -73,8 +84,8 @@ public final class SessionLabelStore {
         if (sessionIds == null || sessionIds.isEmpty()) {
             return map;
         }
-        String placeholders = sessionIds.stream().map(id -> "?").collect(Collectors.joining(","));
-        String sql = "SELECT session_id, display_name, contact_email FROM session_labels WHERE session_id IN (" + placeholders + ')';
+        String placeholders = sessionIds.stream().map(id -> SQL_PLACEHOLDER).collect(Collectors.joining(SQL_JOIN_DELIMITER));
+        String sql = SQL_SELECT_SESSION_LABELS_PREFIX + placeholders + ')';
         try (Connection conn = Database.getConnection(); PreparedStatement ps = conn.prepareStatement(sql)) {
             int idx = 1;
             for (String sessionId : sessionIds) {
@@ -82,14 +93,14 @@ public final class SessionLabelStore {
             }
             try (ResultSet rs = ps.executeQuery()) {
                 while (rs.next()) {
-                    String id = readDbText(rs, "session_id", 256);
+                    String id = readDbText(rs, COL_SESSION_ID, 256);
                     if (id.isBlank()) {
                         continue;
                     }
                     map.put(id,
                             new SessionLabel(
-                                    readDbText(rs, "display_name", 256),
-                                    readDbText(rs, "contact_email", 256)));
+                                    readDbText(rs, COL_DISPLAY_NAME, 256),
+                                    readDbText(rs, COL_CONTACT_EMAIL, 256)));
                 }
             }
         }
@@ -98,11 +109,11 @@ public final class SessionLabelStore {
 
     private static String readDbText(ResultSet rs, String column, int maxChars) throws SQLException {
         if (rs == null || column == null || column.isBlank()) {
-            return "";
+            return EMPTY;
         }
         Object value = readRawDbObject(rs, column);
         if (value == null) {
-            return "";
+            return EMPTY;
         }
         if (value instanceof byte[] bytes) {
             return sanitizeDbText(new String(bytes, java.nio.charset.StandardCharsets.UTF_8), maxChars);
@@ -114,14 +125,14 @@ public final class SessionLabelStore {
         try {
             return rs.getObject(column);
         } catch (SQLException ex) {
-            java.util.logging.Logger.getLogger("OWASP").log(java.util.logging.Level.FINE, "Handled exception", ex);
+            java.util.logging.Logger.getLogger(OWASP_LOGGER).log(java.util.logging.Level.FINE, HANDLED_EXCEPTION, ex);
             return null;
         }
     }
 
     private static String sanitizeDbText(String value, int maxChars) {
         if (value == null) {
-            return "";
+            return EMPTY;
         }
         String trimmed = value.trim();
         if (maxChars <= 0 || trimmed.length() <= maxChars) {
@@ -132,7 +143,7 @@ public final class SessionLabelStore {
 
     public static String resolveDisplayLabel(String sessionId, SessionLabel label) {
         if (sessionId == null) {
-            return "";
+            return EMPTY;
         }
         if (label == null) {
             return sessionId;
@@ -147,23 +158,6 @@ public final class SessionLabelStore {
         }
         return sessionId;
     }
-
-    public static final class SessionLabel {
-
-        private final String displayName;
-        private final String email;
-
-        private SessionLabel(String displayName, String email) {
-            this.displayName = displayName == null ? "" : displayName;
-            this.email = email == null ? "" : email;
-        }
-
-        public String getDisplayName() {
-            return displayName;
-        }
-
-        public String getEmail() {
-            return email;
-        }
-    }
 }
+
+

@@ -23,7 +23,9 @@ import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
-
+
+import java.io.ObjectInputStream;
+import java.io.InvalidObjectException;
 /**
  * Polling endpoint for async review job progress.
  *
@@ -120,7 +122,7 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
         boolean running = !status.isDone();
 
         JsonObjectBuilder coverage = Json.createObjectBuilder()
-                .add("totalSelected", total)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_TOTAL_SELECTED, total)
                 .add("usedCount", used)
                 .add("missingCount", missing)
                 .add("coveragePercentDerived", percent)
@@ -128,59 +130,59 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
                 .add("coverageCompleteDerived", coverageComplete)
                 .add("coverageCompleteReported", status.isCoverageComplete())
                 .add("coverageMetadataMismatch", metadataMismatch)
-                .add("allSelectedChatIds", toJsonArray(allIds))
-                .add("usedChatIds", toJsonArray(usedIds))
-                .add("missingChatIds", toJsonArray(missingIds));
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_ALL_SELECTED_CHAT_IDS, toJsonArray(allIds))
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_USED_CHAT_IDS, toJsonArray(usedIds))
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MISSING_CHAT_IDS, toJsonArray(missingIds));
 
         JsonObjectBuilder progress = Json.createObjectBuilder()
                 .add("phase", phase)
-                .add("running", running)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.STATUS_RUNNING, running)
                 .add("done", status.isDone())
-                .add("success", status.isSuccess())
-                .add("message", safe(status.getMessage()))
-                .add("activity", activity)
-                .add("totalBatches", totalBatches)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_SUCCESS, status.isSuccess())
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, safe(status.getMessage()))
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_ACTIVITY, activity)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_TOTAL_BATCHES, totalBatches)
                 .add("completedBatches", completedBatches)
                 .add("failedBatches", failedBatches)
                 .add("batchProgressPercent", batchPercent)
                 .add("retries", retries)
-                .add("failedBatchIndexes", toJsonIntArray(status.getFailedBatchIndexes()))
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_FAILED_BATCH_INDEXES, toJsonIntArray(status.getFailedBatchIndexes()))
                 .add("warnings", toJsonArray(warnings))
                 .add("startedAtEpochMs", Math.max(0L, status.getStartedAtEpochMs()))
                 .add("updatedAtEpochMs", Math.max(0L, status.getUpdatedAtEpochMs()))
                 .add("finishedAtEpochMs", Math.max(0L, status.getFinishedAtEpochMs()));
 
         JsonObjectBuilder job = Json.createObjectBuilder(status.toJson())
-                .add("allSelectedChatIds", toJsonArray(allIds))
-                .add("usedChatIds", toJsonArray(usedIds))
-                .add("missingChatIds", toJsonArray(missingIds))
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_ALL_SELECTED_CHAT_IDS, toJsonArray(allIds))
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_USED_CHAT_IDS, toJsonArray(usedIds))
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MISSING_CHAT_IDS, toJsonArray(missingIds))
                 .add("coveragePercent", percent)
-                .add("coverageComplete", coverageComplete)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_COVERAGE_COMPLETE, coverageComplete)
                 .add("warnings", toJsonArray(warnings))
                 // mirror UX keys directly under job for backward/forward compatibility
-                .add("activity", activity)
-                .add("running", running)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_ACTIVITY, activity)
+                .add(com.sim.chatserver.util.CommonLiteralConstants.STATUS_RUNNING, running)
                 .add("batchProgressPercent", batchPercent);
 
             ServletJsonResponseUtil.writeJson(
                 resp,
                 HttpServletResponse.SC_OK,
                 Json.createObjectBuilder()
-                    .add("status", "ok")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
                     .add("job", job)
                     .add("progress", progress)
                     .add("coverage", coverage)
                     .build());
     
         } catch (IOException | IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
-            java.util.logging.Logger.getLogger("OWASP")
-                    .log(java.util.logging.Level.WARNING, "Unhandled exception in doGet", e);
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                    .log(java.util.logging.Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -211,20 +213,20 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
             resp,
             HttpServletResponse.SC_OK,
             Json.createObjectBuilder()
-                .add("status", "ok")
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
                 .add("cancelled", cancelled)
                 .add("job", updated == null ? Json.createObjectBuilder().build() : updated.toJson())
                 .build());
     
         } catch (IOException | IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
-            java.util.logging.Logger.getLogger("OWASP")
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doDelete", e);
             if (!resp.isCommitted()) {
                 try {
-                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "Request handling failed.");
+                    resp.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, com.sim.chatserver.util.CommonLiteralConstants.MSG_REQUEST_HANDLING_FAILED);
                 } catch (java.io.IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Failed sending fallback server error.", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_WITH_PERIOD, ioe);
                 }
             }
         }
@@ -236,8 +238,8 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
 
     private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) {
         HttpSession session = req.getSession(false);
-        if (session == null || session.getAttribute("user") == null) {
-            respondError(resp, HttpServletResponse.SC_UNAUTHORIZED, "Authentication required.");
+        if (session == null || session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) == null) {
+            respondError(resp, HttpServletResponse.SC_UNAUTHORIZED, com.sim.chatserver.util.CommonLiteralConstants.MSG_AUTHENTICATION_REQUIRED);
             return false;
         }
         return true;
@@ -247,14 +249,14 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
         try {
             ServletJsonResponseUtil.writeError(resp, status, safe(message));
         } catch (IOException e) {
-            java.util.logging.Logger.getLogger("OWASP")
+            java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
                     .log(java.util.logging.Level.WARNING, "Unable to write job-status error response", e);
             if (!resp.isCommitted()) {
                 try {
                     resp.sendError(status);
                 } catch (IOException ioe) {
-                    java.util.logging.Logger.getLogger("OWASP")
-                            .log(java.util.logging.Level.FINE, "Fallback sendError failed", ioe);
+                    java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
+                            .log(java.util.logging.Level.FINE, com.sim.chatserver.util.CommonLiteralConstants.MSG_FALLBACK_SEND_ERROR_FAILED, ioe);
                 }
             }
         }
@@ -400,6 +402,11 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
             return Integer.MAX_VALUE;
         }
         return Math.toIntExact(rounded);
+    }
+
+
+    private void readObject(ObjectInputStream in) throws IOException, ClassNotFoundException {
+        throw new InvalidObjectException(com.sim.chatserver.util.CommonLiteralConstants.MSG_DESERIALIZATION_NOT_ALLOWED);
     }
 
 }
