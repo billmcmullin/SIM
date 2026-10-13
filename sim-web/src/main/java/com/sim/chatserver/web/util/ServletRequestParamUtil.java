@@ -70,11 +70,10 @@ public final class ServletRequestParamUtil {
             return null;
         }
 
-        String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC)
-            .replace(NULL_CHAR, EMPTY)
-                .replace("\r", EMPTY)
-                .replace("\n", EMPTY)
-                .trim();
+        String normalized = com.sim.chatserver.util.LineSeparatorUtil.stripCrLf(
+            Normalizer.normalize(value, Normalizer.Form.NFKC)
+                .replace(NULL_CHAR, EMPTY))
+            .trim();
 
         if (nullIfEmpty && normalized.isEmpty()) {
             return null;
@@ -171,7 +170,7 @@ public final class ServletRequestParamUtil {
         if (stripNullByte) {
             normalized = normalized.replace(NULL_CHAR, EMPTY);
         }
-        normalized = normalized.replace("\r", EMPTY).replace("\n", EMPTY).trim();
+        normalized = com.sim.chatserver.util.LineSeparatorUtil.stripCrLf(normalized).trim();
 
         if (nullIfEmpty && normalized.isEmpty()) {
             return null;
@@ -203,9 +202,11 @@ public final class ServletRequestParamUtil {
         String[] sanitized = new String[values.length];
         for (int i = 0; i < values.length; i++) {
             String value = values[i];
-            sanitized[i] = value == null
+                sanitized[i] = value == null
                     ? null
-                    : value.replace('\u0000', ' ').replace('\r', ' ').replace('\n', ' ');
+                    : com.sim.chatserver.util.LineSeparatorUtil.replaceCrLf(
+                        value.replace('\u0000', ' '),
+                        ' ');
         }
         return sanitized;
     }

@@ -1109,7 +1109,8 @@ final class DatabaseImportService {
         if (value == null || value.isBlank()) {
             return EMPTY;
         }
-        String normalized = value.replace(VALUE_NUL, SPACE).replace("\r", EMPTY).replace("\n", EMPTY).trim();
+        String normalized = com.sim.chatserver.util.LineSeparatorUtil.stripCrLf(
+            value.replace(VALUE_NUL, SPACE)).trim();
         normalized = Normalizer.normalize(normalized, Normalizer.Form.NFKC);
         String bounded = normalized.length() > 512 ? TextIoSanitizerUtil.safeSlice(normalized, 0, 512) : normalized;
         return sanitizeSyncUrlValue(bounded);
@@ -1130,9 +1131,8 @@ final class DatabaseImportService {
         if (value == null) {
             return EMPTY;
         }
-        return value.replace(VALUE_NUL, EMPTY)
-                .replace("\r", EMPTY)
-                .replace("\n", EMPTY);
+        return com.sim.chatserver.util.LineSeparatorUtil.stripCrLf(
+            value.replace(VALUE_NUL, EMPTY));
     }
 
     private String readMetadataIdentifier(ResultSet rs, String columnName) {

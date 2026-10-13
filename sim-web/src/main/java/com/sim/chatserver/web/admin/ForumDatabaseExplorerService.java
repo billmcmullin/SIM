@@ -486,6 +486,7 @@ final class ForumDatabaseExplorerService {
         try {
             port = parseIntWithBounds(portRaw, 1, 65535, TOKEN_PORT);
         } catch (IllegalArgumentException ex) {
+            LOG.log(Level.FINE, "Invalid port parameter in forum explorer request", ex);
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, ex.getMessage());
             return;
         }
@@ -545,6 +546,7 @@ final class ForumDatabaseExplorerService {
             JsonObject payload = payloadBuilder.build();
             writeJson(resp, HttpServletResponse.SC_OK, payload);
         } catch (IllegalArgumentException ex) {
+            LOG.log(Level.FINE, "Invalid forum explorer request parameters", ex);
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, safeErrorMessage(ex));
         } catch (ForumExplorerDataAccessException ex) {
             LOG.log(Level.WARNING, LOG_FORUM_QUERY_FAILED, ex);
@@ -612,6 +614,7 @@ final class ForumDatabaseExplorerService {
             try {
                 port = Integer.valueOf(parseIntWithBounds(portRaw, 1, 65535, TOKEN_PORT));
             } catch (IllegalArgumentException ex) {
+                LOG.log(Level.FINE, "Invalid forum explorer config port", ex);
                 writeError(resp, HttpServletResponse.SC_BAD_REQUEST, ex.getMessage());
                 return;
             }
@@ -767,7 +770,7 @@ final class ForumDatabaseExplorerService {
             if (config.port == null) {
                 ps.setNull(3, Types.INTEGER);
             } else {
-                ps.setInt(3, config.port.intValue());
+                ps.setObject(3, config.port, Types.INTEGER);
             }
             ps.setString(4, config.database);
             ps.setString(5, config.username);
@@ -805,7 +808,7 @@ final class ForumDatabaseExplorerService {
 
         payload.add(KEY_DB_TYPE, config.dbType == null ? DEFAULT_DB_TYPE : config.dbType)
             .add(TOKEN_HOST, config.host == null ? EMPTY : config.host)
-            .add(TOKEN_PORT, config.port == null ? EMPTY : String.valueOf(config.port.intValue()))
+            .add(TOKEN_PORT, config.port == null ? EMPTY : config.port.toString())
             .add(TOKEN_DATABASE, config.database == null ? EMPTY : config.database)
             .add(TOKEN_USERNAME, config.username == null ? EMPTY : config.username)
                 .add(KEY_PASSWORD_STORED, config.passwordEnc != null && !config.passwordEnc.isBlank())
@@ -1952,7 +1955,7 @@ final class ForumDatabaseExplorerService {
                     }
                     int score = scoreTableCandidate(tableName, probes);
                     if (score > 0) {
-                        candidates.put(tableName, score);
+                        candidates.put(tableName, Integer.valueOf(score));
                     }
                 }
             }

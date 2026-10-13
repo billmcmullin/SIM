@@ -25,7 +25,7 @@ public final class OrchestrationResult {
     private final boolean coverageComplete;
     private final int coveragePassesUsed;
 
-    OrchestrationResult(
+    private OrchestrationResult(
             WorkspaceResponse finalResponse,
             List<String> mapOutputs,
             List<Integer> failedBatchIndexes,
@@ -39,7 +39,7 @@ public final class OrchestrationResult {
                 totalSelected, totalBatches, List.of(), List.of(), List.of(), false, 0);
     }
 
-    OrchestrationResult(
+    private OrchestrationResult(
             WorkspaceResponse finalResponse,
             List<String> mapOutputs,
             List<Integer> failedBatchIndexes,
@@ -68,6 +68,28 @@ public final class OrchestrationResult {
         this.missingChatIds = missingChatIds == null ? List.of() : List.copyOf(missingChatIds);
         this.coverageComplete = coverageComplete;
         this.coveragePassesUsed = Math.max(0, coveragePassesUsed);
+    }
+
+    static OrchestrationResult create(
+            WorkspaceResponse finalResponse,
+            List<String> mapOutputs,
+            List<Integer> failedBatchIndexes,
+            List<MapBatchResult> mapBatchResults,
+            ReduceRequest reduceRequest,
+            ReduceResult reduceResult,
+            int totalSelected,
+            int totalBatches
+    ) {
+        return new OrchestrationResult(
+                finalResponse,
+                mapOutputs,
+                failedBatchIndexes,
+                mapBatchResults,
+                reduceRequest,
+                reduceResult,
+                totalSelected,
+                totalBatches
+        );
     }
 
     final OrchestrationResult withBatchFailures(List<BatchFailure> failures) {

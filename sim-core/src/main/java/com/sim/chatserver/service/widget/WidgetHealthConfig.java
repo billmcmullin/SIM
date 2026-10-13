@@ -29,7 +29,7 @@ public class WidgetHealthConfig {
         return id;
     }
 
-    void setId(int id) {
+    final void setId(int id) {
         this.id = id;
     }
 

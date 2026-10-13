@@ -90,12 +90,12 @@ public final class DashboardDbUtil {
 
         Boolean cachedExists = requestCache.get(tableName);
         if (cachedExists != null) {
-            return cachedExists.booleanValue();
+            return Boolean.TRUE.equals(cachedExists);
         }
 
         boolean exists = tableExists(conn, tableName);
 
-        requestCache.put(tableName, Boolean.valueOf(exists));
+        requestCache.put(tableName, exists ? Boolean.TRUE : Boolean.FALSE);
         return exists;
     }
 

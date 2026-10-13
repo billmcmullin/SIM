@@ -428,7 +428,7 @@ public class WidgetReviewMapReduceOrchestrator {
 
             listener.onCompleted(requestId, false, 0, 0, 0);
 
-            return new OrchestrationResult(empty, List.of(), List.of(), List.of(), null, rr, 0, 0)
+                return OrchestrationResult.create(empty, List.of(), List.of(), List.of(), null, rr, 0, 0)
                     .withCoverage(List.of(), List.of(), false, 0);
         }
 
@@ -641,7 +641,7 @@ public class WidgetReviewMapReduceOrchestrator {
             listener.onReduceCompleted(requestId, false, 403, missingIds.size());
             listener.onCompleted(requestId, false, usedIds.size(), missingIds.size(), totalBatches);
 
-            return new OrchestrationResult(
+            return OrchestrationResult.create(
                 authFailureResponse,
                 mapOutputs,
                 failedDistinct,
@@ -672,7 +672,7 @@ public class WidgetReviewMapReduceOrchestrator {
 
         listener.onCompleted(requestId, coverageComplete, usedIds.size(), missingIds.size(), totalBatches);
 
-        return new OrchestrationResult(
+        return OrchestrationResult.create(
                 reduceExecution.response, mapOutputs, failedDistinct, allMapBatchResults,
                 reduceExecution.reduceRequest, reduceExecution.reduceResult, totalSelected, totalBatches
         ).withBatchFailures(allBatchFailures)
