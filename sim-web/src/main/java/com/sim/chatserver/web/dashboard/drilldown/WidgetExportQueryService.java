@@ -7,6 +7,7 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.text.Normalizer;
 import java.time.DateTimeException;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -20,7 +21,6 @@ import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermChatSnapshot;
 import com.sim.chatserver.util.DashboardDbUtil;
 import com.sim.chatserver.web.dashboard.sessions.DashboardSessionDataUtil;
-import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 final class WidgetExportQueryService {
 
@@ -44,6 +44,7 @@ final class WidgetExportQueryService {
     private static final String MSG_TYPED_DB_TEXT_READ_FAILED_PREFIX = "Typed DB text read failed for column ";
     private static final String MSG_TYPED_DB_TIMESTAMP_READ_FAILED_PREFIX = "Typed DB timestamp read failed for column ";
     private static final String MSG_SQL_TIMESTAMP_PARSE_FALLBACK = "Falling back to SQL timestamp parsing";
+    private static final String NUL = "\u0000";
 
     private final AppDataSourceHolder dataSourceHolder;
     private final Logger log;
@@ -160,7 +161,17 @@ final class WidgetExportQueryService {
                 }
                 value.append(buffer, 0, read);
             }
-            return ServletRequestParamUtil.normalizeBodyText(value.toString(), maxLen, true);
+            String normalized = Normalizer.normalize(value.toString(), Normalizer.Form.NFKC)
+                    .replace(NUL, EMPTY)
+                    .replace("\r", EMPTY)
+                    .trim();
+            if (normalized.isEmpty()) {
+                return EMPTY;
+            }
+            if (maxLen > 0 && normalized.length() > maxLen) {
+                return new String(normalized.toCharArray(), 0, maxLen);
+            }
+            return normalized;
         } catch (SQLException | IOException ex) {
             log.log(Level.FINE, MSG_TYPED_DB_TEXT_READ_FAILED_PREFIX + columnName, ex);
             return EMPTY;

@@ -1109,7 +1109,7 @@ final class DatabaseImportService {
         if (value == null || value.isBlank()) {
             return EMPTY;
         }
-        String normalized = value.replace(VALUE_NUL, SPACE).replace(System.lineSeparator(), EMPTY).replace(System.lineSeparator(), EMPTY).trim();
+        String normalized = value.replace(VALUE_NUL, SPACE).replace("\r", EMPTY).replace("\n", EMPTY).trim();
         normalized = Normalizer.normalize(normalized, Normalizer.Form.NFKC);
         String bounded = normalized.length() > 512 ? TextIoSanitizerUtil.safeSlice(normalized, 0, 512) : normalized;
         return sanitizeSyncUrlValue(bounded);
@@ -1131,8 +1131,8 @@ final class DatabaseImportService {
             return EMPTY;
         }
         return value.replace(VALUE_NUL, EMPTY)
-                .replace(System.lineSeparator(), EMPTY)
-                .replace(System.lineSeparator(), EMPTY);
+                .replace("\r", EMPTY)
+                .replace("\n", EMPTY);
     }
 
     private String readMetadataIdentifier(ResultSet rs, String columnName) {

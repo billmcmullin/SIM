@@ -117,6 +117,7 @@ pipeline {
                                 -Dproperty.report.coverage.images="${JOB_NAME}-ALL;${JOB_NAME}-UT;${JOB_NAME}-FT;${JOB_NAME}-MT;${JOB_NAME}-Play" \
                                 -Dmaven.test.failure.ignore=true \
                                 -Dmaven.test.error.ignore=true \
+                                -Ddependency-check.skip=true \
                                 -DautoUpdate=false \
                                 -s /home/jenkins/agent/conf/settings.xml
                         '''
@@ -226,7 +227,7 @@ pipeline {
                         fi
                         
                         if grep -q 'dtp\\.coverageImages=' "${AGENT_FILE}"; then
-                            sed -i "s/^dtp\\.coverageImages=.*/dtp.coverageImages=${JOB_NAME}-ALL;${JOB_NAME}-Play;${JOB_NAME}-FT/" "${AGENT_FILE}"
+                            sed -i "s/^dtp\\.coverageImages=.*/dtp.coverageImages=${JOB_NAME}-ALL;${JOB_NAME}-Play/" "${AGENT_FILE}"
                         else
                             echo "dtp.coverageImages=${JOB_NAME}-ALL;${JOB_NAME}-Play;${JOB_NAME}-FT" >> "${AGENT_FILE}"
                         fi
@@ -266,6 +267,17 @@ pipeline {
                             -Dsoatest.publish=${PUBLISH} \
                             -Dsoatest.report="${WORKSPACE}/report/soatest" \
                             -Dsoatest.environment="${SOA_ENV}"
+
+                        if grep -q 'dtp\\.coverageImages=' "${AGENT_FILE}"; then
+                            sed -i "s/^dtp\\.coverageImages=.*/dtp.coverageImages=${JOB_NAME}-ALL;${JOB_NAME}-FT/" "${AGENT_FILE}"
+                        else
+                            echo "dtp.coverageImages=${JOB_NAME}-ALL;${JOB_NAME}-Play;${JOB_NAME}-FT" >> "${AGENT_FILE}"
+                        fi
+
+                        docker compose -f "${WORKSPACE}/resources/${DOCKER_COMPOSE_FILE}" restart
+                        docker compose -f "${WORKSPACE}/resources/${DOCKER_COMPOSE_FILE}" ps
+                        
+                        sleep 10
                             
                     '''
                 }
@@ -319,17 +331,18 @@ pipeline {
                             set -e
                             mkdir -p "$DC_DATA_DIR"
 
-                            ./mvnw org.owasp:dependency-check-maven:12.2.2:aggregate \
+                            ./mvnw org.owasp:dependency-check-maven:13.0.0:aggregate \
                                 -DnvdApiKey="$NVD_API_KEY" \
                                 -DdataDirectory="$DC_DATA_DIR" \
                                 -DskipTests=true \
+                                -Ddependency-check.skip=false \
                                 -DnodeAnalyzerEnabled=false \
                                 -DnodeAuditAnalyzerEnabled=false \
-                                -DretireJsAnalyzerEnabled=fals \
+                                -DretireJsAnalyzerEnabled=false \
                                 -DassemblyAnalyzerEnabled=false \
                                 -DnugetconfAnalyzerEnabled=false \
                                 -DnuspecAnalyzerEnabled=false \
-                                -DmsbuildAnalyzerEnabled=fals \
+                                -DmsbuildAnalyzerEnabled=false \
                                 -fn
 
                             $DEPENDENCY_CHECK/dependencycheck.sh \

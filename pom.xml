@@ -72,6 +72,7 @@
         <jakarta.mail.version>2.2.0-M1</jakarta.mail.version>
         <angus.mail.version>2.1.0-M1</angus.mail.version>
         <greenmail.version>2.1.13</greenmail.version>
+        <aws.sdk.version>2.55.15</aws.sdk.version>
     
     </properties>
 

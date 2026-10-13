@@ -262,7 +262,7 @@ public class DashboardNewUsersDrilldownServlet extends HttpServlet {
         if (value == null) {
             return "";
         }
-        String normalized = value.replace(System.lineSeparator().charAt(0), '_').replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), '_');
+        String normalized = value.replace('\r', '_').replace('\n', '_');
         return normalized.length() > 120 ? new String(normalized.toCharArray(), 0, 120) : normalized;
     }
 

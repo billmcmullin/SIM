@@ -19,7 +19,7 @@
         return document.getElementById(id);
     }
 
-    function value(id) {
+    function fieldValue(id) {
         const el = byId(id);
         return el ? String(el.value || '').trim() : '';
     }
@@ -108,12 +108,12 @@
         },
 
         validateInputs() {
-            const dbType = value('forumDbType');
-            const host = value('forumDbHost');
-            const port = value('forumDbPort');
-            const database = value('forumDbName');
-            const username = value('forumDbUser');
-            const password = value('forumDbPassword');
+            const dbType = fieldValue('forumDbType');
+            const host = fieldValue('forumDbHost');
+            const port = fieldValue('forumDbPort');
+            const database = fieldValue('forumDbName');
+            const username = fieldValue('forumDbUser');
+            const password = fieldValue('forumDbPassword');
 
             if (!dbType || !host || !port || !database || !username || !password) {
                 return 'All connection fields are required.';
@@ -130,20 +130,20 @@
         buildParams(action) {
             const params = new URLSearchParams();
             params.set('action', action);
-            params.set('dbType', value('forumDbType'));
-            params.set('host', value('forumDbHost'));
-            params.set('port', value('forumDbPort'));
-            params.set('database', value('forumDbName'));
-            params.set('username', value('forumDbUser'));
-            params.set('password', value('forumDbPassword'));
+            params.set('dbType', fieldValue('forumDbType'));
+            params.set('host', fieldValue('forumDbHost'));
+            params.set('port', fieldValue('forumDbPort'));
+            params.set('database', fieldValue('forumDbName'));
+            params.set('username', fieldValue('forumDbUser'));
+            params.set('password', fieldValue('forumDbPassword'));
             return params;
         },
 
         buildSaveConfigParams() {
             const params = this.buildParams('saveConfig');
             params.set('readableOnly', 'true');
-            params.set('shareTo', value('forumDbOverlayShareTo'));
-            params.set('shareSubject', value('forumDbOverlayShareSubject'));
+            params.set('shareTo', fieldValue('forumDbOverlayShareTo'));
+            params.set('shareSubject', fieldValue('forumDbOverlayShareSubject'));
             return params;
         },
 
@@ -372,7 +372,7 @@
                 this.loadedColumns = Array.isArray(payload.columns) ? payload.columns : [];
                 this.loadedRows = Array.isArray(loaded.rows) ? loaded.rows : [];
                 this.loadedTable = String(payload.table || '');
-                this.loadedEntity = String(payload.entity || value('forumDbEntity') || 'messages');
+                this.loadedEntity = String(payload.entity || fieldValue('forumDbEntity') || 'messages');
                 this.loadedHints = this.readHints(payload);
 
                 this.applyClientFilter();
@@ -391,7 +391,7 @@
         },
 
         async fetchAllRows() {
-            const selectedEntity = value('forumDbEntity') || 'messages';
+            const selectedEntity = fieldValue('forumDbEntity') || 'messages';
             let offset = 0;
             let totalHint = null;
             let firstPayload = null;
@@ -517,7 +517,7 @@
 
         renderHumanMessageView(rows) {
             const extracted = this.extractHumanMessages(rows);
-            const search = value('forumDbHumanSearch').toLowerCase();
+            const search = fieldValue('forumDbHumanSearch').toLowerCase();
             const confirmedOnly = byId('forumDbConfirmedOnly')?.checked === true;
             const filtered = extracted.filter((entry) => {
                 if (confirmedOnly && !entry.isConfirmed) {
@@ -2074,7 +2074,7 @@
             if (value.length <= maxLen) {
                 return value;
             }
-            return value.slice(0, maxLen) + '...';
+            return `${value.slice(0, maxLen)}...`;
         },
 
         onHumanRowClick(event) {
@@ -2194,17 +2194,17 @@
                 return;
             }
 
-            box.innerHTML = ''
-                + `<div class="forum-human-detail-meta"><strong>Conversation/Session:</strong> ${escapeHtml(entry.conversationId || '(none)')}</div>`
-                + `<div class="forum-human-detail-meta"><strong>Subject:</strong> ${escapeHtml(entry.subject || '(none)')}</div>`
-                + `<div class="forum-human-detail-meta"><strong>User:</strong> ${escapeHtml(entry.actor || '(unknown)')}</div>`
-                + `<div class="forum-human-detail-meta"><strong>Created:</strong> ${escapeHtml(entry.createdAt || '(unknown)')}</div>`
-                + `<div class="forum-human-detail-meta"><strong>Confirmed:</strong> ${escapeHtml(entry.isConfirmed ? 'Yes' : 'No')}</div>`
-                + `<div class="forum-human-detail-meta"><strong>Q&A Status:</strong> ${escapeHtml(entry.qnaStatus || '(none)')}</div>`
-                + `<div class="forum-human-detail-meta"><strong>Status Name:</strong> ${escapeHtml(entry.statusName || '(none)')}</div>`
-                + `<div class="forum-human-detail-meta"><strong>Tags:</strong> ${escapeHtml(entry.tagNames || '(none)')}</div>`
-                + `<div class="forum-human-detail-block"><strong>Human Message</strong><pre>${escapeHtml(entry.messageText || '')}</pre></div>`
-                + this.buildRelatedConversationChainHtml(entry);
+            box.innerHTML = `
+                <div class="forum-human-detail-meta"><strong>Conversation/Session:</strong> ${escapeHtml(entry.conversationId || '(none)')}</div>
+                <div class="forum-human-detail-meta"><strong>Subject:</strong> ${escapeHtml(entry.subject || '(none)')}</div>
+                <div class="forum-human-detail-meta"><strong>User:</strong> ${escapeHtml(entry.actor || '(unknown)')}</div>
+                <div class="forum-human-detail-meta"><strong>Created:</strong> ${escapeHtml(entry.createdAt || '(unknown)')}</div>
+                <div class="forum-human-detail-meta"><strong>Confirmed:</strong> ${escapeHtml(entry.isConfirmed ? 'Yes' : 'No')}</div>
+                <div class="forum-human-detail-meta"><strong>Q&A Status:</strong> ${escapeHtml(entry.qnaStatus || '(none)')}</div>
+                <div class="forum-human-detail-meta"><strong>Status Name:</strong> ${escapeHtml(entry.statusName || '(none)')}</div>
+                <div class="forum-human-detail-meta"><strong>Tags:</strong> ${escapeHtml(entry.tagNames || '(none)')}</div>
+                <div class="forum-human-detail-block"><strong>Human Message</strong><pre>${escapeHtml(entry.messageText || '')}</pre></div>
+            ${this.buildRelatedConversationChainHtml()}`;
         },
 
         resolveConfirmedColumn(columnMap) {
@@ -2244,13 +2244,13 @@
                 || hasConfirmedSignal(tagNames);
         },
 
-        buildRelatedConversationChainHtml(entry) {
+        buildRelatedConversationChainHtml() {
             if (this.repliesLoading) {
                 return '<div class="forum-human-detail-block"><strong>Replies</strong><div class="small-note">Loading replies...</div></div>';
             }
 
             if (this.repliesError) {
-                return '<div class="forum-human-detail-block"><strong>Replies</strong><div class="small-note">Unable to load replies: ' + escapeHtml(this.repliesError) + '</div></div>';
+                return `<div class="forum-human-detail-block"><strong>Replies</strong><div class="small-note">Unable to load replies: ${escapeHtml(this.repliesError)}</div></div>`;
             }
 
             const replies = Array.isArray(this.selectedReplyRows) ? this.selectedReplyRows : [];
@@ -2271,14 +2271,12 @@
                 ? `<div class="small-note">${remainder} more reply message(s) are not shown here.</div>`
                 : '';
 
-            return ''
-                + `<div class="forum-human-detail-block">`
-                + `<strong>Replies In Same Conversation (${replies.length})</strong>`
-                + '<ul class="forum-human-chain-list">'
-                + items
-                + '</ul>'
-                + more
-                + '</div>';
+            return `
+                <div class="forum-human-detail-block">
+                    <strong>Replies In Same Conversation (${replies.length})</strong>
+                    <ul class="forum-human-chain-list">${items}</ul>
+                    ${more}
+                </div>`;
         },
 
         getReplyRowsForEntry(entry) {
@@ -2569,7 +2567,7 @@
 
         updateOverlayActionState() {
             const hasRows = this.humanRowsAll.length > 0;
-            const hasSelection = this.getSelectedEntry() != null;
+            const hasSelection = this.getSelectedEntry() !== null && this.getSelectedEntry() !== undefined;
 
             const exportBtn = byId('forumDbExportThreadsBtn');
             if (exportBtn) {
@@ -2596,7 +2594,7 @@
                 return;
             }
 
-            const targetLang = value('forumDbOverlayTranslateLang') || 'en';
+            const targetLang = fieldValue('forumDbOverlayTranslateLang') || 'en';
             this.setTranslateMeta('Translating...', false);
             this.setTranslateOutput('');
 
@@ -2707,7 +2705,7 @@
                 const filename = exportScope === 'confirmed'
                     ? `forum-confirmed-messages-with-replies-${this.timestampForFilename()}.csv`
                     : `forum-messages-with-replies-${this.timestampForFilename()}.csv`;
-                const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+                const blob = new window.Blob([csv], { type: 'text/csv;charset=utf-8' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
                 a.href = url;
@@ -2827,8 +2825,8 @@
         },
 
         csvCell(value) {
-            const text = String(value == null ? '' : value);
-            return '"' + text.replace(/"/g, '""') + '"';
+            const text = String(value === null || value === undefined ? '' : value);
+            return `"${text.replace(/"/g, '""')}"`;
         },
 
         timestampForFilename() {
@@ -2847,13 +2845,13 @@
                 return;
             }
 
-            const recipients = this.parseRecipients(value('forumDbOverlayShareTo'));
+            const recipients = this.parseRecipients(fieldValue('forumDbOverlayShareTo'));
             if (!recipients.length) {
                 this.setShareMessage('Add at least one recipient email address before sending.', true);
                 return;
             }
 
-            const subject = value('forumDbOverlayShareSubject') || 'Cleaned Forum Human Message';
+            const subject = fieldValue('forumDbOverlayShareSubject') || 'Cleaned Forum Human Message';
             const body = this.buildEmailBody(rows);
 
             this.setShareMessage('Sending cleaned messages email...', false);

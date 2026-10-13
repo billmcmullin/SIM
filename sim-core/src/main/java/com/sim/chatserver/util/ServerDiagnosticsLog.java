@@ -188,7 +188,7 @@ public final class ServerDiagnosticsLog {
         if (value == null) {
             return fallback;
         }
-        String cleaned = value.replace(System.lineSeparator().charAt(0), ' ').replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), ' ').trim();
+        String cleaned = value.replace('\r', ' ').replace('\n', ' ').trim();
         return cleaned.isEmpty() ? fallback : cleaned;
     }
 
@@ -243,6 +243,6 @@ public final class ServerDiagnosticsLog {
         if (msg == null) {
             return EMPTY;
         }
-        return msg.replace(System.lineSeparator().charAt(0), ' ').replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), ' ').trim();
+        return msg.replace('\r', ' ').replace('\n', ' ').trim();
     }
 }
