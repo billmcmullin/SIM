@@ -605,7 +605,8 @@ final class Metrics {
     }
 
     private static int safeIntegerValue(Integer value) {
-        return value == null ? 0 : value.intValue();
+        Integer normalized = value == null ? Integer.valueOf(0) : value;
+        return normalized.intValue();
     }
 }
 

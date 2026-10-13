@@ -11,8 +11,9 @@ import java.lang.reflect.Method;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.function.BooleanSupplier;
 
 import org.junit.jupiter.api.Test;
 
@@ -149,6 +150,7 @@ class DashboardCacheRegistryTest {
     void getTermSummary_withGraceEntry_triggersAsyncRefresh() {
         DashboardCacheRegistry registry = new DashboardCacheRegistry();
         AtomicInteger refreshLoads = new AtomicInteger(0);
+        CountDownLatch refreshObserved = new CountDownLatch(1);
 
         TermSummary initial = new TermSummary();
         initial.ensureTerm("alpha");
@@ -162,13 +164,15 @@ class DashboardCacheRegistryTest {
 
         TermSummary stale = registry.getTermSummary(() -> {
             refreshLoads.incrementAndGet();
+            refreshObserved.countDown();
             TermSummary refreshed = new TermSummary();
             refreshed.ensureTerm("beta");
             return refreshed;
         });
         assertSame(cached, stale);
 
-        assertTrue(waitForCondition(() -> refreshLoads.get() >= 1, 2500L));
+        assertTrue(awaitLatch(refreshObserved, 2500L));
+        assertTrue(refreshLoads.get() >= 1);
 
         TermSummary refreshedResult = registry.getTermSummary(() -> cached);
         assertNotSame(cached, refreshedResult);
@@ -178,6 +182,7 @@ class DashboardCacheRegistryTest {
     void getSessionOverview_withGraceEntry_triggersAsyncRefresh() {
         DashboardCacheRegistry registry = new DashboardCacheRegistry();
         AtomicInteger refreshLoads = new AtomicInteger(0);
+        CountDownLatch refreshObserved = new CountDownLatch(1);
 
         SessionOverview initial = registry.getSessionOverview("key", () -> overview("key", 1));
 
@@ -194,11 +199,13 @@ class DashboardCacheRegistryTest {
 
         SessionOverview stale = registry.getSessionOverview("key", () -> {
             refreshLoads.incrementAndGet();
+            refreshObserved.countDown();
             return overview("key", 2);
         });
         assertSame(initial, stale);
 
-        assertTrue(waitForCondition(() -> refreshLoads.get() >= 1, 2500L));
+        assertTrue(awaitLatch(refreshObserved, 2500L));
+        assertTrue(refreshLoads.get() >= 1);
 
         SessionOverview refreshed = registry.getSessionOverview("key", () -> overview("key", 3));
         assertNotSame(initial, refreshed);
@@ -255,20 +262,13 @@ class DashboardCacheRegistryTest {
         }
     }
 
-    private static boolean waitForCondition(BooleanSupplier condition, long timeoutMillis) {
-        long deadline = System.currentTimeMillis() + timeoutMillis;
-        while (System.currentTimeMillis() < deadline) {
-            if (condition.getAsBoolean()) {
-                return true;
-            }
-            try {
-                Thread.sleep(10L);
-            } catch (InterruptedException ex) {
-                Thread.currentThread().interrupt();
-                return condition.getAsBoolean();
-            }
+    private static boolean awaitLatch(CountDownLatch latch, long timeoutMillis) {
+        try {
+            return latch.await(timeoutMillis, TimeUnit.MILLISECONDS);
+        } catch (InterruptedException ex) {
+            Thread.currentThread().interrupt();
+            return latch.getCount() == 0;
         }
-        return condition.getAsBoolean();
     }
 }
 

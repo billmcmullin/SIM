@@ -29,7 +29,7 @@ final class EmailMessageBuilder {
         return to(recipient);
     }
 
-    EmailMessageBuilder to(String recipient) {
+    private EmailMessageBuilder to(String recipient) {
         this.to.add(recipient);
         return this;
     }
@@ -43,7 +43,7 @@ final class EmailMessageBuilder {
         return cc(recipient);
     }
 
-    EmailMessageBuilder cc(String recipient) {
+    private EmailMessageBuilder cc(String recipient) {
         this.cc.add(recipient);
         return this;
     }
@@ -57,7 +57,7 @@ final class EmailMessageBuilder {
         return bcc(recipient);
     }
 
-    EmailMessageBuilder bcc(String recipient) {
+    private EmailMessageBuilder bcc(String recipient) {
         this.bcc.add(recipient);
         return this;
     }
@@ -87,7 +87,7 @@ final class EmailMessageBuilder {
         return this;
     }
 
-    EmailMessageBuilder attachment(EmailAttachment attachment) {
+    private EmailMessageBuilder attachment(EmailAttachment attachment) {
         this.attachments.add(attachment);
         return this;
     }

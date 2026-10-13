@@ -4223,10 +4223,7 @@ public class WidgetSyncServlet extends HttpServlet {
         if (value == null) {
             return null;
         }
-        String normalized = sanitizeConfigToken(value, Math.max(maxLen, MAX_SUMMARY_PROMPT_CHARS))
-                .replace("\r\n", "\n")
-                .replace('\r', '\n')
-                .trim();
+        String normalized = normalizeLineEndingsToLf(sanitizeConfigToken(value, Math.max(maxLen, MAX_SUMMARY_PROMPT_CHARS))).trim();
         if (maxLen > 0 && normalized.length() > maxLen) {
             return safeSlice(normalized, 0, maxLen);
         }
@@ -4273,7 +4270,7 @@ public class WidgetSyncServlet extends HttpServlet {
         if (trimmed == null) {
             return null;
         }
-        trimmed = trimmed.replace("\r", "").replace("\n", "").trim();
+        trimmed = com.sim.chatserver.util.LineSeparatorUtil.stripCrLf(trimmed).trim();
         return trimmed.length() > 256 ? safeSlice(trimmed, 0, 256) : trimmed;
     }
 
@@ -4281,7 +4278,7 @@ public class WidgetSyncServlet extends HttpServlet {
         if (value == null || value.isEmpty()) {
             return "";
         }
-        return value.replace("\r\n", "\n").replace('\r', '\n');
+        return com.sim.chatserver.util.LineSeparatorUtil.normalizeToLf(value);
     }
 
     private String firstParamAny(HttpServletRequest req, String... names) {

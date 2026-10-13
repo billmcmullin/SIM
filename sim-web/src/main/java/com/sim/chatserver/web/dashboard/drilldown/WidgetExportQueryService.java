@@ -161,9 +161,8 @@ final class WidgetExportQueryService {
                 }
                 value.append(buffer, 0, read);
             }
-            String normalized = Normalizer.normalize(value.toString(), Normalizer.Form.NFKC)
-                    .replace(NUL, EMPTY)
-                    .replace("\r", EMPTY)
+                String normalized = com.sim.chatserver.util.LineSeparatorUtil.stripCrLf(
+                        Normalizer.normalize(value.toString(), Normalizer.Form.NFKC).replace(NUL, EMPTY))
                     .trim();
             if (normalized.isEmpty()) {
                 return EMPTY;

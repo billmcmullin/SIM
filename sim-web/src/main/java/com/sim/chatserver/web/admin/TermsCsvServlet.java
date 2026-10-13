@@ -166,11 +166,11 @@ public class TermsCsvServlet extends HttpServlet {
                     if (headerMatches(firstRow)) {
                         continue;
                     }
-                    Boolean createdNew = processDataLine(firstRow, lineNum, errors);
-                    if (createdNew == null) {
+                    int outcome = processDataLine(firstRow, lineNum, errors);
+                    if (outcome < 0) {
                         continue;
                     }
-                    if (createdNew.booleanValue()) {
+                    if (outcome > 0) {
                         created++;
                     } else {
                         updated++;
@@ -178,11 +178,11 @@ public class TermsCsvServlet extends HttpServlet {
                     continue;
                 }
 
-                Boolean createdNew = processDataLine(parseCsvLine(normalizedLine), lineNum, errors);
-                if (createdNew == null) {
+                int outcome = processDataLine(parseCsvLine(normalizedLine), lineNum, errors);
+                if (outcome < 0) {
                     continue;
                 }
-                if (createdNew.booleanValue()) {
+                if (outcome > 0) {
                     created++;
                 } else {
                     updated++;
@@ -195,13 +195,13 @@ public class TermsCsvServlet extends HttpServlet {
         }
     }
 
-    private Boolean processDataLine(String[] cols, int lineNum, List<String> errors) {
+    private int processDataLine(String[] cols, int lineNum, List<String> errors) {
         try {
-            return processRow(cols);
+            return processRow(cols) ? 1 : 0;
         } catch (IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             log.log(Level.FINE, "Skipping invalid CSV data line", e);
             errors.add("line " + lineNum + ": " + e.getMessage());
-            return null;
+            return -1;
         }
     }
 

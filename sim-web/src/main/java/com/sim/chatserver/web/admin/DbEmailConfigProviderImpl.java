@@ -246,9 +246,8 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
         if (value == null) {
             return EMPTY;
         }
-        return value.replace(NUL_CHAR, EMPTY)
-                .replace("\r", EMPTY)
-                .replace("\n", EMPTY);
+        return com.sim.chatserver.util.LineSeparatorUtil.stripCrLf(
+            value.replace(NUL_CHAR, EMPTY));
     }
 
     private String readEnv(String key) {

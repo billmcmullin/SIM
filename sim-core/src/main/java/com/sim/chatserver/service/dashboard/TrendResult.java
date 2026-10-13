@@ -8,7 +8,7 @@ public final class TrendResult {
     public final Map<String, Map<LocalDate, Integer>> widgetDaily;
     public final Map<String, String> widgetNameToId;
 
-    public TrendResult(
+    TrendResult(
             Map<LocalDate, Integer> totalDaily,
             Map<String, Map<LocalDate, Integer>> widgetDaily,
             Map<String, String> widgetNameToId

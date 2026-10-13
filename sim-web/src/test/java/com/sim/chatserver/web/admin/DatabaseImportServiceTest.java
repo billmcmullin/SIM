@@ -315,6 +315,17 @@ class DatabaseImportServiceTest {
     }
 
     @Test
+    void sanitizeRequestValue_handlesNullBlankAndLengthLimit() {
+        assertNull(DatabaseImportService.sanitizeRequestValue(null));
+        assertEquals("", DatabaseImportService.sanitizeRequestValue(" \r\n\t "));
+
+        String longValue = "x".repeat(140);
+        String sanitized = DatabaseImportService.sanitizeRequestValue(longValue);
+        assertEquals(128, sanitized.length());
+        assertEquals("x".repeat(128), sanitized);
+    }
+
+    @Test
     @org.junit.jupiter.api.Disabled("Temporarily disabled after production refactor; test targets removed internal implementation details.")
     void helperNormalizers_coverSyncUrlSqlTypeAndColumnRules() throws Exception {
         DatabaseImportService service = new DatabaseImportService();
