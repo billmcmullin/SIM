@@ -7,6 +7,7 @@ import java.net.URLEncoder;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Locale;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -219,22 +220,105 @@ public class AdminScenarioCleanupIT extends BaseUiIT {
     }
 
     private void activateAdminTab(String preferredLabel, String fallbackLabel) {
-        if (page.locator("#adminTabs .admin-tab-btn").count() == 0) {
+        try {
+            page.waitForSelector("#adminTabs .admin-tab-btn",
+                new Page.WaitForSelectorOptions().setState(WaitForSelectorState.ATTACHED).setTimeout(5000));
+        } catch (Exception ignored) {
+            // Tab buttons may not render in simplified admin layouts.
+        }
+
+        Locator tabs = page.locator("#adminTabs .admin-tab-btn");
+        int tabCount = (int) tabs.count();
+        if (tabCount == 0) {
             return;
         }
-        String[] labels = { preferredLabel, fallbackLabel };
-        for (String label : labels) {
-            String selector = "#adminTabs .admin-tab-btn:has-text('" + label + "')";
-            if (page.locator(selector).count() > 0) {
-                if (page.locator(selector).first().isVisible()) {
-                    page.click(selector, new Page.ClickOptions().setNoWaitAfter(true));
+
+        List<String> candidates = buildTabLabelCandidates(preferredLabel, fallbackLabel);
+        for (String candidate : candidates) {
+            for (int i = 0; i < tabCount; i++) {
+                Locator tab = tabs.nth(i);
+                String tabText = tab.innerText().trim();
+                if (!matchesTabLabel(tabText, candidate)) {
+                    continue;
+                }
+                if (tab.isVisible()) {
+                    tab.click(new Locator.ClickOptions().setNoWaitAfter(true));
                 } else {
-                    page.evaluate("sel => { const el = document.querySelector(sel); if (el) el.click(); }", selector);
+                    clickTabAtIndex(i);
                 }
                 return;
             }
         }
         throw new AssertionError("Expected one of admin tab labels: " + preferredLabel + " or " + fallbackLabel);
+    }
+
+    private List<String> buildTabLabelCandidates(String preferredLabel, String fallbackLabel) {
+        List<String> labels = new ArrayList<>();
+        addLabelWithAliases(labels, preferredLabel);
+        addLabelWithAliases(labels, fallbackLabel);
+        return labels;
+    }
+
+    private void addLabelWithAliases(List<String> labels, String label) {
+        if (label == null || label.isBlank()) {
+            return;
+        }
+        addCandidate(labels, label);
+
+        String normalized = normalizeLabel(label);
+        if (normalized.contains("user")) {
+            addCandidate(labels, "Create User");
+            addCandidate(labels, "Users");
+            addCandidate(labels, "User");
+        }
+        if (normalized.contains("term")) {
+            addCandidate(labels, "Term Definitions");
+            addCandidate(labels, "Terms");
+            addCandidate(labels, "Term");
+        }
+        if (normalized.contains("widget")) {
+            addCandidate(labels, "Widget Registry");
+            addCandidate(labels, "Widgets");
+            addCandidate(labels, "Widget");
+        }
+    }
+
+    private void addCandidate(List<String> labels, String candidate) {
+        if (candidate == null || candidate.isBlank()) {
+            return;
+        }
+        for (String existing : labels) {
+            if (existing.equalsIgnoreCase(candidate)) {
+                return;
+            }
+        }
+        labels.add(candidate);
+    }
+
+    private boolean matchesTabLabel(String tabText, String candidate) {
+        String normalizedTab = normalizeLabel(tabText);
+        String normalizedCandidate = normalizeLabel(candidate);
+        if (normalizedTab.isEmpty() || normalizedCandidate.isEmpty()) {
+            return false;
+        }
+        return normalizedTab.equals(normalizedCandidate)
+                || normalizedTab.contains(normalizedCandidate)
+                || normalizedCandidate.contains(normalizedTab);
+    }
+
+    private String normalizeLabel(String value) {
+        if (value == null) {
+            return "";
+        }
+        return value.toLowerCase(Locale.ROOT).replaceAll("[^a-z0-9]+", "");
+    }
+
+    private void clickTabAtIndex(int index) {
+        page.evaluate("idx => {"
+                + "const tabs = document.querySelectorAll('#adminTabs .admin-tab-btn');"
+                + "const tab = tabs && tabs[idx];"
+                + "if (tab) tab.click();"
+                + "}", index);
     }
 
     private void ensureSectionVisible(String selector) {
