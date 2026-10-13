@@ -825,7 +825,10 @@ final class WidgetSyncJdbcStore {
 
 
     private String normalizeSummaryPrompt(String prompt) {
-        String normalized = prompt == null ? EMPTY : prompt.replace(System.lineSeparator(), System.lineSeparator()).replace(System.lineSeparator().charAt(0), com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED).trim();
+        String normalized = prompt == null ? EMPTY : prompt
+                .replace("\r\n", "\n")
+                .replace('\r', '\n')
+                .trim();
         if (maxSummaryPromptChars > 0 && normalized.length() > maxSummaryPromptChars) {
             normalized = safeSlice(normalized, 0, maxSummaryPromptChars);
         }

@@ -247,8 +247,8 @@ public class DbEmailConfigProviderImpl implements DbEmailConfigProvider {
             return EMPTY;
         }
         return value.replace(NUL_CHAR, EMPTY)
-                .replace(System.lineSeparator(), EMPTY)
-                .replace(System.lineSeparator(), EMPTY);
+                .replace("\r", EMPTY)
+                .replace("\n", EMPTY);
     }
 
     private String readEnv(String key) {

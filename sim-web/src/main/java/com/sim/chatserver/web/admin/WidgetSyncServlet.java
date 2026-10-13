@@ -3935,9 +3935,8 @@ public class WidgetSyncServlet extends HttpServlet {
         }
         String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC);
         normalized = stripControlCharacters(normalized)
-                .replace(System.lineSeparator(), System.lineSeparator())
-                .replace(System.lineSeparator().charAt(0), com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED)
-                .replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), ' ')
+                .replace('\r', '\n')
+                .replace('\n', ' ')
                 .replaceAll(com.sim.chatserver.util.CommonLiteralConstants.REGEX_WHITESPACE, " ")
                 .trim();
 
@@ -4181,7 +4180,7 @@ public class WidgetSyncServlet extends HttpServlet {
     }
 
     private String normalizeSummaryPrompt(String prompt) {
-        String normalized = prompt == null ? "" : prompt.replace(System.lineSeparator(), System.lineSeparator()).replace(System.lineSeparator().charAt(0), com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED).trim();
+        String normalized = normalizeLineEndingsToLf(prompt == null ? "" : prompt).trim();
         if (normalized.isBlank()) {
             normalized = DEFAULT_SUMMARY_PROMPT;
         }
@@ -4198,16 +4197,16 @@ public class WidgetSyncServlet extends HttpServlet {
         if (prompt == null || prompt.isBlank()) {
             return false;
         }
-        String normalizedPrompt = prompt.replace(System.lineSeparator(), System.lineSeparator()).replace(System.lineSeparator().charAt(0), com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED).trim();
-        String normalizedLegacy = LEGACY_DEFAULT_SUMMARY_PROMPT.replace(System.lineSeparator(), System.lineSeparator()).replace(System.lineSeparator().charAt(0), com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED).trim();
+        String normalizedPrompt = normalizeLineEndingsToLf(prompt).trim();
+        String normalizedLegacy = normalizeLineEndingsToLf(LEGACY_DEFAULT_SUMMARY_PROMPT).trim();
         if (normalizedLegacy.equals(normalizedPrompt)) {
             return true;
         }
-        String normalizedPrevious = PREVIOUS_DEFAULT_SUMMARY_PROMPT.replace(System.lineSeparator(), System.lineSeparator()).replace(System.lineSeparator().charAt(0), com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED).trim();
+        String normalizedPrevious = normalizeLineEndingsToLf(PREVIOUS_DEFAULT_SUMMARY_PROMPT).trim();
         if (normalizedPrevious.equals(normalizedPrompt)) {
             return true;
         }
-        String normalizedPreviousV2 = PREVIOUS_DEFAULT_SUMMARY_PROMPT_V2.replace(System.lineSeparator(), System.lineSeparator()).replace(System.lineSeparator().charAt(0), com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED).trim();
+        String normalizedPreviousV2 = normalizeLineEndingsToLf(PREVIOUS_DEFAULT_SUMMARY_PROMPT_V2).trim();
         return normalizedPreviousV2.equals(normalizedPrompt);
     }
 
@@ -4225,8 +4224,8 @@ public class WidgetSyncServlet extends HttpServlet {
             return null;
         }
         String normalized = sanitizeConfigToken(value, Math.max(maxLen, MAX_SUMMARY_PROMPT_CHARS))
-                .replace(System.lineSeparator(), System.lineSeparator())
-                .replace(System.lineSeparator().charAt(0), com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED)
+                .replace("\r\n", "\n")
+                .replace('\r', '\n')
                 .trim();
         if (maxLen > 0 && normalized.length() > maxLen) {
             return safeSlice(normalized, 0, maxLen);
@@ -4274,8 +4273,15 @@ public class WidgetSyncServlet extends HttpServlet {
         if (trimmed == null) {
             return null;
         }
-        trimmed = trimmed.replace(System.lineSeparator(), "").replace(System.lineSeparator(), "").trim();
+        trimmed = trimmed.replace("\r", "").replace("\n", "").trim();
         return trimmed.length() > 256 ? safeSlice(trimmed, 0, 256) : trimmed;
+    }
+
+    private static String normalizeLineEndingsToLf(String value) {
+        if (value == null || value.isEmpty()) {
+            return "";
+        }
+        return value.replace("\r\n", "\n").replace('\r', '\n');
     }
 
     private String firstParamAny(HttpServletRequest req, String... names) {
@@ -4388,7 +4394,7 @@ public class WidgetSyncServlet extends HttpServlet {
         StringBuilder sanitized = new StringBuilder(input.length());
         for (int i = 0; i < input.length(); i++) {
             char c = input.charAt(i);
-            if (c == System.lineSeparator().charAt(System.lineSeparator().length() - 1) || c == System.lineSeparator().charAt(0) || c == '\t' || !Character.isISOControl(c)) {
+            if (c == '\r' || c == '\n' || c == '\t' || !Character.isISOControl(c)) {
                 sanitized.append(c);
             }
         }
@@ -4428,7 +4434,7 @@ public class WidgetSyncServlet extends HttpServlet {
         StringBuilder sanitized = new StringBuilder(normalized.length());
         for (int i = 0; i < normalized.length(); i++) {
             char c = normalized.charAt(i);
-            if (c == System.lineSeparator().charAt(System.lineSeparator().length() - 1) || c == System.lineSeparator().charAt(0) || c == '\t' || !Character.isISOControl(c)) {
+            if (c == '\r' || c == '\n' || c == '\t' || !Character.isISOControl(c)) {
                 sanitized.append(c);
             }
         }

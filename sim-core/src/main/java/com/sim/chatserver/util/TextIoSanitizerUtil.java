@@ -45,12 +45,11 @@ public final class TextIoSanitizerUtil {
         }
         String normalized = Normalizer.normalize(input, Normalizer.Form.NFKC)
                 .replace('\u0000', ' ')
-                .replace(System.lineSeparator(), EMPTY)
                 .trim();
         StringBuilder safe = new StringBuilder(normalized.length());
         for (int i = 0; i < normalized.length(); i++) {
             char ch = normalized.charAt(i);
-            if (Character.isISOControl(ch) && ch != System.lineSeparator().charAt(System.lineSeparator().length() - 1) && ch != '\t') {
+            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
                 continue;
             }
             safe.append(ch);
@@ -163,8 +162,8 @@ public final class TextIoSanitizerUtil {
         }
 
         return input.codePoints()
-                .filter(codePoint -> codePoint == System.lineSeparator().charAt(System.lineSeparator().length() - 1)
-                        || codePoint == System.lineSeparator().charAt(0)
+            .filter(codePoint -> codePoint == '\n'
+                || codePoint == '\r'
                         || codePoint == '\t'
                         || !Character.isISOControl(codePoint))
                 .collect(StringBuilder::new, StringBuilder::appendCodePoint, StringBuilder::append)

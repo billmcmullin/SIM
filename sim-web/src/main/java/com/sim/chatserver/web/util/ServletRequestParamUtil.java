@@ -72,7 +72,8 @@ public final class ServletRequestParamUtil {
 
         String normalized = Normalizer.normalize(value, Normalizer.Form.NFKC)
             .replace(NULL_CHAR, EMPTY)
-                .replace(System.lineSeparator(), EMPTY)
+                .replace("\r", EMPTY)
+                .replace("\n", EMPTY)
                 .trim();
 
         if (nullIfEmpty && normalized.isEmpty()) {
@@ -170,7 +171,7 @@ public final class ServletRequestParamUtil {
         if (stripNullByte) {
             normalized = normalized.replace(NULL_CHAR, EMPTY);
         }
-        normalized = normalized.replace(System.lineSeparator(), EMPTY).replace(System.lineSeparator(), EMPTY).trim();
+        normalized = normalized.replace("\r", EMPTY).replace("\n", EMPTY).trim();
 
         if (nullIfEmpty && normalized.isEmpty()) {
             return null;
@@ -204,7 +205,7 @@ public final class ServletRequestParamUtil {
             String value = values[i];
             sanitized[i] = value == null
                     ? null
-                    : value.replace('\u0000', ' ').replace(System.lineSeparator().charAt(0), ' ').replace(System.lineSeparator().charAt(System.lineSeparator().length() - 1), ' ');
+                    : value.replace('\u0000', ' ').replace('\r', ' ').replace('\n', ' ');
         }
         return sanitized;
     }
