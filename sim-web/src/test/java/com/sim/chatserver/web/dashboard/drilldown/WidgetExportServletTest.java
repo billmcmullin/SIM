@@ -546,7 +546,7 @@ public class WidgetExportServletTest
     
             ResultSet textRs = mock(ResultSet.class);
             when(textRs.getCharacterStream("c")).thenReturn(new StringReader(" x\n\u0000y "));
-            assertEquals("x\ny", invoke(queryService, "readDbText", new Class[]{ResultSet.class, String.class, int.class}, textRs, "c", 10));
+            assertEquals("xy", invoke(queryService, "readDbText", new Class[]{ResultSet.class, String.class, int.class}, textRs, "c", 10));
     
             ResultSet tsRs = mock(ResultSet.class);
             when(tsRs.getTimestamp("t")).thenReturn(null);
@@ -566,6 +566,50 @@ public class WidgetExportServletTest
             assertTrue(fallbackOut.toString(StandardCharsets.UTF_8).contains("Executive"));
         }
     
+        @Test
+        void readDbText_stripsLineEndingsAndNulls_independentlyOfPlatform() throws Exception {
+            WidgetExportQueryService queryService = new WidgetExportQueryService(mock(AppDataSourceHolder.class), Logger.getLogger("test"));
+            for (String text : List.of(" x\ny ", " x\ry ", " x\r\ny ", " x\r\n\u0000y ")) {
+                ResultSet resultSet = mock(ResultSet.class);
+                when(resultSet.getCharacterStream("c")).thenReturn(new StringReader(text));
+                assertEquals("xy", invoke(queryService, "readDbText", new Class[]{ResultSet.class, String.class, int.class}, resultSet, "c", 10));
+            }
+        }
+
+        @Test
+        void readDbText_handlesInvalidInputsBoundsAndReadFailures() throws Exception {
+            WidgetExportQueryService queryService = new WidgetExportQueryService(mock(AppDataSourceHolder.class), Logger.getLogger("test"));
+            Class<?>[] signature = {ResultSet.class, String.class, int.class};
+            ResultSet missingText = mock(ResultSet.class);
+            assertEquals("", invoke(queryService, "readDbText", signature, null, "c", 10));
+            assertEquals("", invoke(queryService, "readDbText", signature, missingText, null, 10));
+            assertEquals("", invoke(queryService, "readDbText", signature, missingText, " ", 10));
+            assertEquals("", invoke(queryService, "readDbText", signature, missingText, "c", 10));
+
+            ResultSet blankText = mock(ResultSet.class);
+            when(blankText.getCharacterStream("c")).thenReturn(new StringReader(" \r\n\u0000 "));
+            assertEquals("", invoke(queryService, "readDbText", signature, blankText, "c", 10));
+
+            ResultSet boundedText = mock(ResultSet.class);
+            when(boundedText.getCharacterStream("c")).thenReturn(new StringReader("abcdefghijklm"));
+            assertEquals("abc", invoke(queryService, "readDbText", signature, boundedText, "c", 3));
+
+            ResultSet normalizedText = mock(ResultSet.class);
+            when(normalizedText.getCharacterStream("c")).thenReturn(new StringReader("\uFB03"));
+            assertEquals("f", invoke(queryService, "readDbText", signature, normalizedText, "c", 1));
+
+            ResultSet sqlFailure = mock(ResultSet.class);
+            when(sqlFailure.getCharacterStream("c")).thenThrow(new SQLException("unavailable"));
+            assertEquals("", invoke(queryService, "readDbText", signature, sqlFailure, "c", 10));
+
+            java.io.Reader failingReader = mock(java.io.Reader.class);
+            when(failingReader.read(any(char[].class))).thenThrow(new IOException("unavailable"));
+            ResultSet ioFailure = mock(ResultSet.class);
+            when(ioFailure.getCharacterStream("c")).thenReturn(failingReader);
+            assertEquals("", invoke(queryService, "readDbText", signature, ioFailure, "c", 10));
+            verify(failingReader).close();
+        }
+
         private static String createSnapshotSelection(HttpSession session) {
             List<TermChatSnapshot> snapshots = List.of(
                     snapshot("c1", "c1 prompt", "c1 response"),

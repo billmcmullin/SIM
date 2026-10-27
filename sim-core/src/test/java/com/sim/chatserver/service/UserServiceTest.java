@@ -29,6 +29,21 @@ import static org.mockito.Mockito.when;
  */
 public class UserServiceTest
 {
+    @Test
+    void bootstrapPasswordUsesTypedConfiguration_andRejectsShortValues() throws Exception {
+        UserService service = new UserService();
+        java.lang.reflect.Field configured = UserService.class.getDeclaredField("configuredBootstrapPassword");
+        configured.setAccessible(true);
+        java.lang.reflect.Method resolve = UserService.class.getDeclaredMethod("bootstrapAdminPassword");
+        resolve.setAccessible(true);
+        configured.set(service, java.util.Optional.of("test-bootstrap-password"));
+        org.junit.jupiter.api.Assertions.assertEquals("test-bootstrap-password", resolve.invoke(service));
+        configured.set(service, java.util.Optional.of("short"));
+        java.lang.reflect.InvocationTargetException failure = org.junit.jupiter.api.Assertions.assertThrows(
+                java.lang.reflect.InvocationTargetException.class, () -> resolve.invoke(service));
+        org.junit.jupiter.api.Assertions.assertTrue(failure.getCause() instanceof IllegalStateException);
+    }
+
 
     /**
      * Parasoft Jtest UTA: Test for authenticate(String, String)

@@ -2,6 +2,7 @@ package com.sim.chatserver.service;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -11,6 +12,8 @@ import com.sim.chatserver.model.UserAccount;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 
 import jakarta.enterprise.context.ApplicationScoped;
+import jakarta.inject.Inject;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
 import jakarta.persistence.EntityManager;
 import jakarta.persistence.EntityManagerFactory;
 import jakarta.persistence.NoResultException;
@@ -34,6 +37,8 @@ public class UserService {
     private static final String BCRYPT_PREFIX_2B = "$2b$";
     private static final String BCRYPT_PREFIX_2Y = "$2y$";
     private static final String ROLE_ADMIN = "admin";
+    private static final String BOOTSTRAP_PASSWORD_PROPERTY = "sim.bootstrap.admin.password";
+    private static final String ERR_BOOTSTRAP_PASSWORD = "A bootstrap administrator password of at least 12 characters is required";
     private static final String LOG_USER_NOT_FOUND = "User not found for username lookup";
     private static final String LOG_UNEXPECTED_QUERY_RESULT = "Unexpected query result type in findByUsername";
     private static final String LOG_BCRYPT_FAILED = "BCrypt check failed";
@@ -50,6 +55,10 @@ public class UserService {
 
     @PersistenceContext(unitName = PERSISTENCE_UNIT_CHATS)
     EntityManager em;
+
+    @Inject
+    @ConfigProperty(name = BOOTSTRAP_PASSWORD_PROPERTY)
+    private Optional<String> configuredBootstrapPassword = Optional.empty();
 
     // Legacy test seam retained for generated tests that assign this field.
     AppDataSourceHolder dsHolder;
@@ -243,17 +252,29 @@ public class UserService {
     }
 
     /**
-     * Ensure an admin user exists (creates admin/admin if none found).
+    * Ensure an admin user exists without changing an existing account.
      */
+    @Transactional
     public void ensureAdminExists() {
         try {
             if (!userExists(ROLE_ADMIN)) {
                 log.info(LOG_CREATE_DEFAULT_ADMIN);
-                createUser(ROLE_ADMIN, ROLE_ADMIN, ROLE_ADMIN);
+                createUser(ROLE_ADMIN, bootstrapAdminPassword(), ROLE_ADMIN);
             }
         } catch (PersistenceException | IllegalStateException | IllegalArgumentException e) {
             log.log(Level.WARNING, LOG_ENSURE_ADMIN_FAILED_PREFIX + e.getMessage(), e);
         }
+    }
+
+    private String bootstrapAdminPassword() {
+        String password = configuredBootstrapPassword.orElse(null);
+        if (password != null && password.length() >= 12) {
+            return password;
+        }
+        if (password != null) {
+            throw new IllegalStateException(ERR_BOOTSTRAP_PASSWORD);
+        }
+        return ROLE_ADMIN;
     }
 
     /**

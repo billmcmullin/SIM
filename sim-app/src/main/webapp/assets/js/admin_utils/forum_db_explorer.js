@@ -11,10 +11,14 @@
     const MAX_BATCH_LOOPS = 5000;
     const HUMAN_PAGE_SIZE = 10;
     const MAX_EMAIL_BODY_CHARS = 180000;
-    const EXCLUDED_MESSAGE_PATTERNS = [
-        /you\s+have\s+been\s+sent\s+this\s+communication\s+from\b/i
-    ];
-
+    const MIN_EXPECTED_POST_ROWS = 3000;
+    const EXPECTED_YEAR_START = 2003;
+    const EXPECTED_YEAR_END = 2026;
+    const ROLE_MESSAGE = 'message';
+    const ROLE_RESPONSE = 'response';
+    const ROLE_REPLY = 'reply';
+    const ROLE_ASSISTANT = 'assistant';
+    const ROLE_USER = 'user';
     function byId(id) {
         return document.getElementById(id);
     }
@@ -46,9 +50,13 @@
         loadedHints: null,
         detectedColumns: null,
         activeChainColumn: '',
+        allPostRows: [],
         humanRowsAll: [],
         humanRowsFiltered: [],
+        exportSelectedRows: new Map(),
+        exportInProgress: false,
         selectedReplyRows: [],
+        replyRowsCache: new Map(),
         repliesLoading: false,
         repliesError: '',
         repliesRequestToken: 0,
@@ -64,6 +72,7 @@
             byId('forumDbSaveConfigBtn')?.addEventListener('click', () => this.saveConfiguration());
             byId('forumDbClearBtn')?.addEventListener('click', () => this.clearResults());
             byId('forumDbConfirmedOnly')?.addEventListener('change', () => this.applyClientFilter());
+            byId('forumDbHasRepliesOnly')?.addEventListener('change', () => this.applyClientFilter());
             byId('forumDbType')?.addEventListener('change', () => this.applyDefaultPort());
             byId('forumDbHumanSearch')?.addEventListener('input', () => this.applyClientFilter());
             byId('forumDbHumanPrevBtn')?.addEventListener('click', () => this.goToHumanPage(this.humanCurrentPage - 1));
@@ -76,6 +85,20 @@
                 }
             });
             byId('forumDbExportThreadsBtn')?.addEventListener('click', () => this.exportMessagesAndRepliesCsv());
+            byId('forumDbExportScope')?.addEventListener('change', () => this.updateOverlayActionState());
+            byId('forumDbSelectFilteredBtn')?.addEventListener('click', () => {
+                for (const entry of this.humanRowsFiltered) {
+                    this.exportSelectedRows.set(this.getExportSelectionKey(entry), entry);
+                }
+                this.renderCurrentHumanPage();
+                this.updateOverlayActionState();
+            });
+            byId('forumDbClearSelectionBtn')?.addEventListener('click', () => this.clearExportSelection());
+            byId('forumDbOverlayClearSelectionBtn')?.addEventListener('click', () => this.clearExportSelection());
+            byId('forumDbOverlaySelectPost')?.addEventListener('change', (event) => {
+                this.setPostExportSelection(this.getSelectedEntry(), event.target.checked);
+            });
+            byId('forumDbHumanBody')?.addEventListener('change', (event) => this.onExportSelectionChange(event));
             byId('forumDbOverlayEmailBtn')?.addEventListener('click', () => this.emailCleanedMessages());
             byId('forumDbOverlayTranslateBtn')?.addEventListener('click', () => this.translateSelectedMessage());
             byId('forumDbOverlayCloseBtn')?.addEventListener('click', () => this.closeOverlay());
@@ -369,6 +392,7 @@
                 }
 
                 this.connected = true;
+                this.exportSelectedRows.clear();
                 this.loadedColumns = Array.isArray(payload.columns) ? payload.columns : [];
                 this.loadedRows = Array.isArray(loaded.rows) ? loaded.rows : [];
                 this.loadedTable = String(payload.table || '');
@@ -517,10 +541,28 @@
 
         renderHumanMessageView(rows) {
             const extracted = this.extractHumanMessages(rows);
+            const baseRows = this.getDiscussionStarterPosts(extracted);
+            const replyCountsByChain = this.buildReplyCountsByChain(extracted);
+
+            for (const entry of baseRows) {
+                const chainKey = this.getConversationChainKey(entry);
+                const replyCount = chainKey ? (replyCountsByChain.get(chainKey) || 0) : 0;
+                const metadataConfirmed = entry && entry.isMetadataConfirmed === true;
+                entry.replyCountInSameConversation = replyCount;
+                entry.hasRepliesInSameConversation = replyCount > 0;
+                entry.isQnaConfirmed = metadataConfirmed;
+                entry.isConfirmed = metadataConfirmed && replyCount > 0;
+                entry.confirmedLabel = entry.isConfirmed ? 'Confirmed' : 'Not confirmed';
+            }
+
             const search = fieldValue('forumDbHumanSearch').toLowerCase();
-            const confirmedOnly = byId('forumDbConfirmedOnly')?.checked === true;
-            const filtered = extracted.filter((entry) => {
-                if (confirmedOnly && !entry.isConfirmed) {
+            const qnaConfirmedOnly = byId('forumDbConfirmedOnly')?.checked === true;
+            const hasRepliesOnly = byId('forumDbHasRepliesOnly')?.checked === true;
+            const filtered = baseRows.filter((entry) => {
+                if (qnaConfirmedOnly && !entry.isQnaConfirmed) {
+                    return false;
+                }
+                if (hasRepliesOnly && !entry.hasRepliesInSameConversation) {
                     return false;
                 }
                 if (!search) {
@@ -529,9 +571,12 @@
                 const haystack = [
                     entry.messageText,
                     entry.actor,
+                    entry.roleLabel,
                     entry.conversationId,
                     entry.createdAt,
                     entry.confirmedLabel,
+                    entry.isQnaConfirmed ? 'qna confirmed' : 'qna not confirmed',
+                    entry.hasRepliesInSameConversation ? 'has replies' : 'no replies',
                     entry.qnaStatus,
                     entry.statusName,
                     entry.tagNames
@@ -541,17 +586,76 @@
                 return haystack.includes(search);
             });
 
-            this.humanRowsAll = extracted;
+            this.allPostRows = extracted;
+            this.humanRowsAll = baseRows;
             this.humanRowsFiltered = filtered;
             this.humanCurrentPage = 1;
             this.selectedHumanAbsoluteIndex = -1;
             this.resetReplyState(true);
 
-            this.renderHumanSummary(extracted.length, filtered.length);
+            this.renderHumanSummary(baseRows.length, filtered.length, this.computeCoverageStats(baseRows));
             this.renderHumanPagination();
             this.renderCurrentHumanPage();
             this.renderHumanDetail(null);
             this.updateOverlayActionState();
+        },
+
+        getDiscussionStarterPosts(entries) {
+            const starters = new Map();
+            for (const entry of entries) {
+                if (!this.isPrimaryForumPost(entry)) {
+                    continue;
+                }
+                const discussionId = String(entry.conversationId || '').trim();
+                const key = discussionId ? `discussion:${discussionId}`
+                    : (this.getConversationChainKey(entry) || this.getExportSelectionKey(entry));
+                const existing = starters.get(key);
+                if (!existing || this.safeCreatedAtSortValue(entry.createdAt) < this.safeCreatedAtSortValue(existing.createdAt)) {
+                    starters.set(key, entry);
+                }
+            }
+            return Array.from(starters.values());
+        },
+
+        isPrimaryForumPost(entry) {
+            if (!entry || typeof entry !== 'object') {
+                return false;
+            }
+            const roleLabel = String(entry.roleLabel || '').toLowerCase();
+            if (entry.isReply === true) {
+                return false;
+            }
+            if (!roleLabel) {
+                return true;
+            }
+            if (roleLabel.includes(ROLE_REPLY)
+                || roleLabel.includes(ROLE_RESPONSE)
+                || roleLabel.includes(ROLE_ASSISTANT)
+                || roleLabel.includes('bot')
+                || roleLabel.includes('ai')) {
+                return false;
+            }
+            return true;
+        },
+
+        buildReplyCountsByChain(entries) {
+            const counts = new Map();
+            if (!Array.isArray(entries) || !entries.length) {
+                return counts;
+            }
+
+            for (const entry of entries) {
+                if (!entry || entry.isReply !== true) {
+                    continue;
+                }
+                const chainKey = this.getConversationChainKey(entry);
+                if (!chainKey) {
+                    continue;
+                }
+                counts.set(chainKey, (counts.get(chainKey) || 0) + 1);
+            }
+
+            return counts;
         },
 
         extractHumanMessages(rows) {
@@ -622,31 +726,17 @@
             };
             this.activeChainColumn = chainColumn || '';
 
-            if (!messageTextCol) {
+            if (!messageTextCol && !responseTextCol) {
                 return [];
             }
 
             const out = [];
+            const dedupe = new Set();
             for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
                 const row = rows[rowIndex];
-                const rawMessageText = this.readCell(row, messageTextCol);
-                if (!rawMessageText) {
-                    continue;
-                }
-                if (this.shouldExcludeMessage(rawMessageText)) {
-                    continue;
-                }
-
-                const messageText = this.cleanMessageText(rawMessageText);
-                if (!messageText) {
-                    continue;
-                }
-
                 const actor = actorMatchesConversation ? '' : this.readCell(row, actorCol);
                 const role = this.readCell(row, roleCol);
-                if (!this.isLikelyHuman(role, actor)) {
-                    continue;
-                }
+                const normalizedRole = this.normalizeRoleLabel(role, ROLE_MESSAGE);
 
                 const conversationId = this.readCell(row, conversationCol);
                 const subject = this.readCell(row, subjectCol);
@@ -655,48 +745,139 @@
                 const qnaStatus = this.readCell(row, qnaStatusCol);
                 const statusName = this.readCell(row, statusNameCol);
                 const tagNames = this.readCell(row, tagNamesCol);
-                const isConfirmed = this.isConfirmedDiscussion(row, confirmedCol, qnaStatus, statusName, tagNames);
+                const metadataConfirmed = this.isConfirmedDiscussion(row, confirmedCol, qnaStatus, statusName, tagNames);
+                const createdAt = this.readCell(row, createdAtCol);
 
-                out.push({
-                    createdAt: this.readCell(row, createdAtCol),
-                    conversationId,
-                    subject,
-                    conversationDisplay: this.composeConversationDisplay(conversationId, subject),
-                    sourceMessageId,
-                    chainValue,
-                    rowIndex,
-                    actor,
-                    messageText,
-                    qnaStatus,
-                    statusName,
-                    tagNames,
-                    isConfirmed,
-                    confirmedLabel: isConfirmed ? 'Confirmed' : 'Not confirmed'
-                });
+                const pushEntry = (rawText, roleLabel, actorValue, isReplyValue) => {
+                    const isStarter = this.isPrimaryForumPost({ roleLabel, isReply: isReplyValue });
+                    if (!rawText && !isStarter) {
+                        return;
+                    }
+
+                    const messageText = this.cleanMessageText(rawText);
+                    if (!messageText && !isStarter) {
+                        return;
+                    }
+
+                    const dedupeKey = [
+                        rowIndex,
+                        String(createdAt || ''),
+                        String(roleLabel || ''),
+                        String(actorValue || ''),
+                        messageText
+                    ].join('|').toLowerCase();
+                    if (dedupe.has(dedupeKey)) {
+                        return;
+                    }
+                    dedupe.add(dedupeKey);
+
+                    out.push({
+                        createdAt,
+                        conversationId,
+                        subject,
+                        conversationDisplay: this.composeConversationDisplay(conversationId, subject),
+                        sourceMessageId,
+                        chainValue,
+                        rowIndex,
+                        actor: String(actorValue || ''),
+                        roleLabel: roleLabel || ROLE_MESSAGE,
+                        messageText,
+                        qnaStatus,
+                        statusName,
+                        tagNames,
+                        isReply: isReplyValue === true,
+                        isMetadataConfirmed: metadataConfirmed,
+                        isConfirmed: metadataConfirmed,
+                        confirmedLabel: metadataConfirmed ? 'Confirmed' : 'Not confirmed'
+                    });
+                };
+
+                if (messageTextCol) {
+                    const rawMessageText = this.readCell(row, messageTextCol);
+                    pushEntry(rawMessageText, normalizedRole, actor, this.isReplyRole(normalizedRole));
+                }
+
+                if (responseTextCol) {
+                    const rawResponseText = this.readCell(row, responseTextCol);
+                    const rawMessageText = messageTextCol ? this.readCell(row, messageTextCol) : '';
+                    if (rawResponseText && rawResponseText !== rawMessageText) {
+                        const responseRole = normalizedRole === ROLE_MESSAGE || normalizedRole === ROLE_USER
+                            ? ROLE_RESPONSE
+                            : normalizedRole;
+                        pushEntry(rawResponseText, responseRole, actor || ROLE_ASSISTANT, true);
+                    }
+                }
             }
 
             return out;
         },
 
-        shouldExcludeMessage(rawMessageText) {
-            if (!rawMessageText) {
-                return false;
+        normalizeRoleLabel(roleValue, fallbackRole) {
+            const normalized = String(roleValue || '').trim().toLowerCase();
+            if (!normalized) {
+                return fallbackRole || ROLE_MESSAGE;
             }
-            const comparable = this.toComparableText(rawMessageText);
-            for (const pattern of EXCLUDED_MESSAGE_PATTERNS) {
-                if (pattern.test(comparable)) {
-                    return true;
-                }
+            if (normalized.includes(ROLE_REPLY)) {
+                return ROLE_REPLY;
             }
-            return false;
+            if (normalized.includes(ROLE_ASSISTANT) || normalized.includes('bot') || normalized.includes('ai')) {
+                return ROLE_ASSISTANT;
+            }
+            if (normalized.includes(ROLE_USER)) {
+                return ROLE_USER;
+            }
+            return normalized;
         },
 
-        toComparableText(text) {
-            let value = String(text || '');
-            value = value.replace(/<[^>]+>/g, ' ');
-            value = this.decodeHtmlEntities(value);
-            value = value.replace(/\s+/g, ' ').trim().toLowerCase();
-            return value;
+        isReplyRole(roleLabel) {
+            const normalized = String(roleLabel || '').toLowerCase();
+            return normalized.includes(ROLE_REPLY)
+                || normalized.includes(ROLE_ASSISTANT)
+                || normalized.includes('bot')
+                || normalized.includes('ai')
+                || normalized.includes(ROLE_RESPONSE);
+        },
+
+        computeCoverageStats(entries) {
+            if (!Array.isArray(entries) || !entries.length) {
+                return {
+                    count: 0,
+                    minYear: null,
+                    maxYear: null,
+                    meetsCountTarget: false,
+                    meetsYearTarget: false
+                };
+            }
+
+            let minYear = null;
+            let maxYear = null;
+            for (const entry of entries) {
+                const sortValue = this.safeCreatedAtSortValue(entry && entry.createdAt);
+                if (!Number.isFinite(sortValue) || sortValue === Number.MAX_SAFE_INTEGER) {
+                    continue;
+                }
+                const year = new Date(sortValue).getUTCFullYear();
+                if (!Number.isInteger(year)) {
+                    continue;
+                }
+                minYear = minYear === null ? year : Math.min(minYear, year);
+                maxYear = maxYear === null ? year : Math.max(maxYear, year);
+            }
+
+            const count = entries.length;
+            const meetsCountTarget = count >= MIN_EXPECTED_POST_ROWS;
+            const meetsYearTarget = minYear !== null
+                && maxYear !== null
+                && minYear <= EXPECTED_YEAR_START
+                && maxYear >= EXPECTED_YEAR_END;
+
+            return {
+                count,
+                minYear,
+                maxYear,
+                meetsCountTarget,
+                meetsYearTarget
+            };
         },
 
         cleanMessageText(rawText) {
@@ -713,6 +894,11 @@
             text = text.replace(/<\s*\/li\s*>/gi, '');
             text = text.replace(/<[^>]+>/g, ' ');
             text = this.decodeHtmlEntities(text);
+            text = text.replace(/(\p{L})\?{3}(?=(?:s|t|re|ve|ll|d|m)\b)/giu, '$1\u2019');
+            text = text.replace(/\bT\?{2}V\b/g, 'T\u00dcV');
+            text = text.replace(/\bT\u00dcV([ \t]+)S\?{2}D\b/g, 'T\u00dcV$1S\u00dcD');
+            text = text.replace(/([\p{L}\p{N})])[ \t]*\?{3}[ \t]*(?=(?:a landmark release|making|all without|including|simplifying|please share)\b)/giu, '$1 \u2014 ');
+            text = text.replace(/(^|[^?])\?{3}(\d+|\/[\p{L}\p{N}_./:-]+)\?{3}(?!\?)/gu, '$1\u201c$2\u201d');
             text = text.replace(/\r/g, '');
 
             const lines = text
@@ -1926,7 +2112,7 @@
             return true;
         },
 
-        renderHumanSummary(totalExtracted, totalFiltered) {
+        renderHumanSummary(totalExtracted, totalFiltered, coverage) {
             const summary = byId('forumDbHumanSummary');
             if (!summary) {
                 return;
@@ -1938,18 +2124,26 @@
             }
 
             if (!totalExtracted) {
-                summary.textContent = 'No human message text was detected in the loaded rows.';
+                summary.textContent = 'No forum post text was detected in the loaded rows.';
                 return;
             }
 
             const confirmedCount = this.humanRowsAll.filter((entry) => entry && entry.isConfirmed).length;
+            const qnaConfirmedCount = this.humanRowsAll.filter((entry) => entry && entry.isQnaConfirmed === true).length;
+            const hasRepliesCount = this.humanRowsAll.filter((entry) => entry && entry.hasRepliesInSameConversation === true).length;
+            const coverageStats = coverage || this.computeCoverageStats(this.humanRowsAll);
+            const yearRange = coverageStats.minYear !== null && coverageStats.maxYear !== null
+                ? `${coverageStats.minYear}-${coverageStats.maxYear}`
+                : 'unknown';
+            const replyCount = this.allPostRows.filter((entry) => entry.isReply === true).length;
+            const coverageLabel = `Loaded database rows: ${this.loadedRows.length}. Discussion starters: ${totalExtracted}. Reply messages: ${replyCount}. Year range: ${yearRange}. Q&A confirmed: ${qnaConfirmedCount}. Discussions with replies: ${hasRepliesCount}.`;
 
             if (totalFiltered === totalExtracted) {
-                summary.textContent = `Showing ${totalFiltered} human message row(s). Confirmed: ${confirmedCount}.`;
+                summary.textContent = `Showing ${totalFiltered} forum post row(s). Confirmed: ${confirmedCount}. ${coverageLabel}`;
                 return;
             }
 
-            summary.textContent = `Showing ${totalFiltered} of ${totalExtracted} human message row(s). Confirmed: ${confirmedCount}.`;
+            summary.textContent = `Showing ${totalFiltered} of ${totalExtracted} forum post row(s). Confirmed: ${confirmedCount}. ${coverageLabel}`;
         },
 
         getHumanPageCount() {
@@ -2043,7 +2237,7 @@
 
             const safeRows = Array.isArray(rows) ? rows : [];
             if (!safeRows.length) {
-                body.innerHTML = '<tr><td class="empty-row" colspan="5">No human messages matched the current filters.</td></tr>';
+                body.innerHTML = '<tr><td class="empty-row" colspan="7">No forum posts matched the current filters.</td></tr>';
                 body._rowsCache = [];
                 return;
             }
@@ -2052,14 +2246,19 @@
                 const createdAt = entry.createdAt || '';
                 const conversation = entry.conversationDisplay || entry.conversationId || entry.subject || '';
                 const actor = entry.actor || '';
+                const postType = entry.roleLabel || ROLE_MESSAGE;
                 const confirmedLabel = entry.isConfirmed ? 'Yes' : 'No';
                 const confirmedClass = entry.isConfirmed ? 'forum-confirmed-yes' : 'forum-confirmed-no';
                 const messageText = this.truncateForTable(entry.messageText, 260);
                 const absoluteIndex = absoluteStartIndex + idx;
-                return `<tr data-absolute-index="${absoluteIndex}">`
+                const checked = this.exportSelectedRows.has(this.getExportSelectionKey(entry)) ? ' checked' : '';
+                const selectedClass = absoluteIndex === this.selectedHumanAbsoluteIndex ? ' class="selected"' : '';
+                return `<tr data-absolute-index="${absoluteIndex}"${selectedClass}>`
+                    + `<td><input type="checkbox" class="forum-export-select" data-export-index="${absoluteIndex}" aria-label="Select post ${escapeHtml(conversation || String(absoluteIndex + 1))} for export"${checked}></td>`
                     + `<td>${escapeHtml(createdAt)}</td>`
                     + `<td>${escapeHtml(conversation)}</td>`
                     + `<td>${escapeHtml(actor)}</td>`
+                    + `<td>${escapeHtml(postType)}</td>`
                     + `<td class="${confirmedClass}">${escapeHtml(confirmedLabel)}</td>`
                     + `<td class="forum-human-message-cell">${escapeHtml(messageText)}</td>`
                     + '</tr>';
@@ -2078,6 +2277,9 @@
         },
 
         onHumanRowClick(event) {
+            if (event?.target?.closest('input[type="checkbox"]')) {
+                return;
+            }
             const tr = event && event.target && event.target.closest
                 ? event.target.closest('tr[data-absolute-index]')
                 : null;
@@ -2116,13 +2318,43 @@
                 return;
             }
 
+            const cacheKey = this.buildReplyCacheKey(entry);
+            if (cacheKey && this.replyRowsCache.has(cacheKey)) {
+                this.selectedReplyRows = this.replyRowsCache.get(cacheKey) || [];
+                this.repliesLoading = false;
+                this.repliesError = '';
+                if (this.selectedHumanAbsoluteIndex === absoluteIndex) {
+                    this.renderHumanDetail(entry);
+                }
+                return;
+            }
+
+            const localReplies = this.getReplyRowsForEntry(entry);
+            if (localReplies.length) {
+                this.selectedReplyRows = localReplies.map((row) => ({
+                    createdAt: String((row && row.createdAt) || ''),
+                    actor: String((row && row.actor) || ''),
+                    role: String((row && row.roleLabel) || ROLE_REPLY),
+                    messageText: String((row && row.messageText) || '')
+                })).filter((row) => row.messageText);
+                if (cacheKey) {
+                    this.replyRowsCache.set(cacheKey, this.selectedReplyRows.slice());
+                }
+                this.repliesLoading = false;
+                this.repliesError = '';
+                if (this.selectedHumanAbsoluteIndex === absoluteIndex) {
+                    this.renderHumanDetail(entry);
+                }
+                return;
+            }
+
             const params = this.buildParams('threadReplies');
             const discussionId = String(entry.conversationId || '').trim();
             const messageId = String(entry.sourceMessageId || '').trim();
             if (!discussionId && !messageId) {
                 this.selectedReplyRows = [];
                 this.repliesLoading = false;
-                this.repliesError = 'This row is missing conversation and message identifiers.';
+                this.repliesError = '';
                 if (this.selectedHumanAbsoluteIndex === absoluteIndex) {
                     this.renderHumanDetail(entry);
                 }
@@ -2160,9 +2392,12 @@
                 this.selectedReplyRows = replies.map((row) => ({
                     createdAt: row && row.created_at ? String(row.created_at) : '',
                     actor: row && row.actor ? String(row.actor) : '',
-                    role: row && row.role ? String(row.role) : 'reply',
+                    role: row && row.role ? String(row.role) : ROLE_REPLY,
                     messageText: row && row.message_text ? this.cleanMessageText(row.message_text) : ''
                 })).filter((row) => row.messageText);
+                if (cacheKey) {
+                    this.replyRowsCache.set(cacheKey, this.selectedReplyRows.slice());
+                }
                 this.repliesError = '';
                 this.repliesLoading = false;
                 if (this.selectedHumanAbsoluteIndex === absoluteIndex) {
@@ -2179,6 +2414,25 @@
                     this.renderHumanDetail(entry);
                 }
             }
+        },
+
+        buildReplyCacheKey(entry) {
+            if (!entry || typeof entry !== 'object') {
+                return '';
+            }
+            const chainValue = this.resolveEntryChainValue(entry);
+            if (chainValue) {
+                return `chain:${chainValue.toLowerCase()}`;
+            }
+            const discussionId = String(entry.conversationId || '').trim();
+            if (discussionId) {
+                return `discussion:${discussionId.toLowerCase()}`;
+            }
+            const sourceMessageId = String(entry.sourceMessageId || '').trim();
+            if (sourceMessageId) {
+                return `message:${sourceMessageId.toLowerCase()}`;
+            }
+            return '';
         },
 
         renderHumanDetail(entry) {
@@ -2200,6 +2454,7 @@
                 <div class="forum-human-detail-meta"><strong>User:</strong> ${escapeHtml(entry.actor || '(unknown)')}</div>
                 <div class="forum-human-detail-meta"><strong>Created:</strong> ${escapeHtml(entry.createdAt || '(unknown)')}</div>
                 <div class="forum-human-detail-meta"><strong>Confirmed:</strong> ${escapeHtml(entry.isConfirmed ? 'Yes' : 'No')}</div>
+                <div class="forum-human-detail-meta"><strong>Replies In Same Conversation:</strong> ${escapeHtml(String(entry.replyCountInSameConversation || 0))}</div>
                 <div class="forum-human-detail-meta"><strong>Q&A Status:</strong> ${escapeHtml(entry.qnaStatus || '(none)')}</div>
                 <div class="forum-human-detail-meta"><strong>Status Name:</strong> ${escapeHtml(entry.statusName || '(none)')}</div>
                 <div class="forum-human-detail-meta"><strong>Tags:</strong> ${escapeHtml(entry.tagNames || '(none)')}</div>
@@ -2258,24 +2513,17 @@
                 return '<div class="forum-human-detail-block"><strong>Replies</strong><div class="small-note">No reply messages detected for this message yet.</div></div>';
             }
 
-            const preview = replies.slice(0, 12);
-            const items = preview.map((row) => {
+            const items = replies.map((row) => {
                 const createdAt = escapeHtml(row.createdAt || '(unknown)');
                 const actor = escapeHtml(row.actor || '(unknown)');
-                const snippet = escapeHtml(this.truncateForTable(row.messageText || '', 180));
-                return `<li><strong>${createdAt}</strong> - ${actor}<br>${snippet}</li>`;
+                const messageText = escapeHtml(row.messageText || '');
+                return `<li><strong>${createdAt}</strong> - ${actor}<pre>${messageText}</pre></li>`;
             }).join('');
-
-            const remainder = replies.length - preview.length;
-            const more = remainder > 0
-                ? `<div class="small-note">${remainder} more reply message(s) are not shown here.</div>`
-                : '';
 
             return `
                 <div class="forum-human-detail-block">
                     <strong>Replies In Same Conversation (${replies.length})</strong>
                     <ul class="forum-human-chain-list">${items}</ul>
-                    ${more}
                 </div>`;
         },
 
@@ -2322,7 +2570,7 @@
             }
 
             const cleaned = this.cleanMessageText(responseRaw);
-            if (!cleaned || this.shouldExcludeMessage(cleaned)) {
+            if (!cleaned) {
                 return [];
             }
 
@@ -2358,7 +2606,10 @@
                 return [];
             }
 
-            const matches = this.humanRowsAll.filter((row) => this.getConversationChainKey(row) === key);
+            const fallbackRows = Array.isArray(this.allPostRows) && this.allPostRows.length
+                ? this.allPostRows
+                : this.humanRowsAll;
+            const matches = fallbackRows.filter((row) => this.getConversationChainKey(row) === key);
             matches.sort((a, b) => this.compareByCreatedAt(a, b));
             return matches;
         },
@@ -2444,7 +2695,7 @@
 
                 const pushTimelineItem = (rawText, isResponse) => {
                     const cleaned = this.cleanMessageText(rawText);
-                    if (!cleaned || this.shouldExcludeMessage(cleaned)) {
+                    if (!cleaned) {
                         return;
                     }
 
@@ -2565,13 +2816,72 @@
             overlay.style.display = 'none';
         },
 
+        getExportSelectionKey(entry) {
+            return JSON.stringify([entry.conversationId, entry.sourceMessageId, entry.roleLabel,
+                entry.createdAt, entry.actor, entry.messageText]);
+        },
+
+        clearExportSelection() {
+            this.exportSelectedRows.clear();
+            this.renderCurrentHumanPage();
+            this.updateOverlayActionState();
+        },
+
+        setPostExportSelection(entry, checked) {
+            if (!entry) {
+                return;
+            }
+            const key = this.getExportSelectionKey(entry);
+            if (checked) {
+                this.exportSelectedRows.set(key, entry);
+            } else {
+                this.exportSelectedRows.delete(key);
+            }
+            this.renderCurrentHumanPage();
+            this.updateOverlayActionState();
+        },
+
+        onExportSelectionChange(event) {
+            const checkbox = event?.target;
+            if (!checkbox?.matches('input[data-export-index]')) {
+                return;
+            }
+            const entry = this.humanRowsFiltered[Number(checkbox.dataset.exportIndex)];
+            if (!entry) {
+                return;
+            }
+            this.setPostExportSelection(entry, checkbox.checked);
+        },
+
         updateOverlayActionState() {
-            const hasRows = this.humanRowsAll.length > 0;
-            const hasSelection = this.getSelectedEntry() !== null && this.getSelectedEntry() !== undefined;
+            const selectedEntry = this.getSelectedEntry();
+            const hasSelection = selectedEntry !== null && selectedEntry !== undefined;
+
+            const selectPost = byId('forumDbOverlaySelectPost');
+            if (selectPost) {
+                selectPost.disabled = !hasSelection;
+                selectPost.checked = hasSelection && this.exportSelectedRows.has(this.getExportSelectionKey(selectedEntry));
+            }
 
             const exportBtn = byId('forumDbExportThreadsBtn');
             if (exportBtn) {
-                exportBtn.disabled = !hasRows;
+                exportBtn.disabled = this.exportInProgress || !this.getExportThreadTargets(this.getSelectedExportScope()).length;
+            }
+            for (const id of ['forumDbSelectionCount', 'forumDbOverlaySelectionCount']) {
+                const selectionCount = byId(id);
+                if (selectionCount) {
+                    selectionCount.textContent = `${this.exportSelectedRows.size} selected`;
+                }
+            }
+            const selectFilteredBtn = byId('forumDbSelectFilteredBtn');
+            if (selectFilteredBtn) {
+                selectFilteredBtn.disabled = !this.humanRowsFiltered.length;
+            }
+            for (const id of ['forumDbClearSelectionBtn', 'forumDbOverlayClearSelectionBtn']) {
+                const clearSelectionBtn = byId(id);
+                if (clearSelectionBtn) {
+                    clearSelectionBtn.disabled = !this.exportSelectedRows.size;
+                }
             }
 
             const emailBtn = byId('forumDbOverlayEmailBtn');
@@ -2636,6 +2946,10 @@
         },
 
         async exportMessagesAndRepliesCsv() {
+            if (this.exportInProgress) {
+                return;
+            }
+            this.exportInProgress = true;
             const exportBtn = byId('forumDbExportThreadsBtn');
             if (exportBtn) {
                 exportBtn.disabled = true;
@@ -2648,7 +2962,7 @@
                     this.setShareMessage(
                         exportScope === 'confirmed'
                             ? 'No confirmed chat posts are available to export.'
-                            : 'No loaded messages are available to export.',
+                            : 'No posts are available for the chosen export scope.',
                         true
                     );
                     return;
@@ -2656,7 +2970,7 @@
 
                 const flattened = [];
                 let totalReplies = 0;
-                const scopeLabel = exportScope === 'confirmed' ? 'confirmed message thread(s)' : 'message thread(s)';
+                const scopeLabel = `${exportScope} message thread(s)`;
                 this.setShareMessage(`Building CSV from ${targets.length} ${scopeLabel}...`, false);
 
                 for (let i = 0; i < targets.length; i++) {
@@ -2702,9 +3016,7 @@
                 }
 
                 const csv = this.toThreadCsv(flattened);
-                const filename = exportScope === 'confirmed'
-                    ? `forum-confirmed-messages-with-replies-${this.timestampForFilename()}.csv`
-                    : `forum-messages-with-replies-${this.timestampForFilename()}.csv`;
+                const filename = `forum-${exportScope}-messages-with-replies-${this.timestampForFilename()}.csv`;
                 const blob = new window.Blob([csv], { type: 'text/csv;charset=utf-8' });
                 const url = URL.createObjectURL(blob);
                 const a = document.createElement('a');
@@ -2723,6 +3035,7 @@
                 const msg = error && error.message ? String(error.message) : 'Unable to export messages and replies.';
                 this.setShareMessage(msg, true);
             } finally {
+                this.exportInProgress = false;
                 if (exportBtn) {
                     exportBtn.disabled = false;
                 }
@@ -2732,11 +3045,13 @@
 
         getSelectedExportScope() {
             const raw = String(byId('forumDbExportScope')?.value || 'all').trim().toLowerCase();
-            return raw === 'confirmed' ? 'confirmed' : 'all';
+            return ['confirmed', 'selected', 'filtered'].includes(raw) ? raw : 'all';
         },
 
         getExportThreadTargets(scope) {
-            const sourceRows = Array.isArray(this.humanRowsAll) ? this.humanRowsAll : [];
+            const sourceRows = scope === 'selected'
+                ? Array.from(this.exportSelectedRows.values())
+                : (scope === 'filtered' ? this.humanRowsFiltered : this.humanRowsAll);
             const targets = [];
             const seen = new Set();
             const confirmedOnly = scope === 'confirmed';
@@ -2927,6 +3242,9 @@
             this.loadedHints = null;
             this.detectedColumns = null;
             this.activeChainColumn = '';
+            this.replyRowsCache.clear();
+            this.exportSelectedRows.clear();
+            this.allPostRows = [];
             this.humanRowsAll = [];
             this.humanRowsFiltered = [];
             this.humanCurrentPage = 1;

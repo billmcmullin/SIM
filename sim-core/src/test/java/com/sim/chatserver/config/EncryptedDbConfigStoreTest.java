@@ -5,6 +5,8 @@ import java.sql.DatabaseMetaData;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.Map;
+import org.mockito.MockedConstruction;
 
 import javax.sql.DataSource;
 
@@ -20,6 +22,7 @@ import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.startsWith;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.mockConstruction;
 
 import com.sim.chatserver.startup.AppDataSourceHolder;
 
@@ -94,7 +97,21 @@ class EncryptedDbConfigStoreTest {
         cfg.setApiKey("abc"); // triggers encryption key lookup
 
         // encryptIfPresent throws SQLException wrapping IllegalStateException (missing env var)
-        assertThrows(SQLException.class, () -> EncryptedDbConfigStore.save(cfg));
+        try (MockedConstruction<ProcessBuilder> environment = mockConstruction(ProcessBuilder.class,
+                (builder, context) -> when(builder.environment()).thenReturn(Map.of()))) {
+            assertThrows(SQLException.class, () -> EncryptedDbConfigStore.save(cfg));
+        }
+    }
+
+    @Test
+    void save_withConfiguredKey_isIndependentOfHostEnvironment() {
+        ServerConfig cfg = new ServerConfig();
+        cfg.setApiKey("abc");
+        String testKey = java.util.Base64.getEncoder().encodeToString(new byte[32]);
+        try (MockedConstruction<ProcessBuilder> environment = mockConstruction(ProcessBuilder.class,
+                (builder, context) -> when(builder.environment()).thenReturn(Map.of("CONFIG_ENCRYPTION_KEY", testKey)))) {
+            assertDoesNotThrow(() -> EncryptedDbConfigStore.save(cfg));
+        }
     }
 
     @Test

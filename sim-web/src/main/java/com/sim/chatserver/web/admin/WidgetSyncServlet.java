@@ -97,7 +97,7 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 
-@WebServlet(name = "WidgetSyncServlet", urlPatterns = {"/admin/widgets/sync", "/admin/widgets/sync/timer", "/admin/widgets/summary/retry"})
+@WebServlet(name = "WidgetSyncServlet", urlPatterns = {"/admin/widgets/sync", "/admin/widgets/sync/timer", "/admin/widgets/summary/retry"}, loadOnStartup = 1)
 public class WidgetSyncServlet extends HttpServlet {
 
     private static final Logger log = Logger.getLogger(WidgetSyncServlet.class.getCanonicalName());
@@ -154,7 +154,7 @@ public class WidgetSyncServlet extends HttpServlet {
     private static final int SUMMARY_INCREMENTAL_MAX_BATCHES = 40;
     private static final int SUMMARY_MAX_TERMS_FOR_PROMPT = 80;
     private static final int SUMMARY_DIAGNOSTIC_BODY_CHARS = 1800;
-    private static final int LAST_SYNC_FLUSH_EVERY_N_RUNS = 5;
+    private static final int LAST_SYNC_FLUSH_EVERY_N_RUNS = 1;
     private static final int DEFAULT_SYNC_PARALLELISM = 4;
     private static final int MAX_SYNC_PARALLELISM = 16;
         private static final int DEFAULT_SYNC_RECENT_CHAT_ID_CACHE_SIZE = 10000;
@@ -462,7 +462,12 @@ public class WidgetSyncServlet extends HttpServlet {
 
         String requestedWidgetId = firstParam(req, com.sim.chatserver.util.CommonLiteralConstants.KEY_WIDGET_ID);
         beginSyncProgress("manual_sync", "Manual sync started.");
-        try {
+        try (var taskLock = com.sim.chatserver.service.WorkflowRuntime.tryTaskLock(() -> dataSourceHolder().getDataSource(), "widget-sync")) {
+            if (taskLock == null) {
+                finishSyncProgress(false, "Another application instance is running sync or summary generation.");
+                jsonError(resp, HttpServletResponse.SC_CONFLICT, "Another application instance is running sync or summary generation.");
+                return;
+            }
                 OrchestrationResult<WidgetSyncStatus> execution =
                     WidgetSyncExecutionCoordinator.execute(
                             WidgetSyncExecutionCoordinator.Mode.MANUAL,
@@ -551,7 +556,12 @@ public class WidgetSyncServlet extends HttpServlet {
         }
 
         beginSyncProgress("manual_summary_retry", "Manual summary generation started.");
-        try {
+        try (var taskLock = com.sim.chatserver.service.WorkflowRuntime.tryTaskLock(() -> dataSourceHolder().getDataSource(), "widget-sync")) {
+            if (taskLock == null) {
+                finishSyncProgress(false, "Another application instance is running sync or summary generation.");
+                jsonError(resp, HttpServletResponse.SC_CONFLICT, "Another application instance is running sync or summary generation.");
+                return;
+            }
             updateSyncProgress("summary_generation", "Generating daily summary...", 40);
             boolean success = runDailySummaryGeneration(true);
             String nextRunAt = computeNextSummaryRunAtIso();
@@ -752,7 +762,19 @@ public class WidgetSyncServlet extends HttpServlet {
             return;
         }
         beginSyncProgress("scheduled_sync", "Scheduled sync started.");
-        try {
+        try (var taskLock = com.sim.chatserver.service.WorkflowRuntime.tryTaskLock(() -> dataSourceHolder().getDataSource(), "widget-sync")) {
+            if (taskLock == null) {
+                finishSyncProgress(true, "Scheduled sync is owned by another application instance.");
+                return;
+            }
+            if (com.sim.chatserver.service.WorkflowRuntime.isInitialized()) {
+                loadSyncSettings();
+                if (STATE.lastSynced != null && Instant.now().toEpochMilli() - STATE.lastSynced.getTime()
+                        < STATE.syncIntervalSeconds * 1000L) {
+                    finishSyncProgress(true, "Scheduled sync was recently completed by another application instance.");
+                    return;
+                }
+            }
                 OrchestrationResult<WidgetSyncStatus> execution =
                     WidgetSyncExecutionCoordinator.execute(
                             WidgetSyncExecutionCoordinator.Mode.SCHEDULED,

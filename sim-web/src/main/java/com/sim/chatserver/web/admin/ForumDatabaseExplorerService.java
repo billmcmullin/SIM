@@ -54,6 +54,9 @@ import jakarta.servlet.http.HttpSession;
 final class ForumDatabaseExplorerService {
 
     private static final Logger LOG = Logger.getLogger(ForumDatabaseExplorerService.class.getCanonicalName());
+    private static final String LOG_INVALID_REQUEST_PORT = "Invalid port parameter in forum explorer request";
+    private static final String LOG_INVALID_REQUEST_PARAMETERS = "Invalid forum explorer request parameters";
+    private static final String LOG_INVALID_CONFIG_PORT = "Invalid forum explorer config port";
 
     private static final Pattern HOST_PATTERN = Pattern.compile("^[a-zA-Z0-9.-]{1,253}$");
     private static final Pattern DATABASE_PATTERN = Pattern.compile("^[a-zA-Z0-9_-]{1,128}$");
@@ -66,7 +69,6 @@ final class ForumDatabaseExplorerService {
     private static final int DEFAULT_REPLY_LIMIT = 200;
     private static final int MAX_REPLY_LIMIT = 500;
     private static final int MAX_OFFSET = 50_000;
-    private static final int MAX_CELL_TEXT_LEN = 4_000;
     private static final int MAX_SHARE_TO_LEN = 4_000;
     private static final int MAX_SHARE_SUBJECT_LEN = 512;
     private static final int CONFIG_ROW_ID = 1;
@@ -309,6 +311,7 @@ final class ForumDatabaseExplorerService {
         private static final String SQL_STRING_AGG_SEPARATOR = ", ', ')";
         private static final String SQL_SELECT_OPEN = "(SELECT ";
         private static final String SQL_SELECT_ONE_FROM = "SELECT 1 FROM ";
+        private static final String SQL_UNION_ALL = " UNION ALL ";
         private static final String SQL_LIMIT_ONE = " LIMIT 1";
         private static final String SQL_FORUM_ROWS_ALIAS = ") forum_rows";
         private static final String SQL_CAST_AS_CHAR = " AS CHAR)";
@@ -486,7 +489,7 @@ final class ForumDatabaseExplorerService {
         try {
             port = parseIntWithBounds(portRaw, 1, 65535, TOKEN_PORT);
         } catch (IllegalArgumentException ex) {
-            LOG.log(Level.FINE, "Invalid port parameter in forum explorer request", ex);
+            LOG.log(Level.FINE, LOG_INVALID_REQUEST_PORT, ex);
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, ex.getMessage());
             return;
         }
@@ -546,7 +549,7 @@ final class ForumDatabaseExplorerService {
             JsonObject payload = payloadBuilder.build();
             writeJson(resp, HttpServletResponse.SC_OK, payload);
         } catch (IllegalArgumentException ex) {
-            LOG.log(Level.FINE, "Invalid forum explorer request parameters", ex);
+            LOG.log(Level.FINE, LOG_INVALID_REQUEST_PARAMETERS, ex);
             writeError(resp, HttpServletResponse.SC_BAD_REQUEST, safeErrorMessage(ex));
         } catch (ForumExplorerDataAccessException ex) {
             LOG.log(Level.WARNING, LOG_FORUM_QUERY_FAILED, ex);
@@ -614,7 +617,7 @@ final class ForumDatabaseExplorerService {
             try {
                 port = Integer.valueOf(parseIntWithBounds(portRaw, 1, 65535, TOKEN_PORT));
             } catch (IllegalArgumentException ex) {
-                LOG.log(Level.FINE, "Invalid forum explorer config port", ex);
+                LOG.log(Level.FINE, LOG_INVALID_CONFIG_PORT, ex);
                 writeError(resp, HttpServletResponse.SC_BAD_REQUEST, ex.getMessage());
                 return;
             }
@@ -1174,6 +1177,7 @@ final class ForumDatabaseExplorerService {
         }
 
         TableInfo discussionInfo = loadTableInfo(connection, dbType, discussionTable);
+        TableInfo commentInfo = commentTable == null ? null : loadTableInfo(connection, dbType, commentTable);
         TableInfo userInfo = userTable == null ? null : loadTableInfo(connection, dbType, userTable);
         TableInfo tagDiscussionInfo = tagDiscussionTable == null ? null : loadTableInfo(connection, dbType, tagDiscussionTable);
         TableInfo tagInfo = tagTable == null ? null : loadTableInfo(connection, dbType, tagTable);
@@ -1193,6 +1197,17 @@ final class ForumDatabaseExplorerService {
             List.of(KEY_STATUS_ID, TOKEN_STATUSID, TOKEN_RECORD_STATUS_ID, TOKEN_RECORDSTATUSID));
         String discussionQnaCol = detectFirstColumn(discussionInfo.columns,
             List.of(TOKEN_QNA, TOKEN_QUESTION_STATUS, KEY_QNA_STATUS));
+
+        String commentIdCol = commentInfo == null ? null : detectFirstColumn(commentInfo.columns,
+            List.of(TOKEN_COMMENT_ID, TOKEN_COMMENTID, TOKEN_ID));
+        String commentDiscussionIdCol = commentInfo == null ? null : detectFirstColumn(commentInfo.columns,
+            List.of(TOKEN_DISCUSSION_ID, TOKEN_DISCUSSIONID, TOKEN_CONVERSATION_ID, TOKEN_CONVERSATIONID));
+        String commentBodyCol = commentInfo == null ? null : detectFirstColumn(commentInfo.columns,
+            List.of(TOKEN_BODY, TOKEN_COMMENT, TOKEN_MESSAGE, TOKEN_CONTENT, TOKEN_TEXT));
+        String commentActorCol = commentInfo == null ? null : detectFirstColumn(commentInfo.columns,
+            List.of(TOKEN_INSERT_USER_ID, TOKEN_INSERTUSERID, TOKEN_USER_ID, TOKEN_USERID, TOKEN_CREATED_BY, TOKEN_AUTHOR_ID, TOKEN_SENDER_ID));
+        String commentCreatedAtCol = commentInfo == null ? null : detectFirstColumn(commentInfo.columns,
+            List.of(TOKEN_DATE_INSERTED, TOKEN_DATEINSERTED, TOKEN_CREATED_AT, TOKEN_CREATEDON, TOKEN_CREATED, TOKEN_TIMESTAMP, TOKEN_INSERTED_AT));
 
         String tagDiscussionIdCol = tagDiscussionInfo == null ? null : detectFirstColumn(tagDiscussionInfo.columns,
             List.of(TOKEN_DISCUSSION_ID, TOKEN_DISCUSSIONID, TOKEN_RECORD_ID, TOKEN_RECORDID));
@@ -1255,6 +1270,74 @@ final class ForumDatabaseExplorerService {
 
         String dCreatedExpr = discussionCreatedAtCol == null ? SQL_NULL_LITERAL : quoteQualified(dbType, ALIAS_DISCUSSION, discussionCreatedAtCol);
 
+        String replySelect = EMPTY;
+        if (commentTable != null && commentDiscussionIdCol != null && commentBodyCol != null) {
+            String quotedCommentTable = quoteIdentifier(dbType, commentTable);
+            String cDiscussionIdExpr = quoteQualified(dbType, ALIAS_DISCUSSION, discussionIdCol);
+            String cMessageIdExpr = commentIdCol == null
+                ? quoteQualified(dbType, ALIAS_COMMENT, commentDiscussionIdCol)
+                : quoteQualified(dbType, ALIAS_COMMENT, commentIdCol);
+            String cSubjectExpr = subjectCol == null ? SQL_NULL_LITERAL : quoteQualified(dbType, ALIAS_DISCUSSION, subjectCol);
+            String cBodyExpr = quoteQualified(dbType, ALIAS_COMMENT, commentBodyCol);
+            String cCreatedExpr = commentCreatedAtCol == null ? SQL_NULL_LITERAL : quoteQualified(dbType, ALIAS_COMMENT, commentCreatedAtCol);
+            String cStatusIdExpr = discussionStatusIdCol == null ? SQL_NULL_LITERAL : quoteQualified(dbType, ALIAS_DISCUSSION, discussionStatusIdCol);
+            String cQnaExpr = discussionQnaCol == null ? SQL_NULL_LITERAL : quoteQualified(dbType, ALIAS_DISCUSSION, discussionQnaCol);
+
+            String cActorExpr = commentActorCol == null
+                ? SQL_NULL_LITERAL
+                : dbType.castToTextExpression(quoteQualified(dbType, ALIAS_COMMENT, commentActorCol));
+            String commentUserJoinSql = EMPTY;
+            if (commentActorCol != null && userTable != null && userIdCol != null && userNameCol != null) {
+                String commentActorTextExpr = dbType.castToTextExpression(quoteQualified(dbType, ALIAS_COMMENT, commentActorCol));
+                String userIdTextExpr = dbType.castToTextExpression(quoteQualified(dbType, ALIAS_USER, userIdCol));
+                String userNameTextExpr = dbType.castToTextExpression(quoteQualified(dbType, ALIAS_USER, userNameCol));
+                cActorExpr = SQL_COALESCE_NULLIF_TRIM_PREFIX + userNameTextExpr + SQL_EMPTY_FALLBACK_INFIX + commentActorTextExpr + ')';
+                commentUserJoinSql = SQL_LEFT_JOIN + quoteIdentifier(dbType, userTable) + SPACE + ALIAS_USER + SQL_ON
+                    + commentActorTextExpr + SQL_EQUALS_DELIMITER + userIdTextExpr + ' ';
+            }
+
+            String commentStatusNameExpr = SQL_NULL_LITERAL;
+            String commentStatusJoinSql = EMPTY;
+            if (statusTable != null && discussionStatusIdCol != null && statusIdCol != null && statusNameCol != null) {
+                String discussionStatusTextExpr = dbType.castToTextExpression(quoteQualified(dbType, ALIAS_DISCUSSION, discussionStatusIdCol));
+                String statusIdTextExpr = dbType.castToTextExpression(quoteQualified(dbType, ALIAS_RS, statusIdCol));
+                commentStatusNameExpr = quoteQualified(dbType, ALIAS_RS, statusNameCol);
+                commentStatusJoinSql = SQL_LEFT_JOIN + quoteIdentifier(dbType, statusTable) + SPACE + ALIAS_RS + SQL_ON
+                    + discussionStatusTextExpr + SQL_EQUALS_DELIMITER + statusIdTextExpr + ' ';
+            }
+
+            String commentTagNamesExpr = resolveTagNamesProjection(
+                dbType,
+                tagDiscussionTable,
+                tagTable,
+                tagDiscussionIdCol,
+                tagDiscussionTagIdCol,
+                tagIdCol,
+                tagNameCol,
+                cDiscussionIdExpr
+            );
+
+            replySelect = SQL_SELECT_PREFIX
+                + cMessageIdExpr + SQL_AS_DELIMITER + KEY_MESSAGE_ID + COMMA_SPACE
+                + cDiscussionIdExpr + SQL_AS_DELIMITER + TOKEN_CONVERSATION_ID + COMMA_SPACE
+                + cSubjectExpr + SQL_AS_DELIMITER + TOKEN_SUBJECT + COMMA_SPACE
+                + cActorExpr + SQL_AS_DELIMITER + KEY_ACTOR + COMMA_SPACE
+                + '\'' + VALUE_REPLY + '\'' + SQL_AS_DELIMITER + KEY_ROLE + COMMA_SPACE
+                + cCreatedExpr + SQL_AS_DELIMITER + TOKEN_CREATED_AT + COMMA_SPACE
+                + cBodyExpr + SQL_AS_DELIMITER + KEY_MESSAGE_TEXT + COMMA_SPACE
+                + SQL_NULL_LITERAL + SQL_AS_DELIMITER + TOKEN_RESPONSE_TEXT + COMMA_SPACE
+                + cStatusIdExpr + SQL_AS_DELIMITER + KEY_STATUS_ID + COMMA_SPACE
+                + commentStatusNameExpr + SQL_AS_DELIMITER + KEY_STATUS_NAME + COMMA_SPACE
+                + cQnaExpr + SQL_AS_DELIMITER + KEY_QNA_STATUS + COMMA_SPACE
+                + commentTagNamesExpr + SQL_AS_DELIMITER + KEY_TAG_NAMES + COMMA_SPACE
+                + cDiscussionIdExpr + SQL_AS_DELIMITER + TOKEN_CHAIN_KEY + ' '
+                + SQL_FROM + quotedCommentTable + SPACE + ALIAS_COMMENT + SPACE
+                + SQL_JOIN + quotedDiscussionTable + SPACE + ALIAS_DISCUSSION + SQL_ON
+                + quoteQualified(dbType, ALIAS_COMMENT, commentDiscussionIdCol) + SQL_EQUALS_DELIMITER + cDiscussionIdExpr + ' '
+                + commentUserJoinSql
+                + commentStatusJoinSql;
+        }
+
         String originalSelect = SQL_SELECT_PREFIX
             + dDiscussionIdExpr + SQL_AS_DELIMITER + KEY_MESSAGE_ID + COMMA_SPACE
             + dDiscussionIdExpr + SQL_AS_DELIMITER + TOKEN_CONVERSATION_ID + COMMA_SPACE
@@ -1273,7 +1356,8 @@ final class ForumDatabaseExplorerService {
                 + userJoinSql
                 + statusJoinSql;
 
-        String wrappedFrom = SQL_FROM_OPEN + originalSelect + SQL_FORUM_ROWS_ALIAS;
+            String combinedSelect = replySelect.isBlank() ? originalSelect : originalSelect + SQL_UNION_ALL + replySelect;
+            String wrappedFrom = SQL_FROM_OPEN + combinedSelect + SQL_FORUM_ROWS_ALIAS;
         String trimmedSearch = search == null ? EMPTY : search.trim();
         boolean hasSearch = !trimmedSearch.isEmpty();
         String searchWhere = hasSearch
@@ -2238,21 +2322,17 @@ final class ForumDatabaseExplorerService {
             return;
         }
         if (value instanceof TemporalAccessor) {
-            row.add(column, truncateCellValue(String.valueOf(value)));
+            row.add(column, normalizeCellValue(String.valueOf(value)));
             return;
         }
-        row.add(column, truncateCellValue(String.valueOf(value)));
+        row.add(column, normalizeCellValue(String.valueOf(value)));
     }
 
-    private static String truncateCellValue(String value) {
+    private static String normalizeCellValue(String value) {
         if (value == null) {
             return EMPTY;
         }
-        String normalized = value.replace(VALUE_NUL_CHAR, EMPTY);
-        if (normalized.length() > MAX_CELL_TEXT_LEN) {
-            return TextIoSanitizerUtil.safeSlice(normalized, 0, MAX_CELL_TEXT_LEN);
-        }
-        return normalized;
+        return value.replace(VALUE_NUL_CHAR, EMPTY);
     }
 
     private static String safeErrorMessage(Throwable throwable) {

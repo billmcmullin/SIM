@@ -23,7 +23,7 @@ import jakarta.json.JsonObject;
 public final class ReviewJobStatus {
     private static final String CONTENT_TYPE_APPLICATION_JSON = CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON;
     private static final String EMPTY = "";
-    private static final String FIELD_JOB_ID = "jobId";
+    private static final String FIELD_JOB_ID = CommonLiteralConstants.FIELD_JOB_ID;
     private static final String FIELD_REQUEST_ID = CommonLiteralConstants.FIELD_REQUEST_ID;
     private static final String FIELD_PHASE = "phase";
     private static final String FIELD_DONE = "done";

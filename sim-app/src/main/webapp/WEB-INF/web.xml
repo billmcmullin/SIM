@@ -107,6 +107,7 @@
     <servlet>
         <servlet-name>AdminAutoEmailAlertsServlet</servlet-name>
         <servlet-class>com.sim.chatserver.web.admin.AdminAutoEmailAlertsServlet</servlet-class>
+        <load-on-startup>2</load-on-startup>
     </servlet>
     <servlet-mapping>
         <servlet-name>AdminAutoEmailAlertsServlet</servlet-name>

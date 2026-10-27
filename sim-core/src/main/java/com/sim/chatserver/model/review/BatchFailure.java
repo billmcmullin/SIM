@@ -23,7 +23,7 @@ public final class BatchFailure {
     private static final String FIELD_BATCH_ID = "batchId";
     private static final String FIELD_REASON_CODE = "reasonCode";
     private static final String FIELD_MESSAGE = CommonLiteralConstants.FIELD_MESSAGE;
-    private static final String FIELD_HTTP_STATUS = "httpStatus";
+    private static final String FIELD_HTTP_STATUS = CommonLiteralConstants.FIELD_HTTP_STATUS;
     private static final String FIELD_RETRY_ATTEMPTED = "retryAttempted";
     private static final String FIELD_RETRY_SUCCEEDED = "retrySucceeded";
     private static final String FIELD_CONTEXT_TOO_LARGE_DETECTED = "contextTooLargeDetected";

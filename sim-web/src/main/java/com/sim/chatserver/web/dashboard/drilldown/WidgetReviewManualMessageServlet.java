@@ -111,7 +111,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                 return;
             }
 
-            executeManualRequest(resp, requestId, startNanos, requestContext, targetContext);
+            String owner = String.valueOf(req.getSession(false).getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER));
+            executeManualRequest(resp, requestId, startNanos, requestContext, targetContext, owner);
     
         } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
             java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
@@ -238,7 +239,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             String requestId,
             long startNanos,
             ManualRequestContext requestContext,
-            WorkspaceTargetContext targetContext
+            WorkspaceTargetContext targetContext,
+            String owner
     ) {
         try {
             if (requestContext.async) {
@@ -252,7 +254,8 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
                         requestContext.requestReset,
                         requestContext.normalizedAttachments,
                         requestContext.selectedEntries,
-                        requestId
+                        requestId,
+                        owner
                 );
                 return;
             }
@@ -331,12 +334,15 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             boolean requestReset,
             JsonArray attachments,
             List<SelectedEntry> selectedEntries,
-            String requestId
+            String requestId,
+            String owner
             ) {
 
         ReviewJobService jobs = WidgetReviewJobStatusServlet.jobService();
 
-        String jobId = jobs.submit(requestId, selectedEntries.size(), (jid) -> executeAsyncJob(
+        String jobId;
+        try {
+        jobId = jobs.submitForUser(owner, requestId, selectedEntries.size(), (jid) -> executeAsyncJob(
             jobs,
             jid,
             targetUrl,
@@ -349,6 +355,11 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             selectedEntries,
             requestId
         ));
+        } catch (java.util.concurrent.RejectedExecutionException ex) {
+            resp.setHeader("Retry-After", "5");
+            respondWithError(resp, HttpServletResponse.SC_SERVICE_UNAVAILABLE, "Review capacity is full. Please retry shortly.");
+            return;
+        }
 
         resp.setStatus(HttpServletResponse.SC_ACCEPTED);
         resp.setContentType(CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON_UTF8);
