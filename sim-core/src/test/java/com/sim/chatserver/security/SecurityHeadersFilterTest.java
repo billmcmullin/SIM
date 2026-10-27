@@ -84,7 +84,7 @@ public class SecurityHeadersFilterTest
         FilterChain chain = mock(FilterChain.class);
         underTest.doFilter(request, response, chain);
 
-        verify(response).setHeader("Cache-Control", "public, max-age=604800, immutable");
+        verify(response).setHeader("Cache-Control", "public, max-age=0, must-revalidate");
         verify(response).setDateHeader(eq("Expires"), anyLong());
         verify(response, never()).setHeader("Pragma", "no-cache");
     }

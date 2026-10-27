@@ -64,6 +64,22 @@ public final class CommonLiteralConstants {
     public static final String MSG_UNABLE_TO_WRITE_RESPONSE = "Unable to write response.";
 
     public static final String FIELD_REQUEST_ID = "requestId";
+    public static final String FIELD_JOB_ID = "jobId";
+    public static final String FIELD_PHASE = "phase";
+    public static final String FIELD_DONE = "done";
+    public static final String FIELD_COMPLETED_BATCHES = "completedBatches";
+    public static final String FIELD_FAILED_BATCHES = "failedBatches";
+    public static final String FIELD_RETRIES = "retries";
+    public static final String FIELD_COVERAGE_PERCENT = "coveragePercent";
+    public static final String FIELD_STARTED_AT_EPOCH_MS = "startedAtEpochMs";
+    public static final String FIELD_UPDATED_AT_EPOCH_MS = "updatedAtEpochMs";
+    public static final String FIELD_FINISHED_AT_EPOCH_MS = "finishedAtEpochMs";
+    public static final String FIELD_HTTP_STATUS = "httpStatus";
+    public static final String FIELD_ERROR_MESSAGE = "errorMessage";
+    public static final String FIELD_FINAL_REPORT = "finalReport";
+    public static final String FIELD_RAW_RESPONSE_BODY = "rawResponseBody";
+    public static final String FIELD_CONTENT_TYPE = "contentType";
+    public static final String FIELD_WARNINGS = "warnings";
     public static final String FIELD_MODE = "mode";
     public static final String FIELD_TOTAL_SELECTED = "totalSelected";
     public static final String FIELD_TOTAL_BATCHES = "totalBatches";

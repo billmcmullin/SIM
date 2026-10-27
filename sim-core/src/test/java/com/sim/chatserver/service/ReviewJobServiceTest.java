@@ -4,6 +4,9 @@ import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 
 import org.junit.jupiter.api.Test;
 
@@ -17,6 +20,7 @@ import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertNull;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Parasoft Jtest UTA: Test class for ReviewJobService
@@ -26,6 +30,100 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 public class ReviewJobServiceTest
 {
+    @Test
+    void usersCannotReadOrCancelAnotherUsersJob() throws InterruptedException {
+        ReviewJobService service = ReviewJobService.createWithPoolSize(1);
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        try {
+            String jobId = service.submitForUser("alice", "owned-request", 1, currentJobId -> {
+                started.countDown();
+                try {
+                    release.await();
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                }
+                return null;
+            });
+            assertTrue(started.await(5, TimeUnit.SECONDS));
+            assertNotNull(service.getStatusForUser(jobId, "alice"));
+            assertNull(service.getStatusForUser(jobId, "bob"));
+            assertNull(service.getStatusForUser(jobId, ""));
+            assertFalse(service.cancelForUser(jobId, "bob"));
+            assertFalse(service.getStatusForUser(jobId, "alice").isDone());
+            assertTrue(service.cancelForUser(jobId, "alice"));
+            assertEquals(ReviewJobStatus.Phase.CANCELLED, service.getStatusForUser(jobId, "alice").getPhase());
+            assertThrows(IllegalArgumentException.class, () -> service.submitForUser("", "invalid", 1, currentJobId -> null));
+        } finally {
+            release.countDown();
+            service.shutdownNow();
+        }
+    }
+
+    @Test
+    void cancelInterruptsRunningTask_andPreservesCancelledStatus() throws InterruptedException {
+        ReviewJobService service = ReviewJobService.createWithPoolSize(1);
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch interrupted = new CountDownLatch(1);
+        CountDownLatch blocker = new CountDownLatch(1);
+        try {
+            String jobId = service.submit("cancel-test", 1, currentJobId -> {
+                started.countDown();
+                try {
+                    blocker.await();
+                } catch (InterruptedException ex) {
+                    interrupted.countDown();
+                    Thread.currentThread().interrupt();
+                }
+                return null;
+            });
+            assertTrue(started.await(5, TimeUnit.SECONDS));
+            assertTrue(service.cancel(jobId));
+            assertTrue(interrupted.await(5, TimeUnit.SECONDS));
+            assertEquals(ReviewJobStatus.Phase.CANCELLED, service.getStatus(jobId).getPhase());
+            assertFalse(service.cancel(jobId));
+        } finally {
+            blocker.countDown();
+            service.shutdownNow();
+        }
+    }
+
+    @Test
+    void cancelledQueuedTask_neverRuns() throws InterruptedException {
+        ReviewJobService service = ReviewJobService.createWithPoolSize(1);
+        CountDownLatch started = new CountDownLatch(1);
+        CountDownLatch release = new CountDownLatch(1);
+        CountDownLatch drained = new CountDownLatch(1);
+        AtomicBoolean queuedTaskRan = new AtomicBoolean();
+        try {
+            service.submit("blocking", 1, jobId -> {
+                started.countDown();
+                try {
+                    release.await();
+                } catch (InterruptedException ex) {
+                    Thread.currentThread().interrupt();
+                }
+                return null;
+            });
+            assertTrue(started.await(5, TimeUnit.SECONDS));
+            String queuedId = service.submit("queued", 1, jobId -> {
+                queuedTaskRan.set(true);
+                return null;
+            });
+            assertTrue(service.cancel(queuedId));
+            service.submit("barrier", 1, jobId -> {
+                drained.countDown();
+                return null;
+            });
+            release.countDown();
+            assertTrue(drained.await(5, TimeUnit.SECONDS));
+            assertFalse(queuedTaskRan.get());
+            assertEquals(ReviewJobStatus.Phase.CANCELLED, service.getStatus(queuedId).getPhase());
+        } finally {
+            release.countDown();
+            service.shutdownNow();
+        }
+    }
 
     /**
      * Parasoft Jtest UTA: Test for cancel(String)

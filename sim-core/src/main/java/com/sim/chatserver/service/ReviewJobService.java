@@ -7,12 +7,17 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
+import java.util.concurrent.FutureTask;
+import java.util.concurrent.RejectedExecutionException;
+import java.util.concurrent.ArrayBlockingQueue;
+import java.util.concurrent.ScheduledExecutorService;
+import java.util.concurrent.ThreadPoolExecutor;
+import java.util.concurrent.TimeUnit;
 import java.time.Instant;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -30,7 +35,7 @@ import com.sim.chatserver.model.review.ReviewJobStatus;
  * UX progress behavior: - supports step-level status details via message: "Map
  * round 1/3 - batch 2/8 running", "Reduce synthesis in progress", etc.
  */
-public class ReviewJobService {
+public class ReviewJobService implements AutoCloseable {
 
     private static final Logger log = Logger.getLogger(ReviewJobService.class.getCanonicalName());
     private static final String SUPPRESS_UNUSED = com.sim.chatserver.util.CommonLiteralConstants.SUPPRESS_UNUSED;
@@ -52,6 +57,11 @@ public class ReviewJobService {
     private static final String LOG_CANCEL_FUTURE_FAILED = "Unable to cancel review job future cleanly";
     private static final String MIME_APPLICATION_JSON = com.sim.chatserver.util.CommonLiteralConstants.CONTENT_TYPE_APPLICATION_JSON;
     private static final String EMPTY = "";
+    private static final String OWNER_RECORD_KIND = "review-job-owner";
+    private static final String HEARTBEAT_THREAD_NAME = "review-job-heartbeats";
+    private static final String ERR_PERSISTENCE_INITIALIZATION = "Persistence must initialize before accepting review jobs";
+    private static final String ERR_OWNER_REQUIRED = "An authenticated job owner is required";
+    private static final String LOG_STORAGE_UNAVAILABLE = "Review job stopped because durable storage is unavailable";
 
     @FunctionalInterface
     public interface JobTask {
@@ -60,8 +70,11 @@ public class ReviewJobService {
     }
 
     private final ExecutorService executor;
-    private final Map<String, ReviewJobStatus> statuses = new ConcurrentHashMap<>();
+    private Map<String, ReviewJobStatus> statuses = new ConcurrentHashMap<>();
     private final Map<String, Future<?>> futures = new ConcurrentHashMap<>();
+    private final Map<String, String> owners = new ConcurrentHashMap<>();
+    private WorkflowRecordStore persistence;
+    private ScheduledExecutorService heartbeatExecutor;
 
     @SuppressWarnings(SUPPRESS_UNUSED)
     private final void readObject(java.io.ObjectInputStream in) throws java.io.IOException {
@@ -78,7 +91,39 @@ public class ReviewJobService {
     }
 
     private ReviewJobService(int poolSize) {
-        this.executor = Executors.newFixedThreadPool(Math.max(1, poolSize));
+        int workers = Math.max(1, poolSize);
+        this.executor = new ThreadPoolExecutor(workers, workers, 0L, TimeUnit.MILLISECONDS,
+                new ArrayBlockingQueue<>(100), new ThreadPoolExecutor.AbortPolicy());
+    }
+
+    public void enablePersistence(WorkflowRecordStore store) {
+        if (!futures.isEmpty() || !statuses.isEmpty()) {
+            throw new IllegalStateException(ERR_PERSISTENCE_INITIALIZATION);
+        }
+        JdbcReviewJobMap persistent = new JdbcReviewJobMap(store);
+        statuses = persistent;
+        persistence = store;
+        heartbeatExecutor = Executors.newSingleThreadScheduledExecutor(task -> {
+            Thread thread = new Thread(task, HEARTBEAT_THREAD_NAME);
+            thread.setDaemon(true);
+            return thread;
+        });
+        heartbeatExecutor.scheduleWithFixedDelay(() -> {
+            for (var entry : futures.entrySet()) {
+                try {
+                    ReviewJobStatus status = persistent.get(entry.getKey());
+                    if (status == null || status.isDone()) {
+                        entry.getValue().cancel(true);
+                        futures.remove(entry.getKey(), entry.getValue());
+                    } else if (!entry.getValue().isDone()) {
+                        persistent.heartbeat(entry.getKey());
+                    }
+                } catch (IllegalStateException ex) {
+                    entry.getValue().cancel(true);
+                    log.log(Level.WARNING, LOG_STORAGE_UNAVAILABLE, ex);
+                }
+            }
+        }, 5, 5, TimeUnit.SECONDS);
     }
 
     public static ReviewJobService createDefault() {
@@ -94,6 +139,43 @@ public class ReviewJobService {
     }
 
     public String submit(String requestId, int totalSelected, JobTask task) {
+        return submitInternal(null, requestId, totalSelected, task);
+    }
+
+    public String submitForUser(String owner, String requestId, int totalSelected, JobTask task) {
+        if (owner == null || owner.isBlank()) {
+            throw new IllegalArgumentException(ERR_OWNER_REQUIRED);
+        }
+        return submitInternal(owner, requestId, totalSelected, task);
+    }
+
+    public ReviewJobStatus getStatusForUser(String jobId, String owner) {
+        return isOwnedBy(jobId, owner) ? getStatus(jobId) : null;
+    }
+
+    public boolean cancelForUser(String jobId, String owner) {
+        return isOwnedBy(jobId, owner) && cancel(jobId);
+    }
+
+    private boolean isOwnedBy(String jobId, String owner) {
+        if (jobId == null || jobId.isBlank() || owner == null || owner.isBlank()) {
+            return false;
+        }
+        if (persistence != null) {
+            var record = persistence.find(OWNER_RECORD_KIND, jobId);
+            return record != null && owner.equals(record.payload());
+        }
+        return owner.equals(owners.get(jobId));
+    }
+
+    private void removeOwner(String jobId) {
+        owners.remove(jobId);
+        if (persistence != null) {
+            persistence.delete(OWNER_RECORD_KIND, jobId);
+        }
+    }
+
+    private String submitInternal(String owner, String requestId, int totalSelected, JobTask task) {
         String jobId = UUID.randomUUID().toString();
 
         long now = nowEpochMillis();
@@ -114,13 +196,30 @@ public class ReviewJobService {
                 .coverageComplete(false)
                 .build();
 
-        statuses.put(jobId, queued);
+        if (owner != null) {
+            if (persistence != null) {
+                persistence.insert(OWNER_RECORD_KIND, jobId, owner, 7L * 24 * 60 * 60 * 1000);
+            } else {
+                owners.put(jobId, owner);
+            }
+        }
+        try {
+            statuses.put(jobId, queued);
+        } catch (RuntimeException ex) {
+            try {
+                removeOwner(jobId);
+            } catch (IllegalStateException cleanupFailure) {
+                ex.addSuppressed(cleanupFailure);
+            }
+            throw ex;
+        }
 
-        Future<?> f = CompletableFuture.supplyAsync(() -> task.run(jobId), executor)
-                .thenAccept(result -> {
+        FutureTask<Void> future = new FutureTask<>(() -> {
+                try {
+                    JobResult result = task.run(jobId);
                     if (result == null) {
                         failJob(jobId, 500, ERR_NULL_RESULT);
-                        return;
+                        return null;
                     }
                     completeJob(
                             jobId,
@@ -141,16 +240,23 @@ public class ReviewJobService {
                             result.rawResponseBody(),
                             result.contentType()
                     );
-                })
-                .exceptionally(ex -> {
-                    Throwable cause = ex.getCause() == null ? ex : ex.getCause();
-                    log.log(Level.SEVERE, LOG_ASYNC_JOB_FAILED_PREFIX + jobId + LOG_ASYNC_JOB_FAILED_SUFFIX, cause);
-                    failJob(jobId, 500, cause.getMessage() == null ? ERR_ASYNC_FAILED_DEFAULT : cause.getMessage());
-                    return null;
-                })
-                .whenComplete((unused, ex) -> futures.remove(jobId));
-
-        futures.put(jobId, f);
+                } catch (RuntimeException ex) {
+                    log.log(Level.SEVERE, LOG_ASYNC_JOB_FAILED_PREFIX + jobId + LOG_ASYNC_JOB_FAILED_SUFFIX, ex);
+                    failJob(jobId, 500, ex.getMessage() == null ? ERR_ASYNC_FAILED_DEFAULT : ex.getMessage());
+                } finally {
+                    futures.remove(jobId);
+                }
+                return null;
+        });
+        futures.put(jobId, future);
+        try {
+            executor.execute(future);
+        } catch (RejectedExecutionException ex) {
+            futures.remove(jobId);
+            statuses.remove(jobId);
+            removeOwner(jobId);
+            throw ex;
+        }
         return jobId;
     }
 
@@ -170,14 +276,11 @@ public class ReviewJobService {
             return false;
         }
 
-        Future<?> f = futures.remove(jobId);
-        boolean cancelled = false;
-        if (f != null) {
-            cancelled = f.cancel(true);
-        }
-
+        while (true) {
         ReviewJobStatus old = statuses.get(jobId);
-        if (old != null) {
+        if (old == null || old.isDone()) {
+            return false;
+        }
             long now = nowEpochMillis();
 
             List<String> allIds = normalizeIds(old.getAllSelectedChatIds());
@@ -213,11 +316,14 @@ public class ReviewJobService {
                     .contentType(old.getContentType())
                     .build();
 
-            statuses.put(jobId, cancelledStatus);
+            if (statuses.replace(jobId, old, cancelledStatus)) {
+                Future<?> future = futures.remove(jobId);
+                if (future != null) {
+                    future.cancel(true);
+                }
+                return true;
+            }
         }
-
-        futures.remove(jobId);
-        return cancelled;
     }
 
     // ---------- Existing phase update APIs ----------
@@ -422,7 +528,7 @@ public class ReviewJobService {
 
     private void failJob(String jobId, int httpStatus, String errorMessage) {
         ReviewJobStatus old = statuses.get(jobId);
-        if (old == null) {
+        if (old == null || old.isDone()) {
             return;
         }
 
@@ -464,7 +570,7 @@ public class ReviewJobService {
                 .contentType(old.getContentType())
                 .build();
 
-        statuses.put(jobId, failed);
+        statuses.replace(jobId, old, failed);
     }
 
     private void completeJob(
@@ -527,7 +633,7 @@ public class ReviewJobService {
             String contentType
     ) {
         ReviewJobStatus old = statuses.get(jobId);
-        if (old == null) {
+        if (old == null || old.isDone()) {
             return;
         }
 
@@ -571,7 +677,7 @@ public class ReviewJobService {
                 .contentType(contentType == null || contentType.isBlank() ? MIME_APPLICATION_JSON : contentType)
                 .build();
 
-        statuses.put(jobId, completed);
+        statuses.replace(jobId, old, completed);
     }
 
     final int cleanupFinishedBefore(long cutoffEpochMs) {
@@ -591,6 +697,7 @@ public class ReviewJobService {
         for (String jobId : toRemove) {
             statuses.remove(jobId);
             futures.remove(jobId);
+            removeOwner(jobId);
             removed++;
         }
         return removed;
@@ -610,6 +717,26 @@ public class ReviewJobService {
         }
         futures.clear();
         executor.shutdownNow();
+        if (heartbeatExecutor != null) {
+            heartbeatExecutor.shutdownNow();
+        }
+    }
+
+    @Override
+    public void close() {
+        executor.shutdown();
+        try {
+            if (!executor.awaitTermination(30, TimeUnit.SECONDS)) {
+                shutdownNow();
+            }
+        } catch (InterruptedException ex) {
+            shutdownNow();
+            Thread.currentThread().interrupt();
+        } finally {
+            if (heartbeatExecutor != null) {
+                heartbeatExecutor.shutdownNow();
+            }
+        }
     }
 
     private void updatePhase(
@@ -677,7 +804,7 @@ public class ReviewJobService {
                 .contentType(old.getContentType())
                 .build();
 
-        statuses.put(jobId, updated);
+        statuses.replace(jobId, old, updated);
     }
 
     private List<String> normalizeIds(List<String> ids) {

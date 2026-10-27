@@ -357,7 +357,7 @@ class WidgetReviewManualMessageServletTest {
         HttpServletResponse resp = mock(HttpServletResponse.class);
         StringWriter out = new StringWriter();
         when(resp.getWriter()).thenReturn(new PrintWriter(out));
-        when(jobs.submit(anyString(), anyInt(), any(ReviewJobService.JobTask.class))).thenReturn("job-123");
+        when(jobs.submitForUser(anyString(), anyString(), anyInt(), any(ReviewJobService.JobTask.class))).thenReturn("job-123");
 
         JsonArray attachments = Json.createArrayBuilder().build();
         List<SelectedEntry> selectedEntries = List.of(
@@ -380,6 +380,7 @@ class WidgetReviewManualMessageServletTest {
                     boolean.class,
                     JsonArray.class,
                     List.class,
+                    String.class,
                     String.class
                 },
                 resp,
@@ -391,7 +392,8 @@ class WidgetReviewManualMessageServletTest {
                 false,
                 attachments,
                 selectedEntries,
-                "req-async-ok"
+                "req-async-ok",
+                "alice"
             );
         }
 
@@ -408,7 +410,7 @@ class WidgetReviewManualMessageServletTest {
         HttpServletResponse resp = mock(HttpServletResponse.class);
         when(resp.getWriter()).thenThrow(new IOException("write failed"));
         when(resp.isCommitted()).thenReturn(false);
-        when(jobs.submit(anyString(), anyInt(), any(ReviewJobService.JobTask.class))).thenReturn("job-456");
+        when(jobs.submitForUser(anyString(), anyString(), anyInt(), any(ReviewJobService.JobTask.class))).thenReturn("job-456");
 
         JsonArray attachments = Json.createArrayBuilder().build();
         List<SelectedEntry> selectedEntries = List.of(
@@ -431,6 +433,7 @@ class WidgetReviewManualMessageServletTest {
                     boolean.class,
                     JsonArray.class,
                     List.class,
+                    String.class,
                     String.class
                 },
                 resp,
@@ -442,7 +445,8 @@ class WidgetReviewManualMessageServletTest {
                 false,
                 attachments,
                 selectedEntries,
-                "req-async-fail"
+                "req-async-fail",
+                "alice"
             );
         }
 

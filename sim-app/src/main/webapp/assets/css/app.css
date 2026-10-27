@@ -599,6 +599,13 @@ button:disabled {
     font-weight: 600;
 }
 
+.forum-human-controls input[type="checkbox"],
+#forumDbHumanTable .forum-export-select {
+    width: auto;
+    margin: 0;
+    flex: 0 0 auto;
+}
+
 .forum-human-toggle input[type="checkbox"] {
     width: auto;
     margin: 0;
@@ -628,38 +635,68 @@ button:disabled {
 
 #forumDbHumanTable {
     table-layout: fixed;
-    min-width: 980px;
+    min-width: 1120px;
 }
 
 #forumDbHumanTable th:nth-child(1),
 #forumDbHumanTable td:nth-child(1) {
-    width: 170px;
-    min-width: 170px;
+    width: 64px;
     white-space: nowrap;
 }
 
 #forumDbHumanTable th:nth-child(2),
 #forumDbHumanTable td:nth-child(2) {
-    width: 24%;
-    min-width: 220px;
-    white-space: normal;
-    overflow-wrap: anywhere;
+    width: 164px;
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
 }
 
 #forumDbHumanTable th:nth-child(3),
 #forumDbHumanTable td:nth-child(3) {
-    width: 16%;
-    min-width: 160px;
+    width: 22%;
     white-space: normal;
     overflow-wrap: anywhere;
-    word-break: break-word;
 }
 
 #forumDbHumanTable th:nth-child(4),
 #forumDbHumanTable td:nth-child(4) {
-    min-width: 320px;
+    width: 124px;
     white-space: normal;
     overflow-wrap: anywhere;
+}
+
+#forumDbHumanTable th:nth-child(5),
+#forumDbHumanTable td:nth-child(5) {
+    width: 64px;
+    white-space: nowrap;
+}
+
+#forumDbHumanTable th:nth-child(6),
+#forumDbHumanTable td:nth-child(6) {
+    width: 96px;
+    white-space: nowrap;
+}
+
+#forumDbHumanTable th:nth-child(7),
+#forumDbHumanTable td:nth-child(7) {
+    white-space: normal;
+    overflow-wrap: anywhere;
+}
+
+#forumDbHumanTable thead th {
+    letter-spacing: 0;
+}
+
+#forumDbHumanBody td {
+    border-bottom: 1px solid #e2e8f0;
+}
+
+#forumDbHumanBody tr:nth-child(even) td {
+    background: #f8fafc;
+}
+
+#forumDbHumanBody tr:hover td {
+    background: #f1f5f9;
 }
 
 .forum-human-overlay {
@@ -769,6 +806,10 @@ button:disabled {
     white-space: normal;
     overflow-wrap: anywhere;
     word-break: break-word;
+}
+
+#forumDbHumanTable .forum-human-message-cell {
+    line-height: 1.6;
 }
 
 .forum-human-detail {

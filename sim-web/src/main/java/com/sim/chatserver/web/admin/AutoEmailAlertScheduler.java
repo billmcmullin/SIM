@@ -338,7 +338,10 @@ public class AutoEmailAlertScheduler {
             return;
         }
 
-        try {
+        try (var taskLock = com.sim.chatserver.service.WorkflowRuntime.tryTaskLock(() -> dataSource, "automatic-alerts")) {
+            if (taskLock == null) {
+                return;
+            }
             runTick();
         } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException e) {
             log.log(Level.WARNING, MSG_TICK_FAILED, e);

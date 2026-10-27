@@ -228,7 +228,7 @@
 
         <section class="section">
             <h2>Forum Database Explorer</h2>
-            <p>Dedicated admin-only forum message browser. Connect once and the app loads all available rows/columns from the detected forum message table, then lets you review human-readable messages with pagination.</p>
+            <p>Dedicated admin-only forum message browser. Connect once and the app loads all available rows/columns from the detected forum message tables, then lets you review forum posts (messages, replies, and responses) with pagination.</p>
 
             <form id="forumDbExplorerForm" onsubmit="return false;">
                 <div class="form-grid">
@@ -276,30 +276,39 @@
             </form>
 
             <div class="forum-human-review-wrap">
-                <h3>Human Message Review</h3>
-                <p class="small-note">Review human-written message text only. Click a row to open the full message text.</p>
+                <h3>Forum Post Review</h3>
+                <p class="small-note">Review conversation starter posts. Replies are shown in the conversation reply view after selecting a starter post.</p>
 
                 <div class="forum-human-controls">
                     <button type="button" id="forumDbExportThreadsBtn">Export Messages + Replies CSV</button>
                     <label class="small-note" for="forumDbExportScope" style="display:inline-flex; align-items:center; gap:8px; margin-left:12px;">
                         Export scope
                         <select id="forumDbExportScope" style="min-width:200px;">
-                            <option value="all" selected>All chat posts</option>
-                            <option value="confirmed">Confirmed chat posts only</option>
+                            <option value="all" selected>All discussion threads</option>
+                            <option value="confirmed">Confirmed discussion threads only</option>
+                            <option value="filtered">Currently filtered posts</option>
+                            <option value="selected">Selected posts only</option>
                         </select>
                     </label>
                     <label class="small-note" for="forumDbConfirmedOnly" style="display:inline-flex; align-items:center; gap:8px; margin-left:12px;">
                         <input type="checkbox" id="forumDbConfirmedOnly">
-                        Show confirmed discussions only
+                        Show Q&A confirmed only
+                    </label>
+                    <label class="small-note" for="forumDbHasRepliesOnly" style="display:inline-flex; align-items:center; gap:8px; margin-left:12px;">
+                        <input type="checkbox" id="forumDbHasRepliesOnly">
+                        Show posts with replies only
                     </label>
                 </div>
 
                 <div class="search-row">
-                    <input type="text" id="forumDbHumanSearch" placeholder="Filter human messages by text, user, session, or time">
+                    <input type="text" id="forumDbHumanSearch" placeholder="Filter starter posts by text, user, session, type, or time">
                     <div id="forumDbHumanSummary" class="small-note forum-human-summary">No data loaded yet.</div>
                 </div>
 
                 <div class="forum-human-pagination" aria-label="Human messages pagination">
+                    <button type="button" id="forumDbSelectFilteredBtn" disabled>Select filtered posts</button>
+                    <button type="button" id="forumDbClearSelectionBtn" disabled>Clear selection</button>
+                    <span id="forumDbSelectionCount" class="small-note" role="status">0 selected</span>
                     <button type="button" id="forumDbHumanPrevBtn">Previous</button>
                     <span id="forumDbHumanPageInfo" class="small-note">Page 1 of 1</span>
                     <button type="button" id="forumDbHumanNextBtn">Next</button>
@@ -315,28 +324,39 @@
                         <table class="widget-table" id="forumDbHumanTable">
                             <thead>
                                 <tr>
+                                    <th>Select</th>
                                     <th>Created</th>
                                     <th>Conversation / Session</th>
                                     <th>User</th>
+                                    <th>Type</th>
                                     <th>Confirmed</th>
-                                    <th>Human Message Text</th>
+                                    <th>Forum Post Text</th>
                                 </tr>
                             </thead>
                             <tbody id="forumDbHumanBody">
                                 <tr>
-                                    <td class="empty-row" colspan="5">No human messages loaded yet.</td>
+                                    <td class="empty-row" colspan="7">No forum posts loaded yet.</td>
                                 </tr>
                             </tbody>
                         </table>
                     </div>
 
-                    <aside id="forumDbHumanOverlay" class="detail-overlay-card forum-human-overlay" style="display:none;" role="dialog" aria-modal="false" aria-label="Selected human message">
+                    <aside id="forumDbHumanOverlay" class="detail-overlay-card forum-human-overlay" style="display:none;" role="dialog" aria-modal="false" aria-label="Selected forum post">
                         <div class="forum-human-overlay-header">
-                            <h4 class="forum-human-overlay-title">Selected Human Message</h4>
+                            <h4 class="forum-human-overlay-title">Selected Forum Post</h4>
                             <div class="forum-human-overlay-actions">
                                 <button type="button" id="forumDbOverlayEmailBtn">Email</button>
                                 <button type="button" id="forumDbOverlayCloseBtn">Close</button>
                             </div>
+                        </div>
+
+                        <div class="forum-human-controls">
+                            <label class="forum-human-toggle" for="forumDbOverlaySelectPost">
+                                <input type="checkbox" id="forumDbOverlaySelectPost" disabled>
+                                Select this post for export
+                            </label>
+                            <span id="forumDbOverlaySelectionCount" class="small-note" role="status">0 selected</span>
+                            <button type="button" id="forumDbOverlayClearSelectionBtn" disabled>Clear selection</button>
                         </div>
 
                         <div class="forum-human-share-grid">
@@ -369,7 +389,7 @@
                         <pre id="forumDbOverlayTranslateOutput" class="forum-human-translation-output" style="display:none;"></pre>
 
                         <div id="forumDbHumanDetail" class="forum-human-detail">
-                            <div class="small-note">Select a human message row to view full text.</div>
+                            <div class="small-note">Select a forum post row to view full text.</div>
                         </div>
                     </aside>
                 </div>

@@ -155,7 +155,21 @@ class ForumDatabaseExplorerServiceTest {
         assertFalse(message.contains("\n"));
     }
 
-    private static Object invokeStatic(String name, Class<?>[] parameterTypes, Object... args) {
+        @Test
+        void addJsonCell_preservesFullLengthPostAndReplyText() {
+        String text = "Post start " + "x".repeat(43_483) + "\u2019\u2014 complete ending";
+        JsonObjectBuilder builder = Json.createObjectBuilder();
+        invokeStatic("addJsonCell", new Class<?>[]{JsonObjectBuilder.class, String.class, Object.class},
+            builder, "message_text", text);
+        invokeStatic("addJsonCell", new Class<?>[]{JsonObjectBuilder.class, String.class, Object.class},
+            builder, "reply_text", text + "\u0000");
+
+        JsonObject payload = builder.build();
+        assertEquals(text, payload.getString("message_text"));
+        assertEquals(text, payload.getString("reply_text"));
+        }
+
+        private static Object invokeStatic(String name, Class<?>[] parameterTypes, Object... args) {
         try {
             Method method = ForumDatabaseExplorerService.class.getDeclaredMethod(name, parameterTypes);
             method.setAccessible(true);

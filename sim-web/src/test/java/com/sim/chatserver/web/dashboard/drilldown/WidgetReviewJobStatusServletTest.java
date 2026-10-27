@@ -2,10 +2,13 @@ package com.sim.chatserver.web.dashboard.drilldown;
 
 import java.io.IOException;
 import java.io.PrintWriter;
+import java.io.StringWriter;
 
 import org.junit.jupiter.api.Test;
 
 import com.sim.chatserver.service.ReviewJobService;
+import com.sim.chatserver.model.review.ReviewJobStatus;
+import org.mockito.MockedStatic;
 
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -16,6 +19,12 @@ import static org.mockito.ArgumentMatchers.anyBoolean;
 import static org.mockito.ArgumentMatchers.nullable;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
+import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.mockStatic;
+import static org.mockito.Mockito.CALLS_REAL_METHODS;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Parasoft Jtest UTA: Test class for WidgetReviewJobStatusServlet
  *
@@ -24,6 +33,79 @@ import static org.mockito.Mockito.when;
  */
 public class WidgetReviewJobStatusServletTest
 {
+    @Test
+    void pollingAnotherUsersJob_returnsNotFound() throws Exception {
+        ReviewJobService jobs = mock(ReviewJobService.class);
+        HttpServletRequest request = ownedRequest("bob");
+        HttpServletResponse response = responseWriter(new StringWriter());
+        try (MockedStatic<WidgetReviewJobStatusServlet> shared = mockStatic(WidgetReviewJobStatusServlet.class, CALLS_REAL_METHODS)) {
+            shared.when(WidgetReviewJobStatusServlet::jobService).thenReturn(jobs);
+            new WidgetReviewJobStatusServlet().doGet(request, response);
+        }
+        verify(jobs).getStatusForUser("owned-job", "bob");
+        verify(response).setStatus(HttpServletResponse.SC_NOT_FOUND);
+        verify(jobs, never()).getStatus(anyString());
+    }
+
+    @Test
+    void pollingOwnedJob_returnsProgress() throws Exception {
+        ReviewJobService jobs = mock(ReviewJobService.class);
+        when(jobs.getStatusForUser("owned-job", "alice")).thenReturn(ReviewJobStatus.builder().jobId("owned-job").build());
+        HttpServletResponse response = responseWriter(new StringWriter());
+        try (MockedStatic<WidgetReviewJobStatusServlet> shared = mockStatic(WidgetReviewJobStatusServlet.class, CALLS_REAL_METHODS)) {
+            shared.when(WidgetReviewJobStatusServlet::jobService).thenReturn(jobs);
+            new WidgetReviewJobStatusServlet().doGet(ownedRequest("alice"), response);
+        }
+        verify(response).setStatus(HttpServletResponse.SC_OK);
+    }
+
+    @Test
+    void cancellingAnotherUsersJob_doesNotCancelIt() throws Exception {
+        ReviewJobService jobs = mock(ReviewJobService.class);
+        HttpServletResponse response = responseWriter(new StringWriter());
+        try (MockedStatic<WidgetReviewJobStatusServlet> shared = mockStatic(WidgetReviewJobStatusServlet.class, CALLS_REAL_METHODS)) {
+            shared.when(WidgetReviewJobStatusServlet::jobService).thenReturn(jobs);
+            new WidgetReviewJobStatusServlet().doDelete(ownedRequest("bob"), response);
+        }
+        verify(response).setStatus(HttpServletResponse.SC_NOT_FOUND);
+        verify(jobs, never()).cancelForUser(anyString(), anyString());
+        verify(jobs, never()).cancel(anyString());
+    }
+
+    @Test
+    void cancellingOwnedJob_returnsUpdatedStatus() throws Exception {
+        ReviewJobService jobs = mock(ReviewJobService.class);
+        ReviewJobStatus queued = ReviewJobStatus.builder().jobId("owned-job").build();
+        ReviewJobStatus cancelled = ReviewJobStatus.builder().jobId("owned-job").phase(ReviewJobStatus.Phase.CANCELLED)
+                .done(true).finishedAtEpochMs(System.currentTimeMillis()).build();
+        when(jobs.getStatusForUser("owned-job", "alice")).thenReturn(queued, cancelled);
+        when(jobs.cancelForUser("owned-job", "alice")).thenReturn(true);
+        StringWriter body = new StringWriter();
+        HttpServletResponse response = responseWriter(body);
+        try (MockedStatic<WidgetReviewJobStatusServlet> shared = mockStatic(WidgetReviewJobStatusServlet.class, CALLS_REAL_METHODS)) {
+            shared.when(WidgetReviewJobStatusServlet::jobService).thenReturn(jobs);
+            new WidgetReviewJobStatusServlet().doDelete(ownedRequest("alice"), response);
+        }
+        verify(response).setStatus(HttpServletResponse.SC_OK);
+        assertTrue(body.toString().contains("CANCELLED"));
+        verify(jobs, never()).cancel(anyString());
+    }
+
+    private HttpServletRequest ownedRequest(String username) {
+        HttpServletRequest request = mock(HttpServletRequest.class);
+        HttpSession session = mock(HttpSession.class);
+        when(request.getSession(false)).thenReturn(session);
+        when(session.getAttribute("user")).thenReturn(username);
+        when(request.getParameterValues("jobId")).thenReturn(new String[]{"owned-job"});
+        return request;
+    }
+
+    private HttpServletResponse responseWriter(StringWriter body) throws IOException {
+        HttpServletResponse response = mock(HttpServletResponse.class);
+        when(response.getWriter()).thenReturn(new PrintWriter(body));
+        return response;
+    }
+
 
     /**
      * Parasoft Jtest UTA: Test for destroy()

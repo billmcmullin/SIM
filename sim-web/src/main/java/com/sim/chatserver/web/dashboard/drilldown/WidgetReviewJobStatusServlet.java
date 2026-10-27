@@ -23,7 +23,8 @@ import jakarta.servlet.http.HttpServlet;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
-
+
+
 import java.io.ObjectInputStream;
 import java.io.InvalidObjectException;
 /**
@@ -38,7 +39,7 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
     private static final long serialVersionUID = 1L;
 
     /**
-     * Shared in-memory job service instance.
+     * Shared job service configured and closed by the workflow lifecycle listener.
      */
     private static final ReviewJobService JOB_SERVICE = ReviewJobService.createDefault();
 
@@ -50,8 +51,6 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
     @Override
     public void destroy() {
         super.destroy();
-        // Optional:
-        // JOB_SERVICE.shutdownNow();
     }
 
     @Override
@@ -67,7 +66,8 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
             return;
         }
 
-        ReviewJobStatus status = JOB_SERVICE.getStatus(jobId);
+        ReviewJobService jobs = jobService();
+        ReviewJobStatus status = jobs.getStatusForUser(jobId, currentUser(req));
         if (status == null) {
             respondError(resp, HttpServletResponse.SC_NOT_FOUND, "Job not found.");
             return;
@@ -173,7 +173,7 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
                     .add("progress", progress)
                     .add("coverage", coverage)
                     .build());
-    
+
         } catch (IOException | IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
                     .log(java.util.logging.Level.WARNING, com.sim.chatserver.util.CommonLiteralConstants.LOG_UNHANDLED_EXCEPTION_IN_DO_GET, e);
@@ -201,13 +201,15 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
             return;
         }
 
-        if (!JOB_SERVICE.exists(jobId)) {
+        ReviewJobService jobs = jobService();
+        String owner = currentUser(req);
+        if (jobs.getStatusForUser(jobId, owner) == null) {
             respondError(resp, HttpServletResponse.SC_NOT_FOUND, "Job not found.");
             return;
         }
 
-        boolean cancelled = JOB_SERVICE.cancel(jobId);
-        ReviewJobStatus updated = JOB_SERVICE.getStatus(jobId);
+        boolean cancelled = jobs.cancelForUser(jobId, owner);
+        ReviewJobStatus updated = jobs.getStatusForUser(jobId, owner);
 
         ServletJsonResponseUtil.writeJson(
             resp,
@@ -217,7 +219,7 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
                 .add("cancelled", cancelled)
                 .add("job", updated == null ? Json.createObjectBuilder().build() : updated.toJson())
                 .build());
-    
+
         } catch (IOException | IllegalStateException | IllegalArgumentException | SecurityException | UnsupportedOperationException | NullPointerException e) {
             java.util.logging.Logger.getLogger(com.sim.chatserver.util.CommonLiteralConstants.LOGGER_OWASP)
                     .log(java.util.logging.Level.WARNING, "Unhandled exception in doDelete", e);
@@ -234,6 +236,11 @@ public class WidgetReviewJobStatusServlet extends HttpServlet {
 
     static ReviewJobService jobService() {
         return JOB_SERVICE;
+    }
+
+    private String currentUser(HttpServletRequest request) {
+        Object user = request.getSession(false).getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER);
+        return user instanceof String username ? username : "";
     }
 
     private boolean isLoggedIn(HttpServletRequest req, HttpServletResponse resp) {

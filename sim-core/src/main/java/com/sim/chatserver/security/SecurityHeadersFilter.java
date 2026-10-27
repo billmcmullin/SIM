@@ -30,12 +30,12 @@ import jakarta.servlet.http.HttpServletResponse;
 public class SecurityHeadersFilter implements Filter {
 
     public static final String WEB_FILTER_PATTERN = "/*";
-    private static final long STATIC_CACHE_SECONDS = 604800L; // 7 days
+    private static final long STATIC_CACHE_SECONDS = 0L;
     private static final int MAX_HEADER_CHARS = 512;
     private static final int MAX_URI_CHARS = 2048;
     private static final Pattern CONTROL_CHARS = Pattern.compile(com.sim.chatserver.util.CommonLiteralConstants.REGEX_CONTROL_CHARS);
 
-    private static final String STATIC_CACHE_CONTROL = "public, max-age=" + STATIC_CACHE_SECONDS + ", immutable";
+    private static final String STATIC_CACHE_CONTROL = "public, max-age=" + STATIC_CACHE_SECONDS + ", must-revalidate";
 
     private static final String DYNAMIC_CACHE_CONTROL = "no-store, no-cache, must-revalidate, max-age=0";
         private static final String HEADER_X_CONTENT_TYPE_OPTIONS = "X-Content-Type-Options";

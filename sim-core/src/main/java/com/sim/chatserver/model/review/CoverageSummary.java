@@ -35,7 +35,7 @@ public final class CoverageSummary {
     private static final String FIELD_FAILED_BATCH_COUNT = "failedBatchCount";
     private static final String FIELD_FAILED_BATCH_INDEXES = CommonLiteralConstants.FIELD_FAILED_BATCH_INDEXES;
     private static final String FIELD_COVERAGE_COMPLETE = CommonLiteralConstants.FIELD_COVERAGE_COMPLETE;
-    private static final String FIELD_COVERAGE_PERCENT = "coveragePercent";
+    private static final String FIELD_COVERAGE_PERCENT = CommonLiteralConstants.FIELD_COVERAGE_PERCENT;
     private static final String ERR_REQUIRED_NON_NEGATIVE_SUFFIX = " must be >= 0";
     private static final String ERR_CHATS_PROVIDED_NON_NEGATIVE = "chatsProvided must be >= 0";
     private static final String ERR_CHATS_USED_NON_NEGATIVE = "chatsUsedInAnalysis must be >= 0";

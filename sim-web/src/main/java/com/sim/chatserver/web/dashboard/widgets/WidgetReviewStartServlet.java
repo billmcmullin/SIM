@@ -120,6 +120,12 @@ public class WidgetReviewStartServlet extends HttpServlet {
     }
 
     private static String storeSelection(HttpSession session, Selection selection) {
+        if (com.sim.chatserver.service.WorkflowRuntime.isInitialized()) {
+            String selectionId = UUID.randomUUID().toString();
+            com.sim.chatserver.service.WorkflowRuntime.records().insert(selectionOwner(session), selectionId,
+                    SelectionCodec.encode(selection), 7L * 24 * 60 * 60 * 1000);
+            return selectionId;
+        }
         Map<String, Selection> selections = getSelectionMap(session);
 
         // prevent unbounded session growth
@@ -153,11 +159,23 @@ public class WidgetReviewStartServlet extends HttpServlet {
         if (session == null || selectionId == null || selectionId.isBlank()) {
             return null;
         }
+        if (com.sim.chatserver.service.WorkflowRuntime.isInitialized()) {
+            var record = com.sim.chatserver.service.WorkflowRuntime.records().find(selectionOwner(session), selectionId.trim());
+            return record == null ? null : SelectionCodec.decode(record.payload());
+        }
         Map<String, Selection> selections = (Map<String, Selection>) session.getAttribute(SESSION_KEY);
         if (selections == null) {
             return null;
         }
         return selections.get(selectionId.trim());
+    }
+
+    private static String selectionOwner(HttpSession session) {
+        Object user = session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER);
+        if (!(user instanceof String username) || username.isBlank()) {
+            throw new IllegalStateException("A signed-in user is required to store or reopen a review selection");
+        }
+        return "review-selection:" + username;
     }
 
     static String createSelectionFromGlobalChatIds(HttpSession session,
