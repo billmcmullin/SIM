@@ -25,7 +25,7 @@ public final class WorkflowRecordStore {
     private final Supplier<DataSource> dataSource;
     private final LongSupplier clock;
 
-    public WorkflowRecordStore(Supplier<DataSource> dataSource) {
+    WorkflowRecordStore(Supplier<DataSource> dataSource) {
         this(dataSource, System::currentTimeMillis);
     }
 
@@ -61,7 +61,7 @@ public final class WorkflowRecordStore {
         }
     }
 
-    public boolean replace(String kind, String id, String expected, String payload, long retentionMillis, long staleBefore) {
+    boolean replace(String kind, String id, String expected, String payload, long retentionMillis, long staleBefore) {
         try (Connection connection = dataSource.get().getConnection(); PreparedStatement statement = connection.prepareStatement(SQL_REPLACE)) {
             long now = clock.getAsLong();
             statement.setString(1, payload);
@@ -78,7 +78,7 @@ public final class WorkflowRecordStore {
         }
     }
 
-    public void touch(String kind, String id) {
+    void touch(String kind, String id) {
         try (Connection connection = dataSource.get().getConnection(); PreparedStatement statement = connection.prepareStatement(
                 SQL_TOUCH)) {
             statement.setLong(1, clock.getAsLong());
@@ -90,7 +90,7 @@ public final class WorkflowRecordStore {
         }
     }
 
-    public void delete(String kind, String id) {
+    void delete(String kind, String id) {
         try (Connection connection = dataSource.get().getConnection(); PreparedStatement statement = connection.prepareStatement(
                 SQL_DELETE)) {
             statement.setString(1, kind);
@@ -101,7 +101,7 @@ public final class WorkflowRecordStore {
         }
     }
 
-    public Map<String, StoredRecord> list(String kind) {
+    Map<String, StoredRecord> list(String kind) {
         Map<String, StoredRecord> records = new LinkedHashMap<>();
         try (Connection connection = dataSource.get().getConnection(); PreparedStatement statement = connection.prepareStatement(
                 SQL_LIST)) {
@@ -118,7 +118,7 @@ public final class WorkflowRecordStore {
         }
     }
 
-    public void purgeExpired() {
+    void purgeExpired() {
         try (Connection connection = dataSource.get().getConnection(); PreparedStatement statement = connection.prepareStatement(
                 SQL_PURGE)) {
             statement.setLong(1, clock.getAsLong());

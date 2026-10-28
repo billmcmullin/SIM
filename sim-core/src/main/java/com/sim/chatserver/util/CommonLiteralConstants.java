@@ -197,7 +197,7 @@ public final class CommonLiteralConstants {
     public static final String LOGGER_OWASP = "OWASP";
     public static final String LOG_HANDLED_EXCEPTION = "Handled exception";
 
-    public static final String SQL_WHERE_CREATED_AT_RANGE = " WHERE created_at >= ? AND created_at < ?";
+    public static final String SQL_WHERE_CREATED_AT_RANGE = " WHERE CAST(created_at AS TIMESTAMP) >= ? AND CAST(created_at AS TIMESTAMP) < ?";
 
     public static final String HTML_ESCAPE_QUOT = "&quot;";
     public static final String HTML_ESCAPE_APOS = "&#39;";

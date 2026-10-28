@@ -58,10 +58,10 @@ class DashboardMetricsServiceTest {
         when(conn.prepareStatement(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0, String.class);
             PreparedStatement ps = mock(PreparedStatement.class);
-            if (sql.contains("COUNT(*)") && !sql.contains("created_at >= ?")) {
+            if (sql.contains("COUNT(*)") && !sql.contains("CAST(created_at AS TIMESTAMP) >= ?")) {
                 ResultSet rs = mockCountResultSet(7);
                 when(ps.executeQuery()).thenReturn(rs);
-            } else if (sql.contains("COUNT(*)") && sql.contains("created_at >= ?")) {
+            } else if (sql.contains("COUNT(*)") && sql.contains("CAST(created_at AS TIMESTAMP) >= ?")) {
                 int value = betweenCounter.getAndIncrement() == 0 ? 5 : 3;
                 ResultSet rs = mockCountResultSet(value);
                 when(ps.executeQuery()).thenReturn(rs);
@@ -130,7 +130,7 @@ class DashboardMetricsServiceTest {
         when(conn.prepareStatement(anyString())).thenAnswer(invocation -> {
             String sql = invocation.getArgument(0, String.class);
             PreparedStatement ps = mock(PreparedStatement.class);
-            if (sql.startsWith("SELECT COUNT(*)") && sql.contains("created_at >= ?")) {
+            if (sql.startsWith("SELECT COUNT(*)") && sql.contains("CAST(created_at AS TIMESTAMP) >= ?")) {
                 int idx = countQueryCall.getAndIncrement();
                 int value = (idx == 0 || idx == 2) ? 5 : 3;
                 ResultSet rs = mockCountResultSet(value);

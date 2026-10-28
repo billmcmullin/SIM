@@ -9,7 +9,7 @@ public final class WorkflowSchema {
     private static final String BASELINE_VERSION = "0";
     private WorkflowSchema() { }
 
-    public static void migrate(DataSource dataSource) {
+    static void migrate(DataSource dataSource) {
         Flyway.configure().dataSource(dataSource)
                 .table(HISTORY_TABLE)
                 .locations(MIGRATION_LOCATION)

@@ -289,6 +289,7 @@ final class DatabaseImportService {
             List<String> createdBaseline = ensureRequiredTables(conn);
             List<String> widgetTables = findWidgetTables(zipTables.keySet());
             List<String> createdWidgetTables = ensureWidgetTables(conn, widgetTables, zipTables);
+            validateRequiredValues(conn, zipTables);
 
             JsonArrayBuilder widgetSummary = Json.createArrayBuilder();
             for (String wt : widgetTables) {
@@ -310,6 +311,17 @@ final class DatabaseImportService {
 
             json(resp, HttpServletResponse.SC_OK, result.build());
 
+            } catch (ImportException e) {
+                log.log(Level.FINE, "Backup precheck rejected invalid required values", e);
+                json(resp, HttpServletResponse.SC_BAD_REQUEST, Json.createObjectBuilder()
+                    .add(JSON_KEY_STATUS, JSON_STATUS_ERROR)
+                    .add(KEY_CONNECTION_OK, true)
+                    .add(KEY_READY_FOR_IMPORT, false)
+                    .add(JSON_KEY_MESSAGE, e.getMessage())
+                    .add(JSON_KEY_TABLE, safe(e.getTable()))
+                    .add(JSON_KEY_ROW_NUMBER, e.getRowNumber())
+                    .add(JSON_KEY_COLUMN, safe(e.getColumn()))
+                    .build());
         } catch (SQLException | IllegalArgumentException | IllegalStateException e) {
                 log.log(Level.SEVERE, LOG_IMPORT_PRECHECK_FAILED, e);
             json(resp, HttpServletResponse.SC_INTERNAL_SERVER_ERROR, Json.createObjectBuilder()
@@ -345,6 +357,7 @@ final class DatabaseImportService {
                 ensureRequiredTables(conn);
                 List<String> widgetTables = findWidgetTables(zipTables.keySet());
                 ensureWidgetTables(conn, widgetTables, zipTables);
+                validateRequiredValues(conn, zipTables);
 
                 Map<String, Integer> importedCounts = new LinkedHashMap<>();
 
@@ -599,6 +612,33 @@ final class DatabaseImportService {
             }
         }
         return out;
+    }
+
+    private void validateRequiredValues(Connection conn, Map<String, CsvTableData> tables) {
+        for (Map.Entry<String, CsvTableData> entry : tables.entrySet()) {
+            String table = entry.getKey();
+            CsvTableData data = entry.getValue();
+            Map<String, ColumnInfo> columns = loadColumnInfo(conn, table);
+            for (int rowIndex = 0; rowIndex < data.rows.size(); rowIndex++) {
+                List<String> row = data.rows.get(rowIndex);
+                for (int columnIndex = 0; columnIndex < data.headers.size(); columnIndex++) {
+                    String column = data.headers.get(columnIndex);
+                    ColumnInfo info = columns.get(column.toLowerCase(Locale.ROOT));
+                    if (info == null || info.nullable || isTextType(info.sqlType)) {
+                        continue;
+                    }
+                    String value = columnIndex < row.size() ? row.get(columnIndex) : null;
+                    if (value == null || value.isBlank()) {
+                        int rowNumber = rowIndex + 2;
+                        throw new ImportException(
+                                "Backup contains a blank required value in table '" + table
+                                        + "', CSV row " + rowNumber + ", column '" + column
+                                        + "'. Export a new backup with the corrected exporter before importing.",
+                                table, rowNumber, column, null);
+                    }
+                }
+            }
+        }
     }
 
     private int replaceTableData(Connection conn, String table, CsvTableData data) {

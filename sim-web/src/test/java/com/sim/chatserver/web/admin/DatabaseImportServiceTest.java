@@ -45,6 +45,58 @@ import jakarta.servlet.http.Part;
 class DatabaseImportServiceTest {
 
     @Test
+    void requiredValueValidationRejectsBlankTimestampBeforePreparingDataChanges() throws Exception {
+    DatabaseImportService service = new DatabaseImportService();
+    Connection connection = mock(Connection.class);
+    DatabaseMetaData metadata = mock(DatabaseMetaData.class);
+    ResultSet columns = mock(ResultSet.class);
+    when(connection.getMetaData()).thenReturn(metadata);
+    when(metadata.getColumns(null, "public", "widget_entries", null)).thenReturn(columns);
+    when(columns.next()).thenReturn(true, false);
+    when(columns.getString("COLUMN_NAME")).thenReturn("created_at");
+    when(columns.getInt("DATA_TYPE")).thenReturn(Types.TIMESTAMP_WITH_TIMEZONE);
+    when(columns.getInt("NULLABLE")).thenReturn(ResultSetMetaData.columnNoNulls);
+    when(columns.wasNull()).thenReturn(false);
+    CsvTableData data = new CsvTableData(List.of("created_at"), List.of(List.of("")));
+    Method validate = DatabaseImportService.class.getDeclaredMethod(
+        "validateRequiredValues", Connection.class, Map.class);
+    validate.setAccessible(true);
+
+    InvocationTargetException failure = assertThrows(InvocationTargetException.class,
+        () -> validate.invoke(service, connection, Map.of("widget_entries", data)));
+
+    ImportException problem = (ImportException) failure.getCause();
+    assertEquals("widget_entries", problem.getTable());
+    assertEquals(2, problem.getRowNumber());
+    assertEquals("created_at", problem.getColumn());
+    verify(connection, org.mockito.Mockito.never()).prepareStatement(org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
+    void requiredValueValidationAcceptsPresentTimestampAndNullableBlank() throws Exception {
+    DatabaseImportService service = new DatabaseImportService();
+    Connection connection = mock(Connection.class);
+    DatabaseMetaData metadata = mock(DatabaseMetaData.class);
+    ResultSet columns = mock(ResultSet.class);
+    when(connection.getMetaData()).thenReturn(metadata);
+    when(metadata.getColumns(null, "public", "widget_entries", null)).thenReturn(columns);
+    when(columns.next()).thenReturn(true, true, false);
+    when(columns.getString("COLUMN_NAME")).thenReturn("created_at", "updated_at");
+    when(columns.getInt("DATA_TYPE")).thenReturn(Types.TIMESTAMP_WITH_TIMEZONE);
+    when(columns.getInt("NULLABLE")).thenReturn(
+        ResultSetMetaData.columnNoNulls, ResultSetMetaData.columnNullable);
+    when(columns.wasNull()).thenReturn(false);
+    CsvTableData data = new CsvTableData(List.of("created_at", "updated_at"),
+        List.of(List.of("2026-10-27T17:15:49.123456Z", "")));
+    Method validate = DatabaseImportService.class.getDeclaredMethod(
+        "validateRequiredValues", Connection.class, Map.class);
+    validate.setAccessible(true);
+
+    validate.invoke(service, connection, Map.of("widget_entries", data));
+    verify(connection, org.mockito.Mockito.never()).prepareStatement(org.mockito.ArgumentMatchers.anyString());
+    }
+
+    @Test
     void readZipTables_whenZipContainsMixedEntries_readsOnlyCsvTables() throws Exception {
         DatabaseImportService service = new DatabaseImportService();
 
