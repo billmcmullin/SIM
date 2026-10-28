@@ -408,7 +408,7 @@ final class DatabaseBackupService {
             return null;
         }
 
-        String normalized = raw.trim();
+        String normalized = raw.trim().replace(' ', 'T');
         try {
             return Timestamp.from(Instant.parse(normalized));
         } catch (DateTimeException ex) {

@@ -31,6 +31,52 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 public class ReviewJobServiceTest
 {
     @Test
+    void unexpectedRuntimeFailureStillMarksJobFailed() throws Exception {
+        ReviewJobService service = ReviewJobService.createWithPoolSize(1);
+        CountDownLatch completed = new CountDownLatch(1);
+        try {
+            String failedJob = service.submit("runtime-failure", 1, jobId -> {
+                throw new java.util.ConcurrentModificationException("task failed");
+            });
+            service.submit("completion-barrier", 0, jobId -> {
+                completed.countDown();
+                return null;
+            });
+            assertTrue(completed.await(5, TimeUnit.SECONDS));
+            ReviewJobStatus status = service.getStatus(failedJob);
+            assertEquals(ReviewJobStatus.Phase.FAILED, status.getPhase());
+            Method errorMessage = ReviewJobStatus.class.getDeclaredMethod("getErrorMessage");
+            errorMessage.setAccessible(true);
+            assertEquals("task failed", errorMessage.invoke(status));
+        } finally {
+            service.shutdownNow();
+        }
+    }
+
+    @Test
+    @SuppressWarnings("unchecked")
+    void failedStatusWriteRemovesOwnerAndPreservesOriginalFailure() throws Exception {
+        ReviewJobService service = ReviewJobService.createWithPoolSize(1);
+        java.util.Map<String, ReviewJobStatus> failedStatuses = mock(java.util.Map.class);
+        NullPointerException failure = new NullPointerException("status write failed");
+        org.mockito.Mockito.when(failedStatuses.put(org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(ReviewJobStatus.class))).thenThrow(failure);
+        java.lang.reflect.Field statuses = ReviewJobService.class.getDeclaredField("statuses");
+        statuses.setAccessible(true);
+        statuses.set(service, failedStatuses);
+        java.lang.reflect.Field owners = ReviewJobService.class.getDeclaredField("owners");
+        owners.setAccessible(true);
+        try {
+            NullPointerException actual = assertThrows(NullPointerException.class,
+                    () -> service.submitForUser("alice", "failed-status", 1, jobId -> null));
+            org.junit.jupiter.api.Assertions.assertSame(failure, actual);
+            assertTrue(((java.util.Map<?, ?>) owners.get(service)).isEmpty());
+        } finally {
+            service.shutdownNow();
+        }
+    }
+
+    @Test
     void usersCannotReadOrCancelAnotherUsersJob() throws InterruptedException {
         ReviewJobService service = ReviewJobService.createWithPoolSize(1);
         CountDownLatch started = new CountDownLatch(1);

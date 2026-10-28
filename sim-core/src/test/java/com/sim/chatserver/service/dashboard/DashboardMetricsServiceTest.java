@@ -32,6 +32,7 @@ import static org.mockito.Mockito.when;
 import static org.junit.jupiter.api.Assertions.assertAll;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertNotNull;
+import static org.junit.jupiter.api.Assertions.assertTrue;
 /**
  * Parasoft Jtest UTA: Test class for DashboardMetricsService
  *
@@ -40,6 +41,58 @@ import static org.junit.jupiter.api.Assertions.assertNotNull;
  */
 public class DashboardMetricsServiceTest
 {
+    @Test
+    public void sharedDatePredicateSupportsTextAndNativeTimestampColumns() throws Exception {
+        try (Connection connection = java.sql.DriverManager.getConnection(
+                "jdbc:h2:mem:dashboard_date_range;MODE=PostgreSQL")) {
+            for (String columnType : List.of("VARCHAR(80)", "TIMESTAMP")) {
+                try (java.sql.Statement statement = connection.createStatement()) {
+                    statement.execute("CREATE TABLE widget_dates (created_at " + columnType + ")");
+                    statement.execute("INSERT INTO widget_dates VALUES ('2026-10-26 23:59:59'), "
+                            + "('2026-10-27 00:00:00'), ('2026-10-27 23:59:59'), ('2026-10-28 00:00:00')");
+                }
+                try (PreparedStatement statement = connection.prepareStatement(
+                        "SELECT COUNT(*) FROM widget_dates"
+                                + com.sim.chatserver.util.SqlLiteralConstants.SQL_WHERE_CREATED_AT_RANGE)) {
+                    statement.setTimestamp(1, Timestamp.valueOf("2026-10-27 00:00:00"));
+                    statement.setTimestamp(2, Timestamp.valueOf("2026-10-28 00:00:00"));
+                    try (ResultSet rows = statement.executeQuery()) {
+                        assertTrue(rows.next());
+                        assertEquals(2, rows.getInt(1), columnType);
+                    }
+                }
+                try (java.sql.Statement statement = connection.createStatement()) {
+                    statement.execute("DROP TABLE widget_dates");
+                }
+            }
+        }
+    }
+
+    @Test
+    public void dateRangeCountSupportsTextTimestampColumns() throws Exception {
+        Connection connection = mock(Connection.class);
+        PreparedStatement statement = mock(PreparedStatement.class);
+        ResultSet rows = mock(ResultSet.class);
+        when(connection.prepareStatement(nullable(String.class))).thenAnswer(invocation -> {
+            String sql = invocation.getArgument(0);
+            if (!sql.contains("CAST(created_at AS TIMESTAMP)")) {
+                throw new SQLException("operator does not exist: text >= timestamp without time zone");
+            }
+            return statement;
+        });
+        when(statement.executeQuery()).thenReturn(rows);
+        when(rows.next()).thenReturn(true);
+        when(rows.getInt(1)).thenReturn(3);
+
+        DashboardMetricsService service = DashboardMetricsService.createForDashboard(
+                mock(AppDataSourceHolder.class), mock(TermsStore.class), 3);
+        java.lang.reflect.Method countRowsBetween = DashboardMetricsService.class.getDeclaredMethod(
+                "countRowsBetween", Connection.class, String.class, Timestamp.class, Timestamp.class);
+        countRowsBetween.setAccessible(true);
+
+        assertEquals(3, countRowsBetween.invoke(service, connection, "legacy_widget",
+                Timestamp.valueOf("2026-10-27 00:00:00"), Timestamp.valueOf("2026-10-28 00:00:00")));
+    }
 
     /**
      * Parasoft Jtest UTA: Test for buildChatProgression(List)

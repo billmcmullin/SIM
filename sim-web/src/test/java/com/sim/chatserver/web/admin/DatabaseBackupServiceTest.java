@@ -16,6 +16,21 @@ import org.junit.jupiter.api.Test;
 class DatabaseBackupServiceTest {
 
     @Test
+    void timestampParserPreservesPostgresOffsetsAndFractionalSeconds() throws Exception {
+        DatabaseBackupService service = new DatabaseBackupService();
+        String[][] cases = {
+                {"2026-10-27 17:15:49.123456+00", "2026-10-27T17:15:49.123456Z"},
+                {"2026-10-27 10:15:49.123456-07", "2026-10-27T17:15:49.123456Z"},
+                {"2026-10-27 22:45:49.123456+05:30", "2026-10-27T17:15:49.123456Z"}
+        };
+        for (String[] timestampCase : cases) {
+            assertEquals(Timestamp.from(java.time.Instant.parse(timestampCase[1])),
+                    invokeObject(service, "parseTimestamp", new Class<?>[]{String.class}, timestampCase[0]),
+                    timestampCase[0]);
+        }
+    }
+
+    @Test
     void sqlAndIdentifierHelpers_validateInputs() throws Exception {
         DatabaseBackupService service = new DatabaseBackupService();
 

@@ -14,7 +14,7 @@ public final class CacheValue<T> {
         return new CacheValue<>(value, expiresAt);
     }
 
-    public T getValue() {
+    T getValue() {
         return value;
     }
 
@@ -22,7 +22,7 @@ public final class CacheValue<T> {
         return expiresAt;
     }
 
-    public boolean isExpired(long now) {
+    boolean isExpired(long now) {
         return now >= expiresAt;
     }
 }

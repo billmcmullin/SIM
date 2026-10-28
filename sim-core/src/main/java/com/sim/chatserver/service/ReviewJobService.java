@@ -11,6 +11,7 @@ import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.RejectedExecutionException;
@@ -62,6 +63,9 @@ public class ReviewJobService implements AutoCloseable {
     private static final String ERR_PERSISTENCE_INITIALIZATION = "Persistence must initialize before accepting review jobs";
     private static final String ERR_OWNER_REQUIRED = "An authenticated job owner is required";
     private static final String LOG_STORAGE_UNAVAILABLE = "Review job stopped because durable storage is unavailable";
+    private static final String LOG_OWNER_CLEANUP_FAILED = "Unable to remove review job owner after submission failed";
+    private static final String LOG_SHUTDOWN_INTERRUPTED = "Review job shutdown interrupted";
+    private static final String LOG_COMPLETION_INTERRUPTED = "Interrupted while inspecting completed review job";
 
     @FunctionalInterface
     public interface JobTask {
@@ -138,7 +142,7 @@ public class ReviewJobService implements AutoCloseable {
         return Instant.now().toEpochMilli();
     }
 
-    public String submit(String requestId, int totalSelected, JobTask task) {
+    final String submit(String requestId, int totalSelected, JobTask task) {
         return submitInternal(null, requestId, totalSelected, task);
     }
 
@@ -203,19 +207,21 @@ public class ReviewJobService implements AutoCloseable {
                 owners.put(jobId, owner);
             }
         }
+        boolean statusStored = false;
         try {
             statuses.put(jobId, queued);
-        } catch (RuntimeException ex) {
-            try {
-                removeOwner(jobId);
-            } catch (IllegalStateException cleanupFailure) {
-                ex.addSuppressed(cleanupFailure);
+            statusStored = true;
+        } finally {
+            if (!statusStored) {
+                try {
+                    removeOwner(jobId);
+                } catch (IllegalStateException cleanupFailure) {
+                    log.log(Level.WARNING, LOG_OWNER_CLEANUP_FAILED, cleanupFailure);
+                }
             }
-            throw ex;
         }
 
         FutureTask<Void> future = new FutureTask<>(() -> {
-                try {
                     JobResult result = task.run(jobId);
                     if (result == null) {
                         failJob(jobId, 500, ERR_NULL_RESULT);
@@ -240,14 +246,28 @@ public class ReviewJobService implements AutoCloseable {
                             result.rawResponseBody(),
                             result.contentType()
                     );
-                } catch (RuntimeException ex) {
+                return null;
+        }) {
+            @Override
+            protected void done() {
+                try {
+                    if (!isCancelled()) {
+                        get();
+                    }
+                } catch (ExecutionException ex) {
                     log.log(Level.SEVERE, LOG_ASYNC_JOB_FAILED_PREFIX + jobId + LOG_ASYNC_JOB_FAILED_SUFFIX, ex);
-                    failJob(jobId, 500, ex.getMessage() == null ? ERR_ASYNC_FAILED_DEFAULT : ex.getMessage());
+                    Throwable failure = ex.getCause();
+                    if (failure instanceof RuntimeException) {
+                        failJob(jobId, 500, failure.getMessage() == null ? ERR_ASYNC_FAILED_DEFAULT : failure.getMessage());
+                    }
+                } catch (InterruptedException ex) {
+                    log.log(Level.FINE, LOG_COMPLETION_INTERRUPTED, ex);
+                    Thread.currentThread().interrupt();
                 } finally {
                     futures.remove(jobId);
                 }
-                return null;
-        });
+            }
+        };
         futures.put(jobId, future);
         try {
             executor.execute(future);
@@ -267,7 +287,7 @@ public class ReviewJobService implements AutoCloseable {
         return statuses.get(jobId);
     }
 
-    public boolean exists(String jobId) {
+    final boolean exists(String jobId) {
         return jobId != null && statuses.containsKey(jobId);
     }
 
@@ -730,6 +750,7 @@ public class ReviewJobService implements AutoCloseable {
                 shutdownNow();
             }
         } catch (InterruptedException ex) {
+            log.log(Level.FINE, LOG_SHUTDOWN_INTERRUPTED, ex);
             shutdownNow();
             Thread.currentThread().interrupt();
         } finally {

@@ -4,9 +4,13 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.util.logging.Level;
+import java.util.logging.Logger;
 import javax.sql.DataSource;
 
 public final class DatabaseTaskLock implements AutoCloseable {
+    private static final Logger log = Logger.getLogger(DatabaseTaskLock.class.getCanonicalName());
+    private static final String MSG_CLEANUP_FAILED = "Unable to close failed task coordination connection";
     private static final String SQL_TRY_LOCK = "SELECT pg_try_advisory_xact_lock(hashtextextended(?,0))";
     private static final String TASK_NAMESPACE = "sim:";
     private static final String MSG_COORDINATION_FAILED = "Unable to coordinate task ";
@@ -17,7 +21,7 @@ public final class DatabaseTaskLock implements AutoCloseable {
         this.connection = connection;
     }
 
-    public static DatabaseTaskLock tryAcquire(DataSource dataSource, String task) {
+    static DatabaseTaskLock tryAcquire(DataSource dataSource, String task) {
         Connection connection = null;
         try {
             connection = dataSource.getConnection();
@@ -37,6 +41,7 @@ public final class DatabaseTaskLock implements AutoCloseable {
                 try {
                     connection.close();
                 } catch (SQLException closeFailure) {
+                    log.log(Level.FINE, MSG_CLEANUP_FAILED, closeFailure);
                     ex.addSuppressed(closeFailure);
                 }
             }

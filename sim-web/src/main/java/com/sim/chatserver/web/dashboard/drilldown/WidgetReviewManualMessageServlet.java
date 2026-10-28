@@ -356,6 +356,7 @@ public class WidgetReviewManualMessageServlet extends HttpServlet {
             requestId
         ));
         } catch (java.util.concurrent.RejectedExecutionException ex) {
+            log.log(Level.FINE, "Review job submission rejected because capacity is full", ex);
             resp.setHeader("Retry-After", "5");
             respondWithError(resp, HttpServletResponse.SC_SERVICE_UNAVAILABLE, "Review capacity is full. Please retry shortly.");
             return;
