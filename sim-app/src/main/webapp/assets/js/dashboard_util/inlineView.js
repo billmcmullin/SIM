@@ -15,6 +15,7 @@
     let injectedIntervals = [];
     let injectedTimeouts = [];
     let inlineLoadSequence = 0;
+    let inlineRequestSequence = 0;
 
     function toAbsoluteUrl(url) {
         try {
@@ -110,6 +111,12 @@
             }
         }
         injectedTimeouts = [];
+        document.documentElement.classList.remove('page-boot-loading');
+        if (inlineContent) {
+            inlineContent.classList.remove('page-boot-loading');
+            inlineContent.removeAttribute('aria-busy');
+            inlineContent.querySelector('#inlinePageBootOverlay')?.remove();
+        }
     }
 
     function normalizePathAndQuery(absUrl) {
@@ -280,6 +287,7 @@
             return;
         }
 
+        const requestSequence = ++inlineRequestSequence;
         clearInjectedScripts();
         inlineTitle.textContent = resolveInlineTitle(title, absUrl);
         inlineContent.innerHTML = '<p class="helper-note">Loading page content...</p>';
@@ -296,6 +304,9 @@
         }
 
         const html = await res.text();
+        if (requestSequence !== inlineRequestSequence) {
+            return;
+        }
         const DomParserCtor = window.DOMParser;
         if (typeof DomParserCtor !== 'function') {
             throw new Error('DOMParser is unavailable in this browser runtime.');
@@ -313,7 +324,11 @@
         showInlineSection();
 
         const scripts = Array.from(doc.querySelectorAll('script'));
-        await runScriptsSequentially(scripts, absUrl.toString());
+        try {
+            await runScriptsSequentially(scripts, absUrl.toString());
+        } finally {
+            document.documentElement.classList.remove('page-boot-loading');
+        }
     }
 
     function showInlineSection() {
@@ -326,14 +341,18 @@
         });
 
         inlineSection.style.display = '';
+        document.documentElement.classList.add('dashboard-inline-active');
         if (inlineContent) {
             inlineContent.scrollTop = 0;
             inlineContent.scrollLeft = 0;
         }
-        inlineSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
     }
 
-    function showDefaultSections() {
+    function showDefaultSections(recordHistory = true) {
+        inlineRequestSequence++;
+        if (recordHistory && currentUrl) {
+            window.history.pushState({ simInline: true }, '', `${contextPath}/dashboard`);
+        }
         defaultSections.forEach(section => {
             section.style.display = '';
         });
@@ -347,15 +366,17 @@
         }
 
         clearInjectedScripts();
+        document.documentElement.classList.remove('dashboard-inline-active');
         clearActiveSwitchButtons();
         setHomeButtonActive(true);
 
         currentUrl = '';
+        window.SimNavigation?.updateButtons();
     }
 
-    async function openOrNavigate(url, title) {
+    async function openOrNavigate(url, title, recordHistory = true) {
         const abs = toAbsoluteUrl(url);
-        if (!abs) {
+        if (!abs || abs.origin !== window.location.origin) {
             return false;
         }
 
@@ -369,12 +390,25 @@
             return true;
         }
 
+        if (recordHistory && currentUrl !== abs.toString()) {
+            window.history.pushState({ simInline: true, url: abs.toString(), title }, '', abs.toString());
+        }
         currentUrl = abs.toString();
+        window.SimNavigation?.updateButtons();
         try {
             await loadDetailIntoInlineSection(abs, title);
-            setActiveSwitchButton(currentUrl);
+            if (currentUrl === abs.toString()) {
+                setActiveSwitchButton(currentUrl);
+            }
         } catch (e) {
-            inlineContent.innerHTML = `<p class="helper-note" style="color:#b91c1c;">${(e && e.message) ? e.message : 'Unable to load this dashboard view inline.'}</p>`;
+            if (currentUrl !== abs.toString()) {
+                return true;
+            }
+            const message = document.createElement('p');
+            message.className = 'helper-note';
+            message.style.color = '#b91c1c';
+            message.textContent = (e && e.message) ? e.message : 'Unable to load this dashboard view inline.';
+            inlineContent.replaceChildren(message);
             showInlineSection();
             setActiveSwitchButton(currentUrl);
         }
@@ -434,6 +468,14 @@
 
         bindDelegatedDashboardLinks();
         setHomeButtonActive(true);
+        window.history.replaceState({ ...window.history.state, simInline: true }, '', window.location.href);
+        window.addEventListener('popstate', event => {
+            if (event.state && event.state.simInline && event.state.url) {
+                void openOrNavigate(event.state.url, event.state.title, false);
+            } else {
+                showDefaultSections(false);
+            }
+        });
     }
 
     window.DashboardInlineView = {

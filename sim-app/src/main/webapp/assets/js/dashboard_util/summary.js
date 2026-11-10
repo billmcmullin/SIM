@@ -96,12 +96,12 @@
                     return;
                 }
 
-                const errorMessage = payload?.message || `Manual summary generation failed (HTTP ${response.status}).`;
+                const errorMessage = payload?.message || `Manual summary generation failed (HTTP ${response.status}). No automatic retry was sent. Review the SIM and AnythingLLM logs before manually trying again.`;
                 setManualSummaryRetryStatus(errorMessage);
                 setManualSummaryRetryVisibility(true, false);
             } catch (error) {
                 console.warn('Manual summary generation failed:', error);
-                setManualSummaryRetryStatus('Manual summary generation request failed.');
+                setManualSummaryRetryStatus('Summary request outcome is unknown. It was not automatically resent. Review the SIM and AnythingLLM logs and wait for the server to be ready before trying again.');
                 setManualSummaryRetryVisibility(true, false);
             } finally {
                 manualSummaryRetryInFlight = false;
@@ -183,7 +183,14 @@
         return 'Review Top Terms and Latest Chats, pick one repeated issue, and apply a focused prompt update.';
     }
 
+    function summarySectionTitles(meta) {
+        return meta?.format === 'question-review-v1'
+            ? ['What Users Asked', 'Questions and Answers', 'Candidate Knowledge Gaps', 'Recommended Improvements']
+            : ['Overall', 'Quality', 'Response', 'Usage'];
+    }
+
     function buildCopySummaryText(summary, meta, suggested) {
+        const titles = summarySectionTitles(meta);
         const day = meta?.day || '—';
         const slot = Number.isFinite(Number(meta?.slot)) ? Number(meta.slot) : '—';
         const status = meta?.statusText || 'idle';
@@ -201,22 +208,23 @@
             `Slot: ${slot}`,
             `Status: ${status}`,
             `Progress: ${progress}%`,
-            `Entries analyzed: ${entryCount}`,
+            `Chats collected: ${entryCount}`,
+            ...(meta?.fromFallback ? [`Requested day: ${meta.requestedDay || 'current selection'}`, 'Showing a saved summary for a different day or slot.'] : []),
             `Generated at: ${generatedAt}`,
             `Started at: ${startedAt}`,
             `Updated at: ${updatedAt}`,
             ...(message ? [`Message: ${message}`] : []),
             '',
-            'Overall',
+            titles[0],
             String(summary?.overall || '—'),
             '',
-            'Quality',
+            titles[1],
             String(summary?.quality || '—'),
             '',
-            'Response',
+            titles[2],
             String(summary?.response || '—'),
             '',
-            'Usage',
+            titles[3],
             String(summary?.usage || '—'),
             '',
             'Suggested Next Action',
@@ -339,22 +347,39 @@
         }
 
         if (!data || data.status !== 'ok' || !data.summary) {
-            bodyEl.innerHTML = `<p style="margin:0;">${DEFAULT_NO_SUMMARY_MESSAGE}</p>`;
+            const loadFailed = data?.status === 'error';
+            const message = loadFailed ? (data.message || 'Unable to load summary data.') : DEFAULT_NO_SUMMARY_MESSAGE;
+            bodyEl.innerHTML = `<p style="margin:0;">${core.esc(message)}</p>`;
             if (metaEl) {
-                metaEl.textContent = 'Awaiting first summary output.';
+                metaEl.textContent = loadFailed ? 'Summary data unavailable.' : 'Awaiting first summary output.';
+            }
+            if (copyEl) {
+                copyEl.value = '';
             }
             setManualSummaryRetryVisibility(false, false);
-            setSummaryProgress(0, 'not produced yet');
+            setSummaryProgress(0, loadFailed ? 'unavailable' : 'not produced yet');
             hideSummaryProgressIfDone(false);
             return { accepted: true, inProgress: false, ok: false };
         }
 
-        const s = data.summary || {};
+        const s = { ...data.summary };
         const m = data.meta || {};
         const inProgress = Boolean(m.inProgress);
         const isError = String(m.statusText || '').toLowerCase() === 'error';
+        const noData = !isError && m.noData === true;
+        const titles = summarySectionTitles(m);
         const pct = Number.isFinite(Number(m.progressPct)) ? Number(m.progressPct) : (inProgress ? 30 : 100);
-        const suggested = s.suggestedNextAction || m.suggestedNextAction || inferSuggestedNextAction(s, m);
+        const suggested = isError
+            ? 'Review the SIM and AnythingLLM logs before manually generating the summary again. No automatic retry was sent.'
+            : (s.suggestedNextAction || m.suggestedNextAction || (m.format === 'question-review-v1'
+                ? 'No specific next action was returned. Review the detailed recommendations before making changes.'
+                : inferSuggestedNextAction(s, m)));
+        if (isError) {
+            s.overall = 'No summary was generated. See the failure status for details.';
+            s.quality = '-';
+            s.response = '-';
+            s.usage = '-';
+        }
 
         setManualSummaryRetryVisibility(isError && !inProgress, inProgress);
         if (isError && m.message) {
@@ -363,24 +388,30 @@
 
         setSummaryProgress(pct, m.message || (inProgress ? 'generating' : 'complete'));
 
-        bodyEl.innerHTML = `
+        if (isError) {
+            bodyEl.innerHTML = '<p style="margin:0;">No summary was generated. Review the failure details above before manually trying again.</p>';
+        } else if (noData) {
+            bodyEl.innerHTML = `<p style="margin:0;">No chats available for ${core.esc(m.day || 'the selected day')}. No request was sent to AnythingLLM.</p>`;
+        } else {
+            bodyEl.innerHTML = `
             <div>
-                <h4 style="margin:0 0 6px 0;">Overall</h4>
+                <h4 style="margin:0 0 6px 0;">${titles[0]}</h4>
                 <p style="margin:0 0 12px 0; white-space:pre-wrap;">${core.esc(s.overall || '—')}</p>
 
-                <h4 style="margin:0 0 6px 0;">Quality</h4>
+                <h4 style="margin:0 0 6px 0;">${titles[1]}</h4>
                 <p style="margin:0 0 12px 0; white-space:pre-wrap;">${core.esc(s.quality || '—')}</p>
 
-                <h4 style="margin:0 0 6px 0;">Response</h4>
+                <h4 style="margin:0 0 6px 0;">${titles[2]}</h4>
                 <p style="margin:0 0 12px 0; white-space:pre-wrap;">${core.esc(s.response || '—')}</p>
 
-                <h4 style="margin:0 0 6px 0;">Usage</h4>
+                <h4 style="margin:0 0 6px 0;">${titles[3]}</h4>
                 <p style="margin:0 0 12px 0; white-space:pre-wrap;">${core.esc(s.usage || '—')}</p>
 
                 <h4 style="margin:0 0 6px 0;">Suggested Next Action</h4>
                 <p style="margin:0; white-space:pre-wrap;">${core.esc(suggested || '—')}</p>
             </div>
         `;
+        }
 
         if (copyEl) {
             copyEl.value = buildCopySummaryText(s, m, suggested);
@@ -390,7 +421,13 @@
         const generatedAt = fmtTs(m.generatedAt, '—');
         const slot = Number.isFinite(Number(m.slot)) ? Number(m.slot) : 0;
         if (metaEl) {
-            metaEl.textContent = `Entries analyzed: ${entryCount} • Slot: ${slot} • Generated: ${generatedAt}${inProgress ? ' • updating…' : ''}`;
+            const selection = m.fromFallback
+                ? `Showing saved summary for ${m.day || 'an earlier day'}, slot ${slot}. No summary exists for ${m.requestedDay || 'the requested day'}, slot ${m.requestedSlot ?? 'current'}. `
+                : `Summary day: ${m.day || '-'} • Slot: ${slot} • `;
+            const recordedAt = isError || noData
+                ? `Last checked: ${fmtTs(m.updatedAt || m.startedAt || m.generatedAt, '-')}`
+                : `Generated: ${generatedAt}`;
+            metaEl.textContent = `${selection}Chats collected: ${entryCount} • ${recordedAt}${inProgress ? ' • updating…' : ''}`;
         }
 
         hideSummaryProgressIfDone(inProgress);

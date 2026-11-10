@@ -101,6 +101,35 @@ class DashboardDailySummaryStoreTest {
     }
 
     @Test
+    void summaryText_preservesMarkdownLineBreaksAndRemovesUnsafeControls() throws Exception {
+        String text = "Score: 3.8/5.0\r\n\r\nWhat is working:\r\n- First item\r- Second item\u0000";
+        Method sanitize = DashboardDailySummaryStore.class.getDeclaredMethod("sanitizeText", String.class, int.class);
+        sanitize.setAccessible(true);
+        assertEquals("Score: 3.8/5.0\n\nWhat is working:\n- First item\n- Second item",
+                sanitize.invoke(store, text, 4000));
+    }
+
+    @Test
+    void requiresManualRetry_recoversFailedAndInterruptedRuns() throws Exception {
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(preparedStatement);
+        when(preparedStatement.executeQuery()).thenReturn(latestResultSet);
+        when(latestResultSet.next()).thenReturn(true);
+        for (String status : new String[] {"error", "running", "queued", "success", "idle"}) {
+            when(latestResultSet.getString("status")).thenReturn(status);
+            assertEquals(!"success".equals(status) && !"idle".equals(status), store.requiresManualRetry());
+        }
+        when(latestResultSet.next()).thenReturn(false);
+        assertEquals(false, store.requiresManualRetry());
+    }
+
+    @Test
+    void requiresManualRetry_databaseFailureDoesNotSilentlyResume() throws Exception {
+        when(dataSource.getConnection()).thenThrow(new SQLException("unavailable"));
+        assertThrows(IllegalStateException.class, () -> store.requiresManualRetry());
+    }
+
+    @Test
     void ensureTable_executesCreateSql() throws Exception {
         when(dataSource.getConnection()).thenReturn(connection);
         when(connection.prepareStatement(anyString())).thenReturn(preparedStatement);
@@ -207,6 +236,57 @@ class DashboardDailySummaryStoreTest {
     }
 
     @Test
+    void fetchExactOrLatest_marksOnlyNewQuestionFocusedSummaries() throws Exception {
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(exactPreparedStatement);
+        when(exactPreparedStatement.executeQuery()).thenReturn(exactResultSet);
+        when(exactResultSet.next()).thenReturn(true);
+        when(exactResultSet.getString("status")).thenReturn("success");
+        when(exactResultSet.getString("message")).thenReturn(DashboardDailySummaryStore.QUESTION_REVIEW_MESSAGE);
+        assertEquals(DashboardDailySummaryStore.QUESTION_REVIEW_FORMAT,
+                store.fetchExactOrLatest(LocalDate.now(), 0).getJsonObject("meta").getString("format"));
+        when(exactResultSet.getString("message")).thenReturn("Summary generated.");
+        assertEquals("legacy", store.fetchExactOrLatest(LocalDate.now(), 0).getJsonObject("meta").getString("format"));
+    }
+
+    @Test
+    void fetchExactOrLatest_failureDoesNotExposeLegacyHtmlAsAnalysis() throws Exception {
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(exactPreparedStatement);
+        when(exactPreparedStatement.executeQuery()).thenReturn(exactResultSet);
+        when(exactResultSet.next()).thenReturn(true);
+        when(exactResultSet.getString("status")).thenReturn("error");
+        when(exactResultSet.getString("entry_count")).thenReturn("6");
+        when(exactResultSet.getString("summary_overall")).thenReturn("<html><body>504 Gateway Time-out</body></html>");
+        when(exactResultSet.getString("message")).thenReturn("Summary failed: <html>504</html>");
+
+        JsonObject payload = store.fetchExactOrLatest(LocalDate.of(2026, 11, 10), 0);
+        JsonObject summary = payload.getJsonObject("summary");
+        assertEquals("No summary was generated. See the failure status for details.", summary.getString("overall"));
+        assertEquals(6, summary.getInt("entryCount"));
+        assertTrue(summary.getString("suggestedNextAction").contains("logs"));
+        assertEquals(false, payload.getJsonObject("meta").getBoolean("noData"));
+        assertEquals(false, payload.toString().contains("<html>"));
+    }
+
+    @Test
+    void fetchExactOrLatest_zeroChatResultIsNotPresentedAsGeneratedAnalysis() throws Exception {
+        when(dataSource.getConnection()).thenReturn(connection);
+        when(connection.prepareStatement(anyString())).thenReturn(exactPreparedStatement);
+        when(exactPreparedStatement.executeQuery()).thenReturn(exactResultSet);
+        when(exactResultSet.next()).thenReturn(true);
+        when(exactResultSet.getString("status")).thenReturn("success");
+        when(exactResultSet.getString("entry_count")).thenReturn("0");
+        when(exactResultSet.getString("message")).thenReturn("No chats available for this day. No request was sent to AnythingLLM.");
+        when(exactResultSet.getTimestamp("generated_at")).thenReturn(Timestamp.from(java.time.Instant.now()));
+
+        JsonObject payload = store.fetchExactOrLatest(LocalDate.of(2026, 11, 10), 0);
+        assertTrue(payload.getJsonObject("meta").getBoolean("noData"));
+        assertEquals("", payload.getJsonObject("meta").getString("generatedAt"));
+        assertTrue(payload.getJsonObject("summary").getString("suggestedNextAction").contains("No request"));
+    }
+
+    @Test
     void fetchExactOrLatest_returnsExactMatch_whenExactRowExists() throws Exception {
         LocalDate day = LocalDate.of(2026, 3, 3);
         Timestamp started = Timestamp.from(java.time.Instant.parse("2026-03-03T10:00:00Z"));
@@ -289,6 +369,8 @@ class DashboardDailySummaryStoreTest {
         assertEquals("ok", out.getString("status"));
         assertEquals("Overall text", out.getJsonObject("summary").getString("overall"));
         assertEquals(true, out.getJsonObject("meta").getBoolean("fromFallback"));
+        assertEquals(requestedDay.toString(), out.getJsonObject("meta").getString("requestedDay"));
+        assertEquals(1, out.getJsonObject("meta").getInt("requestedSlot"));
     }
 
     @Test

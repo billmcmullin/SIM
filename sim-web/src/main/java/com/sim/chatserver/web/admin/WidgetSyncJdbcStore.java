@@ -625,6 +625,7 @@ final class WidgetSyncJdbcStore {
             }
         } catch (SQLException e) {
             log.log(Level.FINE, MSG_UNABLE_INSPECT_TABLE_METADATA_PREFIX + tableName, e);
+            throw new IllegalStateException(MSG_UNABLE_INSPECT_TABLE_METADATA_PREFIX + tableName, e);
         }
         return false;
     }

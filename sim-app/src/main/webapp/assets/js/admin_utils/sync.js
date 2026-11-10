@@ -164,8 +164,9 @@
             }
 
             if (paused) {
-                statusEl.textContent = `Status: paused until admin generates a summary. Last run: ${lastRunAt}. Reason: ${reason || 'manual summary generation required'}.`;
+                statusEl.textContent = `Status: paused until admin generates a summary. Last run: ${lastRunAt.replace(/\.+$/, '')}.`;
                 statusEl.style.color = '#b45309';
+                this.showSummarySettingsMessage(reason || 'Review the SIM and AnythingLLM logs before manually generating the summary again.', true);
                 return;
             }
 

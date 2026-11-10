@@ -25,12 +25,15 @@ import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.http.HttpRequest;
+import java.net.http.HttpClient;
+import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.List;
 import java.util.Locale;
 import org.mockito.MockedStatic;
 import org.mockito.Mockito;
 import com.sim.chatserver.config.EncryptedDbConfigStore;
+import com.sim.chatserver.config.ServerConfig;
 import com.sim.chatserver.service.ApiAuthResolver;
 import com.sim.chatserver.service.ResolvedApiAuth;
 import jakarta.json.Json;
@@ -346,6 +349,176 @@ public class TestConnectionServletTest
     // Merged from TestConnectionServletCoverageTest
     
     
+        @Test
+        @SuppressWarnings("unchecked")
+        void doPost_defaultUsesStoredKeyAndNeverSendsInference() throws Exception {
+            TestConnectionServlet servlet = Mockito.spy(new TestConnectionServlet());
+            HttpClient client = mock(HttpClient.class);
+            Mockito.doReturn(client).when(servlet).client();
+                HttpResponse<String> systemResponse = httpResponse(200, "{}");
+            when(client.send(Mockito.any(HttpRequest.class), Mockito.any(HttpResponse.BodyHandler.class)))
+                    .thenReturn(systemResponse);
+            HttpServletRequest request = configuredRequest(false);
+            HttpServletResponse response = mock(HttpServletResponse.class);
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            when(response.getOutputStream()).thenReturn(servletOutput(out));
+            ServerConfig stored = storedServerConfig();
+            try (MockedStatic<EncryptedDbConfigStore> config = Mockito.mockStatic(EncryptedDbConfigStore.class)) {
+                config.when(EncryptedDbConfigStore::load).thenReturn(stored);
+                servlet.doPost(request, response);
+            }
+            JsonObject body = Json.createReader(new StringReader(out.toString(StandardCharsets.UTF_8))).readObject();
+            assertEquals("ok", body.getString("status"));
+            assertEquals("SERVER_CONFIG", body.getString("authSource"));
+            assertFalse(body.getBoolean("inferenceTested"));
+            org.mockito.ArgumentCaptor<HttpRequest> sent = org.mockito.ArgumentCaptor.forClass(HttpRequest.class);
+            verify(client, Mockito.times(1)).send(sent.capture(), Mockito.any(HttpResponse.BodyHandler.class));
+            assertEquals("GET", sent.getValue().method());
+            assertEquals("/api/v1/system", sent.getValue().uri().getPath());
+            assertEquals("Bearer stored-test-token", sent.getValue().headers().firstValue("Authorization").orElseThrow());
+            Mockito.verifyNoMoreInteractions(client);
+        }
+
+        @Test
+        @SuppressWarnings("unchecked")
+        void doPost_explicitInferenceSendsOneChatWithoutFallbacks() throws Exception {
+            for (int status : new int[] {200, 401, 413, 429, 500, 504}) {
+                TestConnectionServlet servlet = Mockito.spy(new TestConnectionServlet());
+                HttpClient client = mock(HttpClient.class);
+                Mockito.doReturn(client).when(servlet).client();
+                HttpResponse<String> systemResponse = httpResponse(200, "{}");
+                HttpResponse<String> chatResponse = httpResponse(status, status == 200
+                    ? "{\"textResponse\":\"OK\"}"
+                    : "{\"message\":\"Cannot read properties of null (reading 'id')\"}");
+                when(client.send(Mockito.any(HttpRequest.class), Mockito.any(HttpResponse.BodyHandler.class)))
+                    .thenReturn(systemResponse, chatResponse);
+                HttpServletResponse response = mock(HttpServletResponse.class);
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                when(response.getOutputStream()).thenReturn(servletOutput(out));
+                ServerConfig stored = storedServerConfig();
+                try (MockedStatic<EncryptedDbConfigStore> config = Mockito.mockStatic(EncryptedDbConfigStore.class)) {
+                    config.when(EncryptedDbConfigStore::load).thenReturn(stored);
+                    servlet.doPost(configuredRequest(true), response);
+                }
+                JsonObject body = Json.createReader(new StringReader(out.toString(StandardCharsets.UTF_8))).readObject();
+                assertEquals("chat", body.getString("probe"));
+                assertEquals(status == 200 ? "ok" : "error", body.getString("status"));
+                assertTrue(body.getBoolean("connectivityVerified"));
+                org.mockito.ArgumentCaptor<HttpRequest> sent = org.mockito.ArgumentCaptor.forClass(HttpRequest.class);
+                verify(client, Mockito.times(2)).send(sent.capture(), Mockito.any(HttpResponse.BodyHandler.class));
+                assertEquals("GET", sent.getAllValues().get(0).method());
+                assertEquals("POST", sent.getAllValues().get(1).method());
+                Mockito.verifyNoMoreInteractions(client);
+            }
+        }
+
+        @Test
+        @SuppressWarnings("unchecked")
+        void doPost_emptyOrAbortedInferenceIsNotReportedAsSuccess() throws Exception {
+            for (String upstreamBody : new String[] {"", "{\"type\":\"abort\",\"textResponse\":\"\"}"}) {
+                TestConnectionServlet servlet = Mockito.spy(new TestConnectionServlet());
+                HttpClient client = mock(HttpClient.class);
+                Mockito.doReturn(client).when(servlet).client();
+                HttpResponse<String> systemResponse = httpResponse(200, "{}");
+                HttpResponse<String> chatResponse = httpResponse(200, upstreamBody);
+                when(client.send(Mockito.any(HttpRequest.class), Mockito.any(HttpResponse.BodyHandler.class)))
+                        .thenReturn(systemResponse, chatResponse);
+                HttpServletResponse response = mock(HttpServletResponse.class);
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                when(response.getOutputStream()).thenReturn(servletOutput(out));
+                ServerConfig stored = storedServerConfig();
+                try (MockedStatic<EncryptedDbConfigStore> config = Mockito.mockStatic(EncryptedDbConfigStore.class)) {
+                    config.when(EncryptedDbConfigStore::load).thenReturn(stored);
+                    servlet.doPost(configuredRequest(true), response);
+                }
+                JsonObject body = Json.createReader(new StringReader(out.toString(StandardCharsets.UTF_8))).readObject();
+                assertEquals("error", body.getString("status"));
+                assertTrue(body.getBoolean("connectivityVerified"));
+                assertTrue(body.getString("message").contains("empty or aborted"));
+                verify(client, Mockito.times(2)).send(Mockito.any(HttpRequest.class), Mockito.any(HttpResponse.BodyHandler.class));
+            }
+        }
+
+        @Test
+        @SuppressWarnings("unchecked")
+        void doPost_transportTimeoutIdentifiesTheFailedStage() throws Exception {
+            for (boolean inference : new boolean[] {false, true}) {
+                TestConnectionServlet servlet = Mockito.spy(new TestConnectionServlet());
+                HttpClient client = mock(HttpClient.class);
+                Mockito.doReturn(client).when(servlet).client();
+                when(client.send(Mockito.any(HttpRequest.class), Mockito.any(HttpResponse.BodyHandler.class)))
+                        .thenAnswer(invocation -> {
+                            HttpRequest sent = invocation.getArgument(0);
+                            if (inference && "GET".equals(sent.method())) {
+                                return httpResponse(200, "{}");
+                            }
+                            throw new java.net.http.HttpTimeoutException("timed out");
+                        });
+                HttpServletResponse response = mock(HttpServletResponse.class);
+                ByteArrayOutputStream out = new ByteArrayOutputStream();
+                when(response.getOutputStream()).thenReturn(servletOutput(out));
+                ServerConfig stored = storedServerConfig();
+                try (MockedStatic<EncryptedDbConfigStore> config = Mockito.mockStatic(EncryptedDbConfigStore.class)) {
+                    config.when(EncryptedDbConfigStore::load).thenReturn(stored);
+                    servlet.doPost(configuredRequest(inference), response);
+                }
+                JsonObject body = Json.createReader(new StringReader(out.toString(StandardCharsets.UTF_8))).readObject();
+                assertEquals(inference ? "chat" : "system", body.getString("probe"));
+                assertEquals(inference, body.getBoolean("connectivityVerified"));
+                assertTrue(body.getString("message").contains("timed out"));
+                assertFalse(body.getString("errorRef").isBlank());
+                verify(client, Mockito.times(inference ? 2 : 1)).send(Mockito.any(HttpRequest.class), Mockito.any(HttpResponse.BodyHandler.class));
+            }
+        }
+
+        @Test
+        @SuppressWarnings("unchecked")
+        void doPost_authenticationRejectionDoesNotRunInference() throws Exception {
+            TestConnectionServlet servlet = Mockito.spy(new TestConnectionServlet());
+            HttpClient client = mock(HttpClient.class);
+            Mockito.doReturn(client).when(servlet).client();
+                HttpResponse<String> rejected = httpResponse(401, "{\"message\":\"unauthorized\"}");
+            when(client.send(Mockito.any(HttpRequest.class), Mockito.any(HttpResponse.BodyHandler.class)))
+                    .thenReturn(rejected);
+            HttpServletResponse response = mock(HttpServletResponse.class);
+            ByteArrayOutputStream out = new ByteArrayOutputStream();
+            when(response.getOutputStream()).thenReturn(servletOutput(out));
+            ServerConfig stored = storedServerConfig();
+            try (MockedStatic<EncryptedDbConfigStore> config = Mockito.mockStatic(EncryptedDbConfigStore.class)) {
+                config.when(EncryptedDbConfigStore::load).thenReturn(stored);
+                servlet.doPost(configuredRequest(true), response);
+            }
+            JsonObject body = Json.createReader(new StringReader(out.toString(StandardCharsets.UTF_8))).readObject();
+            assertEquals("system", body.getString("probe"));
+            assertEquals(401, body.getInt("upstreamStatus"));
+            verify(client, Mockito.times(1)).send(Mockito.any(HttpRequest.class), Mockito.any(HttpResponse.BodyHandler.class));
+        }
+
+        private static HttpServletRequest configuredRequest(boolean inference) {
+            HttpServletRequest request = mock(HttpServletRequest.class);
+            HttpSession session = adminSession();
+            when(request.getSession(false)).thenReturn(session);
+            when(request.getParameterValues("serverHost")).thenReturn(new String[] {"https://example.test"});
+            when(request.getParameterValues("serverPort")).thenReturn(new String[] {"443"});
+            when(request.getParameterValues("testInference")).thenReturn(new String[] {String.valueOf(inference)});
+            return request;
+        }
+
+        private static ServerConfig storedServerConfig() {
+            ServerConfig config = mock(ServerConfig.class);
+            when(config.getApiKey()).thenReturn("stored-test-token");
+            when(config.getWorkspaceName()).thenReturn("test-workspace");
+            return config;
+        }
+
+        @SuppressWarnings("unchecked")
+        private static HttpResponse<String> httpResponse(int status, String body) {
+            HttpResponse<String> response = mock(HttpResponse.class);
+            when(response.statusCode()).thenReturn(status);
+            when(response.body()).thenReturn(body);
+            return response;
+        }
+
         @Test
         void doPost_whenUnauthenticated_returns401() throws Exception {
             TestConnectionServlet servlet = new TestConnectionServlet();

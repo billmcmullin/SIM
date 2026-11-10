@@ -49,15 +49,12 @@ public class TestConnectionServlet extends HttpServlet {
 
     private static final HttpClient CLIENT = HttpClient.newBuilder()
             .connectTimeout(Duration.ofSeconds(10))
-            .followRedirects(HttpClient.Redirect.NORMAL)
+            .followRedirects(HttpClient.Redirect.NEVER)
             .version(HttpClient.Version.HTTP_1_1)
             .build();
     private static final Pattern HOST_PATTERN = Pattern.compile("[A-Za-z0-9.-]{1,253}");
     private static final Pattern PORT_PATTERN = Pattern.compile("\\d{1,5}");
     private static final String CHAT_PROBE_PAYLOAD = "{\"message\":\"connection test\",\"mode\":\"chat\",\"reset\":true}";
-    private static final String CHAT_PROBE_PAYLOAD_NO_RESET = "{\"message\":\"connection test\",\"mode\":\"chat\",\"reset\":false}";
-    private static final String CHAT_PROBE_PAYLOAD_MINIMAL_RESET = "{\"message\":\"connection test\",\"reset\":true}";
-    private static final String CHAT_PROBE_PAYLOAD_MINIMAL_NO_RESET = "{\"message\":\"connection test\",\"reset\":false}";
     private static final String LINE_SEPARATOR = System.lineSeparator();
     private static final String COMPONENT_TEST_CONNECTION = CommonLiteralConstants.COMPONENT_TEST_CONNECTION_SERVLET;
     private static final String TEXT_NO_VALID_API_KEY = CommonLiteralConstants.TEXT_NO_VALID_API_KEY;
@@ -95,6 +92,8 @@ public class TestConnectionServlet extends HttpServlet {
         String port = ServletRequestParamUtil.firstParam(req, "serverPort", 512, true, true);
         String apiKey = ServletRequestParamUtil.firstParam(req, "apiKey", 512, true, true);
         String workspaceName = ServletRequestParamUtil.firstParam(req, "workspaceName", 512, true, true);
+        boolean testInference = "true".equalsIgnoreCase(
+            ServletRequestParamUtil.firstParam(req, "testInference", 16, true, true));
         ServerConfig storedConfig = null;
 
         if (host == null || host.isBlank() || port == null || port.isBlank()) {
@@ -143,6 +142,16 @@ public class TestConnectionServlet extends HttpServlet {
         String chatEndpoint = workspaceSlug.isBlank()
                 ? ""
                 : baseUrl + "/api/v1/workspace/" + URLEncoder.encode(workspaceSlug, StandardCharsets.UTF_8) + "/chat";
+        if (testInference && chatEndpoint.isBlank()) {
+            writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, Json.createObjectBuilder()
+                .add("status", "error")
+                .add("message", "Configure a workspace before testing inference.")
+                .add("probe", "chat")
+                .build());
+            return;
+        }
+        ProbeKind activeProbe = ProbeKind.SYSTEM;
+        boolean connectivityVerified = false;
 
         try {
             ServerDiagnosticsLog.write(
@@ -188,23 +197,21 @@ public class TestConnectionServlet extends HttpServlet {
                 return;
             }
 
-            if (chatEndpoint.isBlank()) {
+            connectivityVerified = true;
+            if (!testInference) {
                 writeJson(resp, HttpServletResponse.SC_OK, Json.createObjectBuilder()
                         .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
-                        .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Connection successful (system endpoint only; workspace not configured).")
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Connection and API authentication successful. No inference request was sent.")
+                        .add("probe", "system")
+                        .add("connectivityVerified", true)
+                        .add("inferenceTested", false)
                         .add("authSource", safe(systemResponse.authSource))
                         .build());
                 return;
             }
 
+            activeProbe = ProbeKind.CHAT;
             ProbeResponse chatResponse = executeProbe(chatEndpoint, authCandidates, ProbeKind.CHAT);
-
-            if (isNullIdAbortResponse(chatResponse)) {
-                ProbeResponse retryResponse = retryChatProbeWithAlternatePayloads(chatEndpoint, authCandidates, requestId);
-                if (retryResponse != null) {
-                    chatResponse = retryResponse;
-                }
-            }
 
             ServerDiagnosticsLog.write(
                 COMPONENT_TEST_CONNECTION,
@@ -216,24 +223,33 @@ public class TestConnectionServlet extends HttpServlet {
                         + LINE_SEPARATOR + com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_BODY + truncate(chatResponse.body)
             );
 
-            if (chatResponse.status >= 200 && chatResponse.status < 300) {
+            boolean successfulStatus = chatResponse.status >= 200 && chatResponse.status < 300;
+            if (successfulStatus && !isEmptyOrAbortedInference(chatResponse.body)) {
                 writeJson(resp, HttpServletResponse.SC_OK, Json.createObjectBuilder()
                         .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
-                        .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Connection successful.")
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Inference test successful.")
+                        .add("probe", "chat")
+                        .add("connectivityVerified", true)
+                        .add("inferenceTested", true)
                     .add("authSource", safe(chatResponse.authSource))
                         .build());
             } else {
-                String failureMessage = buildProbeFailureMessage(
+                String failureMessage = successfulStatus
+                    ? "Inference returned an empty or aborted response."
+                    : buildProbeFailureMessage(
                     ProbeKind.CHAT,
                     chatResponse.status,
                     chatResponse.body,
                     workspaceSlug,
                     chatEndpoint
                 );
-                writeJson(resp, chatResponse.status, Json.createObjectBuilder()
+                failureMessage += " No automatic retry was sent. Review upstream logs before trying again.";
+                writeJson(resp, successfulStatus ? HttpServletResponse.SC_BAD_GATEWAY : chatResponse.status, Json.createObjectBuilder()
                         .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
                     .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, failureMessage)
                         .add("probe", com.sim.chatserver.util.CommonLiteralConstants.DEFAULT_MODE_CHAT)
+                        .add("connectivityVerified", true)
+                        .add("inferenceTested", true)
                         .add("upstreamStatus", chatResponse.status)
                         .add("authMode", chatResponse.mode.name())
                         .add("authSource", safe(chatResponse.authSource))
@@ -246,18 +262,25 @@ public class TestConnectionServlet extends HttpServlet {
             }
             String errorRef = UUID.randomUUID().toString();
             log.log(Level.WARNING,
-                "Connection test failed. errorRef={0} requestId={1}. See server diagnostics log for stack trace.",
-                new Object[]{errorRef, requestId});
+                "Connection test failed. errorRef={0} requestId={1} probe={2}. {3}",
+                new Object[]{errorRef, requestId, activeProbe.name(), buildTransportFailureMessage(activeProbe, e)});
             ServerDiagnosticsLog.write(
                     COMPONENT_TEST_CONNECTION,
                     requestId,
                     "http-error",
-                    "errorRef=" + errorRef + LINE_SEPARATOR + com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_URL + safe(systemEndpoint) + LINE_SEPARATOR + com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_MESSAGE + safe(e.getMessage()),
+                        "errorRef=" + errorRef + LINE_SEPARATOR + "probe=" + activeProbe.name()
+                            + LINE_SEPARATOR + com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_URL
+                            + safe(activeProbe == ProbeKind.SYSTEM ? systemEndpoint : chatEndpoint)
+                            + LINE_SEPARATOR + com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_MESSAGE + safe(e.getMessage()),
                     e
             );
             writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY, Json.createObjectBuilder()
                     .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
-                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Connection test failed.")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, buildTransportFailureMessage(activeProbe, e))
+                    .add("probe", activeProbe == ProbeKind.SYSTEM ? "system" : "chat")
+                    .add("connectivityVerified", connectivityVerified)
+                    .add("errorRef", errorRef)
+                    .add("requestId", requestId)
                     .build());
         }
     
@@ -275,6 +298,45 @@ public class TestConnectionServlet extends HttpServlet {
         }
     }
 
+    private boolean isEmptyOrAbortedInference(String body) {
+        if (body == null || body.isBlank()) {
+            return true;
+        }
+        try (var reader = Json.createReader(new StringReader(body))) {
+            JsonObject payload = reader.readObject();
+            return "abort".equalsIgnoreCase(payload.getString("type", ""))
+                    || (payload.containsKey("textResponse") && payload.getString("textResponse", "").isBlank());
+        } catch (JsonException | ClassCastException error) {
+            return false;
+        }
+    }
+
+    HttpClient client() {
+        return CLIENT;
+    }
+
+    private String buildTransportFailureMessage(ProbeKind probe, Throwable failure) {
+        String stage = probe == ProbeKind.SYSTEM ? "Connectivity/authentication check" : "Inference test";
+        String action = probe == ProbeKind.SYSTEM
+                ? " No inference request was sent. Check the server address and network."
+                : " No automatic retry was sent. Inference may still be running; review the proxy and model-provider logs before trying again.";
+        for (Throwable cause = failure; cause != null; cause = cause.getCause()) {
+            if (cause instanceof java.net.http.HttpTimeoutException || cause instanceof java.net.SocketTimeoutException) {
+                return stage + " timed out." + action;
+            }
+            if (cause instanceof javax.net.ssl.SSLException) {
+                return stage + " failed during TLS/certificate validation. Review the server certificate and trust configuration.";
+            }
+            if (cause instanceof java.net.UnknownHostException) {
+                return stage + " could not resolve the server hostname. Check DNS and the configured host.";
+            }
+            if (cause instanceof java.net.ConnectException) {
+                return stage + " could not connect to the server. Check the host, port, and network reachability.";
+            }
+        }
+        return stage + " failed due to a transport error. Review the server logs using the error reference." + action;
+    }
+
     private ProbeResponse executeProbe(String endpoint, List<ResolvedApiAuth> authCandidates, ProbeKind probeKind)
             {
         return executeProbe(endpoint, authCandidates, probeKind, CHAT_PROBE_PAYLOAD);
@@ -290,7 +352,7 @@ public class TestConnectionServlet extends HttpServlet {
             HttpRequest request = buildProbeRequest(endpoint, auth, mode, probeKind, chatPayload);
             HttpResponse<String> response;
             try {
-                response = CLIENT.send(request, HttpResponse.BodyHandlers.ofString());
+                response = client().send(request, HttpResponse.BodyHandlers.ofString());
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException("Connection probe interrupted", e);
@@ -426,38 +488,6 @@ public class TestConnectionServlet extends HttpServlet {
               .append(safe(auth.preferredHeaderName()));
         }
         return sb.toString();
-    }
-
-    private ProbeResponse retryChatProbeWithAlternatePayloads(
-            String endpoint,
-            List<ResolvedApiAuth> authCandidates,
-            String requestId
-        ) {
-        String[] payloads = new String[]{
-                CHAT_PROBE_PAYLOAD_NO_RESET,
-                CHAT_PROBE_PAYLOAD_MINIMAL_RESET,
-                CHAT_PROBE_PAYLOAD_MINIMAL_NO_RESET
-        };
-
-        ProbeResponse last = null;
-        for (String payload : payloads) {
-            ServerDiagnosticsLog.write(
-                    COMPONENT_TEST_CONNECTION,
-                    requestId,
-                    "chat-probe-retry",
-                    "reason=null-id-abort" + LINE_SEPARATOR + "payload=" + payload
-            );
-                ProbeResponse retry = executeProbe(endpoint, authCandidates, ProbeKind.CHAT, payload);
-            last = retry;
-            if (retry.status >= 200 && retry.status < 300) {
-                return retry;
-            }
-            if (!isNullIdAbortResponse(retry)) {
-                return retry;
-            }
-        }
-
-        return last;
     }
 
     private boolean isNullIdAbortResponse(ProbeResponse response) {

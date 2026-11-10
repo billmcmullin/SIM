@@ -383,6 +383,11 @@ class WidgetSyncServletTest {
     
             String previousPromptV2 = (String) getStaticField("PREVIOUS_DEFAULT_SUMMARY_PROMPT_V2");
             assertTrue((boolean) invoke("isLegacyDefaultSummaryPrompt", new Class<?>[]{String.class}, previousPromptV2));
+                String previousPromptV3 = (String) getStaticField("PREVIOUS_DEFAULT_SUMMARY_PROMPT_V3");
+                assertEquals(getStaticField("DEFAULT_SUMMARY_PROMPT"),
+                    invoke("normalizeSummaryPrompt", new Class<?>[]{String.class}, previousPromptV3));
+                    assertEquals(getStaticField("DEFAULT_SUMMARY_PROMPT"),
+                        invoke("normalizeSummaryPrompt", new Class<?>[]{String.class}, previousPromptV3.replaceAll("\\s+", " ")));
     
             StringBuilder oversized = new StringBuilder();
             for (int i = 0; i < 12_500; i++) {
@@ -914,7 +919,7 @@ class WidgetSyncServletTest {
                         "https://api.example.com", "k", "msg", "chat", "s1", false, emptyArray, "req-2"));
                 assertTrue(ioWrapped.getCause() instanceof IllegalStateException);
 
-                when(workspaceClient.sendChatBearerCompat(anyString(), anyString(), anyString(), anyString(), anyString(), any(boolean.class), any(JsonArray.class), anyString()))
+                when(workspaceClient.sendChatBearerCompatOnce(anyString(), anyString(), anyString(), anyString(), anyString(), any(boolean.class), any(JsonArray.class), anyString(), any(int.class)))
                         .thenThrow(new InterruptedException("stop"));
                 Exception interruptedWrapped = assertThrows(Exception.class, () -> invoke("sendChatBearerCompatHandled", new Class<?>[]{String.class, String.class, String.class, String.class, String.class, boolean.class, JsonArray.class, String.class},
                         "https://api.example.com", "k", "msg", "chat", "s1", false, emptyArray, "req-3"));
@@ -1056,6 +1061,18 @@ class WidgetSyncServletTest {
                     "https://target"
                 );
                 assertTrue(timeoutMessage.toLowerCase(Locale.ROOT).contains("gateway timeout"));
+                String proxyTimeoutMessage = (String) invoke(
+                    "buildUserFacingSummaryFailureMessage",
+                    new Class<?>[]{int.class, String.class, String.class, String.class},
+                    HttpServletResponse.SC_GATEWAY_TIMEOUT,
+                    "<html><head><title>504 Gateway Time-out</title></head><body>nginx/1.31.8</body></html>",
+                    "workspace4",
+                    "https://target"
+                );
+                assertTrue(proxyTimeoutMessage.contains("HTTP 504"));
+                assertTrue(proxyTimeoutMessage.contains("does not confirm that inference stopped"));
+                assertFalse(proxyTimeoutMessage.contains("<html>"));
+                assertFalse(proxyTimeoutMessage.contains("nginx/"));
 
                 String defaultMessage = (String) invoke(
                     "buildUserFacingSummaryFailureMessage",
@@ -1490,6 +1507,13 @@ class WidgetSyncServletTest {
                     assertTrue(requestBytes <= 1024);
                     assertTrue(includedEntries >= 1);
                     assertTrue(planMessage.contains("coverage: included="));
+                    assertTrue(planMessage.contains("sampling limit, not an unanswered chat"));
+                    assertTrue(planMessage.contains("Asked, Answered, Gap, Evidence E#, Confidence"));
+                    assertTrue(planMessage.contains("candidate KB gaps vs missing user context"));
+                    assertTrue(planMessage.contains("No scores or unsupported accuracy"));
+                    assertTrue(planMessage.contains("specific KB additions"));
+                    assertTrue(planMessage.contains("- E1 q="));
+                    assertTrue(planMessage.contains("[truncated]"));
 
                     String trimmed = (String) invoke(
                             "trimToUtf8Bytes",
@@ -1571,13 +1595,13 @@ class WidgetSyncServletTest {
                                 com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(3, "beta", "Beta", Instant.now())
                         ));
 
-                        List<SelectedEntry> loaded = (List<SelectedEntry>) invoke(
+                        Exception loadFailure = assertThrows(Exception.class, () -> invoke(
                                 "loadEntriesForDay",
                                 new Class<?>[]{LocalDate.class, int.class},
                                 LocalDate.of(2026, 8, 27),
                                 50
-                        );
-                        assertNotNull(loaded);
+                        ));
+                        assertTrue(loadFailure.getCause() instanceof IllegalStateException);
                     }
                 } finally {
                     completed.set(previousCompleted);
@@ -1736,42 +1760,24 @@ class WidgetSyncServletTest {
 
                 @Test
                 @SuppressWarnings("unchecked")
-                void directAndIncrementalSummaryFlows_coverAdditionalBranches() throws Exception {
+                void summarySingleAttemptFailures_pauseUntilManualRetry() throws Exception {
                 Object previousWorkspaceClient = getStaticField("workspaceClient");
+                Object previousSummaryStore = getStaticField("summaryStore");
+                Object previousPaused = getStaticField("summaryAutoPausedUntilManualSuccess");
+                Object previousReason = getStaticField("summaryAutoPausedReason");
 
                 try {
+                    var store = mock(com.sim.chatserver.web.dashboard.summary.DashboardDailySummaryStore.class);
+                    setStaticField("summaryStore", store);
+                    for (int status : new int[] {413, 429, 500, 503, 504}) {
                     WorkspaceClient workspaceClient = mock(WorkspaceClient.class);
                     setStaticField("workspaceClient", workspaceClient);
-
-                    WorkspaceResponse status413 = mockWorkspaceResponse(413, "{\"message\":\"too large\"}");
-                    WorkspaceResponse status429 = mockWorkspaceResponse(HttpServletResponse.SC_TOO_MANY_REQUESTS, "{\"message\":\"retry\"}");
-                    WorkspaceResponse status500 = mockWorkspaceResponse(HttpServletResponse.SC_INTERNAL_SERVER_ERROR, "{\"message\":\"server error\"}");
-                    WorkspaceResponse init200 = mockWorkspaceResponse(HttpServletResponse.SC_OK, "{\"textResponse\":\"OK\"}");
-                    WorkspaceResponse batch200 = mockWorkspaceResponse(HttpServletResponse.SC_OK, "{\"textResponse\":\"OK\"}");
-                    WorkspaceResponse final200 = mockWorkspaceResponse(HttpServletResponse.SC_OK, "{\"textResponse\":\"summary\"}");
-
-                    when(workspaceClient.sendChat(anyString(), anyString(), anyString(), anyString(), anyString(), any(boolean.class), any(JsonArray.class), anyString()))
-                        .thenReturn(status413, status429, status500, init200, batch200, final200);
-
-                    List<SelectedEntry> entries = Arrays.asList(
-                        new SelectedEntry("chat-1", "Need help with setup", "Response one", "2026-08-27T11:00:00Z", "s1"),
-                        new SelectedEntry("chat-2", "Another question", "Response two", "2026-08-27T11:01:00Z", "s2")
-                    );
-
-                    WorkspaceResponse cascaded = (WorkspaceResponse) invoke(
-                        "runDirectSummaryChat",
-                        new Class<?>[]{String.class, String.class, String.class, List.class, String.class},
-                        "https://api.example.com",
-                        "token",
-                        "Daily prompt",
-                        entries,
-                        "req-1"
-                    );
-                    assertSame(final200, cascaded);
-
-                    WorkspaceResponse single200 = mockWorkspaceResponse(HttpServletResponse.SC_OK, "{\"textResponse\":\"single\"}");
-                    when(workspaceClient.sendChatBearerCompat(anyString(), anyString(), anyString(), anyString(), anyString(), any(boolean.class), any(JsonArray.class), anyString()))
-                        .thenReturn(single200);
+                    setStaticField("summaryAutoPausedUntilManualSuccess", false);
+                        WorkspaceResponse failed = mockWorkspaceResponse(status, status == 504
+                            ? "<html><body>504 Gateway Time-out nginx/1.31.8</body></html>"
+                            : "{\"message\":\"upstream unavailable\"}");
+                    when(workspaceClient.sendChatBearerCompatOnce(anyString(), anyString(), anyString(), anyString(), anyString(), any(boolean.class), any(JsonArray.class), anyString(), any(int.class)))
+                        .thenReturn(failed);
 
                     WorkspaceResponse singlePass = (WorkspaceResponse) invoke(
                         "runSinglePassSummaryChat",
@@ -1781,21 +1787,26 @@ class WidgetSyncServletTest {
                         "message",
                         "req-2"
                     );
-                    assertSame(single200, singlePass);
+                    assertSame(failed, singlePass);
+                    assertFalse((boolean) invoke("handleSummaryFailedResponse",
+                            new Class<?>[]{LocalDate.class, int.class, int.class, List.class, List.class,
+                                    WorkspaceResponse.class, String.class, String.class},
+                            LocalDate.now(), 0, 1, List.of(), List.of(), failed, "workspace", "https://api.example.com"));
+                    assertTrue((boolean) getStaticField("summaryAutoPausedUntilManualSuccess"));
+                    String reason = (String) getStaticField("summaryAutoPausedReason");
+                    assertTrue(reason.contains("No automatic retry"));
+                    assertTrue(reason.contains("logs"));
+                    assertTrue(reason.contains("manually generate"));
+                    verify(workspaceClient, times(1)).sendChatBearerCompatOnce(anyString(), anyString(), anyString(), anyString(), anyString(), any(boolean.class), any(JsonArray.class), anyString(), any(int.class));
+                    org.mockito.Mockito.verifyNoMoreInteractions(workspaceClient);
+                    }
 
-                    WorkspaceResponse initFail = mockWorkspaceResponse(HttpServletResponse.SC_SERVICE_UNAVAILABLE, "{\"message\":\"down\"}");
-                    when(workspaceClient.sendChat(anyString(), anyString(), anyString(), anyString(), anyString(), any(boolean.class), any(JsonArray.class), anyString()))
-                        .thenReturn(initFail);
-
-                    WorkspaceResponse incremental = (WorkspaceResponse) invoke(
-                        "runIncrementalSummaryChat",
-                        new Class<?>[]{String.class, String.class, List.class, String.class},
-                        "https://api.example.com",
-                        "token",
-                        entries,
-                        "req-3"
-                    );
-                    assertSame(initFail, incremental);
+                        ArgumentCaptor<String> storedOverall = ArgumentCaptor.forClass(String.class);
+                        verify(store, times(5)).upsertSummary(any(LocalDate.class), any(int.class), anyString(),
+                            any(int.class), anyString(), storedOverall.capture(), anyString(), anyString(),
+                            anyString(), any(int.class), any(boolean.class), any(boolean.class));
+                        assertTrue(storedOverall.getAllValues().stream().allMatch(
+                            value -> "No summary was generated. See the failure status for details.".equals(value)));
 
                     setStaticField("workspaceClient", null);
                     Exception noClient = assertThrows(Exception.class, () -> invoke(
@@ -1809,8 +1820,222 @@ class WidgetSyncServletTest {
                     assertTrue(noClient.getCause() instanceof IllegalStateException);
                 } finally {
                     setStaticField("workspaceClient", previousWorkspaceClient);
+                    setStaticField("summaryStore", previousSummaryStore);
+                    setStaticField("summaryAutoPausedUntilManualSuccess", previousPaused);
+                    setStaticField("summaryAutoPausedReason", previousReason);
                 }
                 }
+
+            @Test
+            void questionFocusedSummary_preservesSpecificNextAction() throws Exception {
+                Object previousStore = getStaticField("summaryStore");
+                Object previousPaused = getStaticField("summaryAutoPausedUntilManualSuccess");
+                Object previousReason = getStaticField("summaryAutoPausedReason");
+                try {
+                var store = mock(com.sim.chatserver.web.dashboard.summary.DashboardDailySummaryStore.class);
+                setStaticField("summaryStore", store);
+                String action = "Add license-server connection troubleshooting with verification steps (E1).";
+                String markdown = "## Overall\nUsers asked about licensing.\n## Quality\nAsked: connection failure (E1)."
+                    + "\n## Response\nCandidate gap: troubleshooting prerequisites (E1)."
+                    + "\n## Usage\n**Next action:** " + action + "\n- Priority: high; verify against product documentation.";
+                String body = Json.createObjectBuilder().add("textResponse", markdown).build().toString();
+                assertTrue((boolean) invoke("handleSummarySuccessResponse",
+                    new Class<?>[]{LocalDate.class, int.class, int.class, List.class, List.class, WorkspaceResponse.class},
+                    LocalDate.now(), 0, 1, List.of(), List.of(), mockWorkspaceResponse(200, body)));
+                ArgumentCaptor<String> suggested = ArgumentCaptor.forClass(String.class);
+                verify(store).upsertSummary(any(LocalDate.class), any(int.class), anyString(), any(int.class),
+                    org.mockito.ArgumentMatchers.eq(com.sim.chatserver.web.dashboard.summary.DashboardDailySummaryStore.QUESTION_REVIEW_MESSAGE),
+                    anyString(), anyString(), anyString(), anyString(), suggested.capture(), any(int.class),
+                    any(boolean.class), any(boolean.class));
+                assertEquals(action, suggested.getValue());
+                assertTrue(((String) invoke("summaryNextAction", new Class<?>[]{String.class}, "No recommendation provided"))
+                    .startsWith("No specific next action"));
+                } finally {
+                setStaticField("summaryStore", previousStore);
+                setStaticField("summaryAutoPausedUntilManualSuccess", previousPaused);
+                setStaticField("summaryAutoPausedReason", previousReason);
+                }
+            }
+
+            @Test
+            void summaryEvidenceExcerpts_keepOpeningAndClosingGuidanceWithinLimit() throws Exception {
+                String full = "Start with the license-server setup. " + "middle detail ".repeat(40)
+                    + "Finish by verifying the configured port and reviewing the server logs.";
+                String excerpt = (String) invoke("summaryEvidenceSnippet", new Class<?>[]{String.class, int.class}, full, 220);
+                assertTrue(excerpt.length() <= 220);
+                assertTrue(excerpt.startsWith("Start with the license-server setup."));
+                assertTrue(excerpt.contains("[truncated]"));
+                assertTrue(excerpt.endsWith("reviewing the server logs."));
+                assertEquals("Short complete answer", invoke("summaryEvidenceSnippet",
+                    new Class<?>[]{String.class, int.class}, "Short complete answer", 220));
+            }
+
+            @Test
+            void summaryTableMetadataFailureIsNotTreatedAsAnEmptyDay() throws Exception {
+                WidgetSyncJdbcStore jdbc = (WidgetSyncJdbcStore) getStaticField("jdbcStore");
+                AppDataSourceHolder holder = mock(AppDataSourceHolder.class);
+                DataSource dataSource = mock(DataSource.class);
+                Connection connection = mock(Connection.class);
+                when(holder.getDataSource()).thenReturn(dataSource);
+                when(dataSource.getConnection()).thenReturn(connection);
+                when(connection.getMetaData()).thenThrow(new SQLException("Metadata unavailable"));
+                IllegalStateException failure = assertThrows(IllegalStateException.class, () -> jdbc.loadEntriesForDay(
+                    holder, List.of("widget_a"), LocalDate.now(), 50, new java.util.HashSet<>()));
+                assertTrue(failure.getCause() instanceof SQLException);
+
+                java.sql.DatabaseMetaData metadata = mock(java.sql.DatabaseMetaData.class);
+                ResultSet tables = mock(ResultSet.class);
+                doReturn(metadata).when(connection).getMetaData();
+                when(metadata.getTables(any(), any(), anyString(), any(String[].class))).thenReturn(tables);
+                when(tables.next()).thenReturn(false);
+                assertTrue(jdbc.loadEntriesForDay(holder, List.of("widget_a"), LocalDate.now(), 50,
+                    new java.util.HashSet<>()).isEmpty());
+            }
+
+            @Test
+            void summaryZeroChatsAndDataFailures_neverSendUpstreamOrClearExistingPause() throws Exception {
+                Object previousJdbc = getStaticField("jdbcStore");
+                Object previousHolder = getStaticField("dsHolder");
+                Object previousStore = getStaticField("summaryStore");
+                Object previousClient = getStaticField("workspaceClient");
+                Object previousPaused = getStaticField("summaryAutoPausedUntilManualSuccess");
+                Object previousReason = getStaticField("summaryAutoPausedReason");
+                Object previousLastRun = getStaticField("summaryLastRun");
+                try (MockedStatic<WidgetStore> widgets = mockStatic(WidgetStore.class)) {
+                    WidgetSyncJdbcStore jdbc = mock(WidgetSyncJdbcStore.class);
+                    var store = mock(com.sim.chatserver.web.dashboard.summary.DashboardDailySummaryStore.class);
+                    WorkspaceClient client = mock(WorkspaceClient.class);
+                    AppDataSourceHolder holder = mock(AppDataSourceHolder.class);
+                    setStaticField("dsHolder", holder);
+                    setStaticField("jdbcStore", jdbc);
+                    setStaticField("summaryStore", store);
+                    setStaticField("workspaceClient", client);
+                    widgets.when(() -> WidgetStore.list(null)).thenReturn(List.of(
+                            com.sim.chatserver.web.TestWidgetEntryFactory.newWidgetEntry(1, "widget-a", "Widget", Instant.now())));
+                    when(jdbc.loadEntriesForDay(any(AppDataSourceHolder.class), any(List.class), any(LocalDate.class),
+                            any(int.class), any(Set.class))).thenReturn(List.of());
+                    for (boolean paused : new boolean[] {false, true}) {
+                        org.mockito.Mockito.clearInvocations(store, client);
+                        setStaticField("summaryAutoPausedUntilManualSuccess", paused);
+                        setStaticField("summaryAutoPausedReason", paused ? "Previous upstream failure" : "");
+                        assertTrue((boolean) invoke("runDailySummaryGeneration", new Class<?>[]{boolean.class}, true));
+                        assertEquals(paused, getStaticField("summaryAutoPausedUntilManualSuccess"));
+                        org.mockito.Mockito.verifyNoInteractions(client);
+                        if (paused) {
+                            org.mockito.Mockito.verifyNoInteractions(store);
+                            assertEquals("Previous upstream failure", getStaticField("summaryAutoPausedReason"));
+                        } else {
+                            verify(store).upsertSummary(any(LocalDate.class), any(int.class),
+                                    org.mockito.ArgumentMatchers.eq("success"), org.mockito.ArgumentMatchers.eq(100),
+                                    org.mockito.ArgumentMatchers.contains("No chats available"), anyString(),
+                                    anyString(), anyString(), anyString(), org.mockito.ArgumentMatchers.eq(0),
+                                    org.mockito.ArgumentMatchers.eq(false), org.mockito.ArgumentMatchers.eq(false));
+                        }
+                    }
+                    org.mockito.Mockito.clearInvocations(store, jdbc);
+                    setStaticField("summaryAutoPausedUntilManualSuccess", false);
+                    when(jdbc.loadEntriesForDay(any(AppDataSourceHolder.class), any(List.class), any(LocalDate.class),
+                            any(int.class), any(Set.class))).thenThrow(new IllegalStateException("Database unavailable"));
+                    assertFalse((boolean) invoke("runDailySummaryGeneration", new Class<?>[]{boolean.class}, true));
+                    assertTrue((boolean) getStaticField("summaryAutoPausedUntilManualSuccess"));
+                    assertTrue(((String) getStaticField("summaryAutoPausedReason")).contains("Unable to load chats"));
+                    org.mockito.Mockito.verifyNoInteractions(client);
+                    widgets.when(() -> WidgetStore.list(null)).thenThrow(new SQLException("Registry unavailable"));
+                    org.mockito.Mockito.clearInvocations(jdbc);
+                    setStaticField("summaryAutoPausedUntilManualSuccess", false);
+                    assertFalse((boolean) invoke("runDailySummaryGeneration", new Class<?>[]{boolean.class}, true));
+                    assertTrue((boolean) getStaticField("summaryAutoPausedUntilManualSuccess"));
+                    verify(jdbc, never()).loadEntriesForDay(any(AppDataSourceHolder.class), any(List.class),
+                            any(LocalDate.class), any(int.class), any(Set.class));
+                    org.mockito.Mockito.verifyNoInteractions(client);
+                } finally {
+                    setStaticField("jdbcStore", previousJdbc);
+                    setStaticField("dsHolder", previousHolder);
+                    setStaticField("summaryStore", previousStore);
+                    setStaticField("workspaceClient", previousClient);
+                    setStaticField("summaryAutoPausedUntilManualSuccess", previousPaused);
+                    setStaticField("summaryAutoPausedReason", previousReason);
+                    setStaticField("summaryLastRun", previousLastRun);
+                }
+            }
+
+            @Test
+            void summaryTimeoutsAndEmptyResponses_pauseWithoutRetryAndSuccessResumes() throws Exception {
+                Object previousClient = getStaticField("workspaceClient");
+                Object previousStore = getStaticField("summaryStore");
+                Object previousPaused = getStaticField("summaryAutoPausedUntilManualSuccess");
+                Object previousReason = getStaticField("summaryAutoPausedReason");
+                try {
+                var store = mock(com.sim.chatserver.web.dashboard.summary.DashboardDailySummaryStore.class);
+                setStaticField("summaryStore", store);
+                for (IOException failure : new IOException[] {new IOException("connection failed"),
+                    new java.net.http.HttpTimeoutException("timed out")}) {
+                    WorkspaceClient client = mock(WorkspaceClient.class);
+                    setStaticField("workspaceClient", client);
+                    setStaticField("summaryAutoPausedUntilManualSuccess", false);
+                    when(client.sendChatBearerCompatOnce(anyString(), anyString(), anyString(), anyString(),
+                        anyString(), any(boolean.class), any(JsonArray.class), anyString(), any(int.class)))
+                        .thenThrow(failure);
+                    assertNull(invoke("requestSummarySinglePass",
+                        new Class<?>[]{String.class, String.class, String.class, String.class, int.class},
+                        "https://api.example.com", "test-token", "message", "test-summary", 1));
+                    assertFalse((boolean) invoke("handleSummaryNoResponse",
+                        new Class<?>[]{LocalDate.class, int.class, int.class, List.class, List.class},
+                        LocalDate.now(), 0, 1, List.of(), List.of()));
+                    assertTrue((boolean) getStaticField("summaryAutoPausedUntilManualSuccess"));
+                    verify(client, times(1)).sendChatBearerCompatOnce(anyString(), anyString(), anyString(),
+                        anyString(), anyString(), any(boolean.class), any(JsonArray.class), anyString(), any(int.class));
+                    org.mockito.Mockito.verifyNoMoreInteractions(client);
+                }
+                for (String body : new String[] {"", "{\"type\":\"abort\",\"textResponse\":\"\"}"}) {
+                    setStaticField("summaryAutoPausedUntilManualSuccess", false);
+                    assertFalse((boolean) invoke("handleSummarySuccessResponse",
+                        new Class<?>[]{LocalDate.class, int.class, int.class, List.class, List.class, WorkspaceResponse.class},
+                            LocalDate.now(), 0, 1, List.of(), List.of(), mockWorkspaceResponse(200, body)));
+                    assertTrue((boolean) getStaticField("summaryAutoPausedUntilManualSuccess"));
+                }
+                String summary = Json.createObjectBuilder().add("textResponse",
+                    "## Overall\nSummary\n## Quality\nGood\n## Response\nGood\n## Usage\nGood").build().toString();
+                assertTrue((boolean) invoke("handleSummarySuccessResponse",
+                    new Class<?>[]{LocalDate.class, int.class, int.class, List.class, List.class, WorkspaceResponse.class},
+                        LocalDate.now(), 0, 1, List.of(), List.of(), mockWorkspaceResponse(200, summary)));
+                assertFalse((boolean) getStaticField("summaryAutoPausedUntilManualSuccess"));
+                doThrow(new IllegalStateException("database unavailable")).when(store).upsertSummary(
+                    any(LocalDate.class), any(int.class), anyString(), any(int.class), anyString(),
+                    anyString(), anyString(), anyString(), anyString(), any(int.class), any(boolean.class), any(boolean.class));
+                assertThrows(Exception.class, () -> invoke("handleSummaryNoResponse",
+                    new Class<?>[]{LocalDate.class, int.class, int.class, List.class, List.class},
+                    LocalDate.now(), 0, 1, List.of(), List.of()));
+                assertTrue((boolean) getStaticField("summaryAutoPausedUntilManualSuccess"));
+                } finally {
+                setStaticField("workspaceClient", previousClient);
+                setStaticField("summaryStore", previousStore);
+                setStaticField("summaryAutoPausedUntilManualSuccess", previousPaused);
+                setStaticField("summaryAutoPausedReason", previousReason);
+                }
+            }
+
+            @Test
+            void summaryPause_restoresPersistedFailureAfterRestart() throws Exception {
+                Object previousStore = getStaticField("summaryStore");
+                Object previousPaused = getStaticField("summaryAutoPausedUntilManualSuccess");
+                Object previousReason = getStaticField("summaryAutoPausedReason");
+                try {
+                var store = mock(com.sim.chatserver.web.dashboard.summary.DashboardDailySummaryStore.class);
+                setStaticField("summaryStore", store);
+                when(store.requiresManualRetry()).thenReturn(true);
+                invoke("restoreSummaryPauseAfterRestart");
+                assertTrue((boolean) getStaticField("summaryAutoPausedUntilManualSuccess"));
+                assertTrue(((String) getStaticField("summaryAutoPausedReason")).contains("manually generate"));
+                when(store.requiresManualRetry()).thenReturn(false);
+                invoke("restoreSummaryPauseAfterRestart");
+                assertFalse((boolean) getStaticField("summaryAutoPausedUntilManualSuccess"));
+                } finally {
+                setStaticField("summaryStore", previousStore);
+                setStaticField("summaryAutoPausedUntilManualSuccess", previousPaused);
+                setStaticField("summaryAutoPausedReason", previousReason);
+                }
+            }
 
                 @Test
                 @SuppressWarnings("unchecked")

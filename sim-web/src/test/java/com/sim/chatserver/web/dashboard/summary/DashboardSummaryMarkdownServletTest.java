@@ -1,6 +1,7 @@
 package com.sim.chatserver.web.dashboard.summary;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import java.lang.reflect.Method;
@@ -58,8 +59,31 @@ class DashboardSummaryMarkdownServletTest {
         assertTrue(qualityAction.contains("low-quality conversations"));
     }
 
-    @Test
-    void cssStatus_mapsKnownStates() throws Exception {
+        @Test
+        void questionReview_usesQuestionLabelsAndSpecificActionWithoutLegacyHeuristics() throws Exception {
+        DashboardSummaryMarkdownServlet servlet = new DashboardSummaryMarkdownServlet();
+        String action = "Add a license-server troubleshooting checklist supported by E1.";
+        JsonObject payload = Json.createObjectBuilder()
+            .add("meta", Json.createObjectBuilder().add("statusText", "success")
+                .add("format", DashboardDailySummaryStore.QUESTION_REVIEW_FORMAT))
+            .add("summary", Json.createObjectBuilder().add("overall", "Licensing questions")
+                .add("quality", "Low confidence in the truncated answer (E1)")
+                .add("response", "Candidate gap: connection diagnostics")
+                .add("usage", "Add and validate a checklist")
+                .add("suggestedNextAction", action))
+            .build();
+        assertEquals(action, invoke(servlet, "suggestNextAction", new Class[]{JsonObject.class}, payload));
+        String markdown = (String) invoke(servlet, "buildMarkdown", new Class[]{JsonObject.class}, payload);
+        String preview = (String) invoke(servlet, "buildPreviewHtml", new Class[]{JsonObject.class}, payload);
+        for (String title : new String[] {"What Users Asked", "Questions and Answers", "Candidate Knowledge Gaps", "Recommended Improvements"}) {
+            assertTrue(markdown.contains("## " + title));
+            assertTrue(preview.contains(title));
+        }
+        assertFalse(markdown.contains("## Quality"));
+        }
+
+        @Test
+        void cssStatus_mapsKnownStates() throws Exception {
         DashboardSummaryMarkdownServlet servlet = new DashboardSummaryMarkdownServlet();
 
         assertEquals("error", invoke(servlet, "cssStatus", new Class[]{String.class}, "error"));

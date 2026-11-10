@@ -633,6 +633,7 @@ function wireDetailCardUi() {
     const promptBtn = byId("translatePromptBtn");
     const responseBtn = byId("translateResponseBtn");
     const langSel = byId("translateTargetLang");
+    const sourceSel = byId("translateSourceLang");
     const revealBtn = byId("shareChatRevealBtn");
     const sharePanel = byId("shareChatPanel");
     const shareBtn = byId("shareChatByEmailBtn");
@@ -645,7 +646,7 @@ function wireDetailCardUi() {
             if (!row) {
                 return;
             }
-            await translateText(row.prompt || "", langSel?.value || "en", "promptTranslationMeta", "promptTranslationOutput", "Prompt");
+            await translateText(row.prompt || "", langSel?.value || "en", "promptTranslationMeta", "promptTranslationOutput", "Prompt", sourceSel?.value || "auto");
         });
     }
 
@@ -655,7 +656,7 @@ function wireDetailCardUi() {
             if (!row) {
                 return;
             }
-            await translateText(row.response || "", langSel?.value || "en", "responseTranslationMeta", "responseTranslationOutput", "Response");
+            await translateText(row.response || "", langSel?.value || "en", "responseTranslationMeta", "responseTranslationOutput", "Response", sourceSel?.value || "auto");
         });
     }
 
@@ -1340,7 +1341,7 @@ function clearTranslationUi() {
     setBlockTextById("responseTranslationOutput", "", false);
 }
 
-async function translateText(sourceText, targetLang, metaId, outId, label) {
+async function translateText(sourceText, targetLang, metaId, outId, label, sourceLang = "auto") {
     const meta = byId(metaId);
     const out = byId(outId);
 
@@ -1366,7 +1367,7 @@ async function translateText(sourceText, targetLang, metaId, outId, label) {
                 "Content-Type": "application/json",
                 "Accept": "application/json"
             },
-            body: JSON.stringify({ text: sourceText, targetLang: targetLang || "en" })
+            body: JSON.stringify({ text: sourceText, sourceLang, targetLang: targetLang || "en" })
         });
 
         const text = await res.text();
@@ -1378,7 +1379,7 @@ async function translateText(sourceText, targetLang, metaId, outId, label) {
         }
 
         const translated = data.translatedText || "";
-        const src = data.sourceLang || "auto";
+        const src = data.sourceLang || sourceLang;
         const dst = data.targetLang || (targetLang || "en");
 
         if (meta) {

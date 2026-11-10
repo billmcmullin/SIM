@@ -11,7 +11,6 @@ import com.sim.chatserver.service.translation.DefaultTranslationService;
 import com.sim.chatserver.service.translation.TranslationService;
 import com.sim.chatserver.service.translation.TranslationResult;
 import com.sim.chatserver.web.util.ServletJsonResponseUtil;
-import com.sim.chatserver.web.util.ServletRequestParamUtil;
 
 import jakarta.json.Json;
 import jakarta.json.JsonObject;
@@ -60,6 +59,7 @@ public class ReviewTranslateServlet extends HttpServlet {
         }
 
         String text = payload.getString(com.sim.chatserver.util.CommonLiteralConstants.KEY_TEXT, "");
+        String sourceLang = payload.getString("sourceLang", "auto");
         String targetLang = payload.getString("targetLang", "en");
 
         if (text == null || text.isBlank()) {
@@ -72,7 +72,7 @@ public class ReviewTranslateServlet extends HttpServlet {
         }
 
         try {
-            TranslationResult result = TRANSLATION_SERVICE.detectAndTranslate(text, targetLang);
+            TranslationResult result = translationService().detectAndTranslate(text, sourceLang, targetLang);
 
             JsonObjectBuilder out = Json.createObjectBuilder()
                     .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, result.isSuccess() ? "ok" : com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
@@ -138,6 +138,10 @@ public class ReviewTranslateServlet extends HttpServlet {
         return session != null && session.getAttribute(com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER) != null;
     }
 
+    TranslationService translationService() {
+        return TRANSLATION_SERVICE;
+    }
+
     private void writeJson(HttpServletResponse resp, JsonObject obj) {
         int status = resp.getStatus() <= 0 ? HttpServletResponse.SC_OK : resp.getStatus();
         try {
@@ -159,7 +163,19 @@ public class ReviewTranslateServlet extends HttpServlet {
 
         try {
             try (BufferedReader reader = req.getReader()) {
-                return ServletRequestParamUtil.readNormalizedBodyText(reader, MAX_JSON_PAYLOAD_BYTES);
+                if (reader == null) {
+                    return "";
+                }
+                char[] buffer = new char[MAX_JSON_PAYLOAD_BYTES + 1];
+                int total = 0;
+                int count;
+                while (total < buffer.length && (count = reader.read(buffer, total, buffer.length - total)) != -1) {
+                    total += count;
+                }
+                if (total > MAX_JSON_PAYLOAD_BYTES) {
+                    throw new IllegalArgumentException("Translation payload exceeds size limit");
+                }
+                return new String(buffer, 0, total);
             }
         } catch (IOException ex) {
             throw new IllegalArgumentException("Invalid JSON payload", ex);
