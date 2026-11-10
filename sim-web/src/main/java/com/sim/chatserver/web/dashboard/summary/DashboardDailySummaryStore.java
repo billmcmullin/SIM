@@ -43,6 +43,8 @@ public class DashboardDailySummaryStore {
     private static final String KEY_META = CommonLiteralConstants.FIELD_META;
     private static final String KEY_SUMMARY = com.sim.chatserver.util.CommonLiteralConstants.LABEL_SUMMARY;
     private static final String KEY_OVERALL = "overall";
+    public static final String QUESTION_REVIEW_MESSAGE = "Question-focused summary generated.";
+    public static final String QUESTION_REVIEW_FORMAT = "question-review-v1";
     private static final String KEY_RESPONSE = com.sim.chatserver.util.CommonLiteralConstants.FIELD_RESPONSE;
     private static final String KEY_SUGGESTED_NEXT_ACTION = "suggestedNextAction";
     private static final String KEY_DAY = com.sim.chatserver.util.CommonLiteralConstants.KEY_DAY;
@@ -217,7 +219,7 @@ public class DashboardDailySummaryStore {
         upsert(day, slot, status, progressPct, message, overall, quality, response, usage, suggested, entryCount, markStarted, markGenerated);
     }
 
-    final void upsertSummary(
+    public final void upsertSummary(
             LocalDate day,
             int slot,
             String status,
@@ -384,6 +386,22 @@ public class DashboardDailySummaryStore {
         }
     }
 
+    public boolean requiresManualRetry() {
+        String sql = "SELECT status FROM dashboard_daily_summary ORDER BY updated_at DESC, id DESC LIMIT 1";
+        try (Connection conn = dataSource.getConnection();
+                PreparedStatement statement = conn.prepareStatement(sql);
+                ResultSet result = statement.executeQuery()) {
+            if (!result.next()) {
+                return false;
+            }
+            String status = value(getSafeString(result, DB_COL_STATUS, 20), STATUS_IDLE);
+            return STATUS_ERROR.equalsIgnoreCase(status) || STATUS_RUNNING.equalsIgnoreCase(status)
+                    || STATUS_QUEUED.equalsIgnoreCase(status);
+        } catch (SQLException error) {
+            throw new IllegalStateException("Unable to read persisted summary status; automatic summaries remain paused.", error);
+        }
+    }
+
     final JsonObject fetchExactOrLatest(LocalDate day, int slot) {
         String exactSql = """
                 SELECT summary_day, slot, status, progress_pct, message,
@@ -417,7 +435,12 @@ public class DashboardDailySummaryStore {
 
             try (PreparedStatement ps = conn.prepareStatement(latestSql); ResultSet rs = ps.executeQuery()) {
                 if (rs.next()) {
-                    return toPayload(rs, true);
+                    JsonObject payload = toPayload(rs, true);
+                    return Json.createObjectBuilder(payload)
+                        .add(KEY_META, Json.createObjectBuilder(payload.getJsonObject(KEY_META))
+                            .add("requestedDay", day.toString())
+                            .add("requestedSlot", slot))
+                        .build();
                 }
             }
 
@@ -469,6 +492,24 @@ public class DashboardDailySummaryStore {
         Timestamp updatedAt = getSafeTimestamp(rs, DB_COL_UPDATED_AT);
 
         boolean inProgress = STATUS_RUNNING.equals(status) || STATUS_QUEUED.equals(status);
+        boolean noData = STATUS_SUCCESS.equals(status) && entryCount == 0
+                && (message.startsWith("No chats available for this day.")
+                    || message.equals("No entries available for this day yet."));
+
+        if (STATUS_ERROR.equals(status)) {
+            overall = "No summary was generated. See the failure status for details.";
+            quality = PLACEHOLDER_DASH;
+            response = PLACEHOLDER_DASH;
+            usage = PLACEHOLDER_DASH;
+            suggested = "Review the SIM and AnythingLLM logs before manually generating the summary again. No automatic retry was sent.";
+            if (message.contains("<")) {
+                message = "Summary generation failed. Review the SIM and AnythingLLM logs before manually trying again. No automatic retry was sent.";
+            }
+        }
+        if (noData) {
+            generatedAt = null;
+            suggested = "No request was sent to AnythingLLM because no chats were available.";
+        }
 
         if (overall.isBlank() && !STATUS_SUCCESS.equals(status)) {
             overall = message.isBlank() ? MSG_SUMMARY_IN_PROGRESS : message;
@@ -502,6 +543,9 @@ public class DashboardDailySummaryStore {
                         .add(KEY_STARTED_AT, fmtTs(startedAt))
                         .add(KEY_UPDATED_AT, fmtTs(updatedAt))
                         .add(KEY_IN_PROGRESS, inProgress)
+                        .add("noData", noData)
+                        .add("format", STATUS_SUCCESS.equals(status) && QUESTION_REVIEW_MESSAGE.equals(message)
+                            ? QUESTION_REVIEW_FORMAT : "legacy")
                     .add(KEY_PROGRESS_PCT, progress)
                     .add(KEY_STATUS_TEXT, status)
                         .add(KEY_MESSAGE, message)
@@ -727,14 +771,17 @@ public class DashboardDailySummaryStore {
         if (value == null || value.isBlank()) {
             return EMPTY;
         }
-        String normalized = ServletRequestParamUtil.normalizeBodyText(value, maxLen, false);
+        String normalized = com.sim.chatserver.util.LineSeparatorUtil.normalizeToLf(value).trim();
+        if (maxLen > 0 && normalized.length() > maxLen) {
+            normalized = new String(normalized.toCharArray(), 0, maxLen);
+        }
         if (normalized.isBlank()) {
             return EMPTY;
         }
         StringBuilder safe = new StringBuilder(normalized.length());
         for (int i = 0; i < normalized.length(); i++) {
             char ch = normalized.charAt(i);
-            if (Character.isISOControl(ch) && ch != System.lineSeparator().charAt(System.lineSeparator().length() - 1) && ch != '\t') {
+            if (Character.isISOControl(ch) && ch != '\n' && ch != '\t') {
                 continue;
             }
             safe.append(ch);

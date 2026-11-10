@@ -184,10 +184,10 @@ pipeline {
                             echo 'jtest.agent.enableMultiuserCoverage=true' >> "${AGENT_FILE}"
                         fi
 
-                        if grep -q '^jtest\\.agent\\.autoStart=' "${AGENT_FILE}"; then
-                            sed -i 's/^jtest\\.agent\\.autoStart=.*/jtest.agent.autoStart=false/' "${AGENT_FILE}"
+                        if grep -q '^jtest\\.agent\\.session\\.autostart=' "${AGENT_FILE}"; then
+                            sed -i 's/^jtest\\.agent\\.session\\.autostart=.*/jtest.agent.session.autostart=false/' "${AGENT_FILE}"
                         else
-                            echo 'jtest.agent.autoStart=false' >> "${AGENT_FILE}"
+                            echo 'jtest.agent.session.autostart=false' >> "${AGENT_FILE}"
                         fi
 
                         if grep -q '^jtest\\.agent\\.jbossCompatibilityMode=' "${AGENT_FILE}"; then
@@ -208,10 +208,17 @@ pipeline {
                             echo "ctp.websocket.url=${CTP_WEBSOCKET}" >> "${AGENT_FILE}"
                         fi
 
-                        if grep -q 'ctp\\.subscription\\.url=' "${AGENT_FILE}"; then
-                            sed -i "s/^ctp\\.subscription\\.url=.*/ctp.subscription.url=${CTP_QUEUE}/" "${AGENT_FILE}"
+                        sed -i '/^ctp\\.subscription\\.url=/d; /^jtest\\.agent\\.autoStart=/d' "${AGENT_FILE}"
+                        if grep -q '^ctp\\.subscription\\.queue=' "${AGENT_FILE}"; then
+                            sed -i "s|^ctp\\.subscription\\.queue=.*|ctp.subscription.queue=${CTP_QUEUE}|" "${AGENT_FILE}"
                         else
                             echo "ctp.subscription.queue=${CTP_QUEUE}" >> "${AGENT_FILE}"
+                        fi
+
+                        if grep -q '^jtest\\.agent\\.appLocationIncludes=' "${AGENT_FILE}"; then
+                            sed -i 's|^jtest\\.agent\\.appLocationIncludes=.*|jtest.agent.appLocationIncludes=/opt/jboss/wildfly/standalone/deployments/chat-server.war|' "${AGENT_FILE}"
+                        else
+                            echo 'jtest.agent.appLocationIncludes=/opt/jboss/wildfly/standalone/deployments/chat-server.war' >> "${AGENT_FILE}"
                         fi
                         
                         if grep -q 'dtp\\.buildID=' "${AGENT_FILE}"; then

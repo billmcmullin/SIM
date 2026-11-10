@@ -58,6 +58,7 @@
     };
 
     let lastTestSuccess = false;
+    let connectionTestInFlight = false;
 
     function safeInit(name, fn) {
         try {
@@ -282,7 +283,14 @@
         safeInit('Email', () => window.AdminPage.Email?.init(contextPath));
 
         // Page actions
-        document.getElementById('testConnectionBtn')?.addEventListener('click', testConnection);
+        document.getElementById('testConnectionBtn')?.addEventListener('click', () => testConnection(false));
+        document.getElementById('testInferenceBtn')?.addEventListener('click', () => testConnection(true));
+        ['serverHost', 'serverPort', 'apiKey'].forEach(id => {
+            document.getElementById(id)?.addEventListener('input', () => {
+                lastTestSuccess = false;
+                updateSaveButton();
+            });
+        });
         document.getElementById('saveConfigBtn')?.addEventListener('click', saveConfiguration);
         document.getElementById('saveSyncIntervalBtn')?.addEventListener('click', () => window.AdminPage.Sync?.saveSyncInterval?.());
         document.getElementById('backupDbBtn')?.addEventListener('click', backupDatabase);
@@ -298,16 +306,19 @@
     function updateSaveButton() {
         const saveBtn = document.getElementById('saveConfigBtn');
         if (saveBtn) {
-            saveBtn.disabled = !lastTestSuccess;
+            saveBtn.disabled = !lastTestSuccess || connectionTestInFlight;
         }
     }
 
-    async function testConnection() {
+    async function testConnection(testInference = false) {
+        if (connectionTestInFlight) {
+            return;
+        }
         const host = document.getElementById('serverHost')?.value.trim() || '';
         const port = document.getElementById('serverPort')?.value.trim() || '';
         const apiKey = document.getElementById('apiKey')?.value.trim() || '';
         const workspaceName = document.getElementById('workspaceNameInput')?.value.trim() || '';
-        const resultEl = document.getElementById('testResult');
+        const resultEl = document.getElementById(testInference ? 'inferenceTestResult' : 'testResult');
 
         if (!host || !port) {
             if (resultEl) {
@@ -322,6 +333,9 @@
         const data = new URLSearchParams();
         data.append('serverHost', host);
         data.append('serverPort', port);
+        if (testInference) {
+            data.append('testInference', 'true');
+        }
         if (workspaceName) {
             data.append('workspaceName', workspaceName);
         }
@@ -329,6 +343,15 @@
             data.append('apiKey', apiKey);
         }
 
+        connectionTestInFlight = true;
+        updateSaveButton();
+        const testButtons = ['testConnectionBtn', 'testInferenceBtn']
+            .map(id => document.getElementById(id)).filter(Boolean);
+        testButtons.forEach(button => { button.disabled = true; });
+        if (resultEl) {
+            resultEl.textContent = testInference ? 'Testing inference...' : 'Testing connectivity and API authentication...';
+            resultEl.style.color = '#475569';
+        }
         try {
             const { status, payload } = await window.AdminPage.Api.fetchJson(`${contextPath}/admin/test-connection`, {
                 method: 'POST',
@@ -336,28 +359,59 @@
                 body: data.toString()
             });
 
+            const settingsChanged = host !== (document.getElementById('serverHost')?.value.trim() || '')
+                || port !== (document.getElementById('serverPort')?.value.trim() || '')
+                || apiKey !== (document.getElementById('apiKey')?.value.trim() || '')
+                || (testInference && workspaceName !== (document.getElementById('workspaceNameInput')?.value.trim() || ''));
+            if (settingsChanged) {
+                lastTestSuccess = false;
+                if (resultEl) {
+                    resultEl.textContent = 'Settings changed during the test. Run Test Connection for the current settings.';
+                    resultEl.style.color = '#b45309';
+                }
+                return;
+            }
+            if (testInference && payload?.connectivityVerified === true) {
+                lastTestSuccess = true;
+                const connectionResult = document.getElementById('testResult');
+                if (connectionResult) {
+                    connectionResult.textContent = 'Connection and API authentication successful.';
+                    connectionResult.style.color = '#047857';
+                }
+            }
             if (payload?.status === 'ok') {
                 if (resultEl) {
-                    resultEl.textContent = 'Connection successful.';
+                    resultEl.textContent = payload.message || (testInference ? 'Inference test successful.' : 'Connection successful.');
                     resultEl.style.color = '#047857';
                 }
-                lastTestSuccess = true;
+                if (!testInference) {
+                    lastTestSuccess = true;
+                }
             } else {
                 if (resultEl) {
                     const probe = payload?.probe ? ` [${payload.probe}]` : '';
                     const upstream = Number.isInteger(payload?.upstreamStatus) ? ` (upstream ${payload.upstreamStatus})` : '';
-                    resultEl.textContent = (payload?.message || `Connection failed (${status}).`) + probe + upstream;
+                    const reference = payload?.errorRef ? ` Reference: ${payload.errorRef}` : '';
+                    resultEl.textContent = (payload?.message || `Connection failed (${status}).`) + probe + upstream + reference;
                     resultEl.style.color = '#b91c1c';
                 }
-                lastTestSuccess = false;
+                if (!testInference || payload?.probe === 'system') {
+                    lastTestSuccess = false;
+                }
             }
         } catch (err) {
             if (resultEl) {
-                resultEl.textContent = `Connection error: ${err.message}`;
+                resultEl.textContent = testInference
+                    ? `Inference test outcome is unknown. No automatic retry was sent. Review upstream logs before trying again. ${err.message}`
+                    : `Connectivity check failed: ${err.message}`;
                 resultEl.style.color = '#b91c1c';
             }
-            lastTestSuccess = false;
+            if (!testInference) {
+                lastTestSuccess = false;
+            }
         } finally {
+            connectionTestInFlight = false;
+            testButtons.forEach(button => { button.disabled = false; });
             updateSaveButton();
         }
     }

@@ -184,6 +184,8 @@ public class WidgetSyncServlet extends HttpServlet {
         };
     private static final Pattern NON_ALNUM_UNDERSCORE = Pattern.compile(CommonLiteralConstants.REGEX_NON_ALNUM_UNDERSCORE);
     private static final Pattern SUMMARY_INCLUDED_COUNT_PATTERN = Pattern.compile("coverage:\\s*included=(\\d+)");
+        private static final Pattern SUMMARY_NEXT_ACTION_PATTERN = Pattern.compile(
+            "(?im)^[\\t ]*(?:[-*][\\t ]+)?(?:\\*\\*)?Next action(?:\\*\\*)?:(?:\\*\\*)?[\\t ]*(\\S[^\\r\\n]*)");
 
     private static final int HTTP_MAX_ATTEMPTS = 3;
     private static final long HTTP_RETRY_BASE_MS = 500L;
@@ -253,7 +255,7 @@ public class WidgetSyncServlet extends HttpServlet {
                             product/version, environment details, exact error text or screenshot, expected result,
                             steps already tried, and relevant logs or configuration snippets.
                         """;
-        private static final String DEFAULT_SUMMARY_PROMPT = """
+        private static final String PREVIOUS_DEFAULT_SUMMARY_PROMPT_V3 = """
                         You are producing an in-depth daily analysis of today's widget chats.
                         Return markdown with these exact sections:
                         ## Overall
@@ -276,6 +278,27 @@ public class WidgetSyncServlet extends HttpServlet {
                             1) "Actionable improvements": top 3-5 prioritized improvements with expected impact.
                             2) "Next steps": specific user inputs to request next time so answers can be more accurate.
                         - In "Next steps", ask concretely for: product/version, environment details, exact error text or screenshot, expected result, steps already tried, and relevant logs/config snippets.
+                        """;
+
+                private static final String DEFAULT_SUMMARY_PROMPT = """
+                        Review user questions and the supplied responses, not a generic performance scorecard.
+                        Use short, concrete bullets. Cite evidence labels such as E1 and E2.
+                        Never infer factual accuracy, customer satisfaction, resolution, or missing knowledge-base content from tone or absent sources.
+                        A referral or escalation alone is not proof of a knowledge gap. Mark shortened evidence as a limitation.
+
+                        ## Overall
+                        Summarize what users wanted, recurring topics and the practical support needs visible in the sample.
+                        ## Quality
+                        Group related questions. For each topic give Asked, Answered, Gap, Evidence and Confidence.
+                        State whether the shown response directly addressed the question, partially addressed it, or cannot be assessed from the excerpt.
+                        ## Response
+                        Identify candidate knowledge gaps separately from missing customer context or appropriate escalation.
+                        Propose an article title and the missing explanation, example, troubleshooting steps or prerequisites, with supporting evidence.
+                        Do not claim an article is absent without checking the actual knowledge base.
+                        ## Usage
+                        Start with Next action: followed by the most useful specific action supported by the evidence.
+                        Then give prioritized improvements with exact content to add or revise, expected benefit, validation and follow-up questions.
+                        Do not recommend generic prompt tightening without an observed problem.
                         """;
 
     enum AuthHeaderMode {
@@ -395,9 +418,11 @@ public class WidgetSyncServlet extends HttpServlet {
             throw new ServletException("Unable to initialize summary orchestrator", e);
         }
 
+        pauseAutomaticSummaryGeneration("Automatic summaries are paused until the saved summary status is checked. Review the SIM logs if this persists.");
         try {
             ensureSummaryStore();
             loadSyncSettings();
+            restoreSummaryPauseAfterRestart();
         } catch (IllegalStateException e) {
             logWarningWithDiagnostics(
                     "init-settings-store-failed",
@@ -566,8 +591,11 @@ public class WidgetSyncServlet extends HttpServlet {
             boolean success = runDailySummaryGeneration(true);
             String nextRunAt = computeNextSummaryRunAtIso();
             String message = success
-                ? "Manual summary generated successfully. The automatic summary timer was reset from this run. Next scheduled summary: "
-                + defaultIfBlank(nextRunAt, "based on configured interval.")
+                ? (STATE.summaryAutoPausedUntilManualSuccess
+                    ? "No chats were available for this run; no upstream request was sent. Automatic summaries remain paused. "
+                        + defaultIfBlank(STATE.summaryAutoPausedReason, "Review the logs before manually generating a summary with chat data.")
+                    : "Summary run completed. Next scheduled summary: "
+                        + defaultIfBlank(nextRunAt, "based on configured interval."))
                 : defaultIfBlank(STATE.summaryAutoPausedReason, "Manual summary generation failed. Automatic summary remains paused.");
 
             finishSyncProgress(success, message);
@@ -1107,19 +1135,29 @@ public class WidgetSyncServlet extends HttpServlet {
             String startMessage = manualTrigger
                     ? "Manual summary generation started..."
                     : "Preparing daily summary context...";
-            summaryStore.upsertProgress(day, slot, com.sim.chatserver.util.CommonLiteralConstants.STATUS_RUNNING, 5, startMessage, 0, true, false);
-
             int effectiveMaxRows = clampSummaryMaxRows(STATE.summaryMaxRows);
-            List<SelectedEntry> entries = loadEntriesForDay(day, effectiveMaxRows);
+            List<SelectedEntry> entries;
+            try {
+                entries = loadEntriesForDay(day, effectiveMaxRows);
+            } catch (IllegalStateException error) {
+                logDailySummaryFailure("summary-data-load", error);
+                return failDailySummary(day, slot, 0,
+                        "Unable to load chats for summary. No upstream request was sent.",
+                        "Summary unavailable because chat data could not be loaded.");
+            }
             entryCount = entries.size();
 
             if (entries.isEmpty()) {
-                summaryStore.upsertSummary(day, slot, com.sim.chatserver.util.CommonLiteralConstants.FIELD_SUCCESS, 100, "No entries available for this day yet.",
-                    "No entries available for this day yet.", CommonLiteralConstants.VALUE_NA, CommonLiteralConstants.VALUE_NA, CommonLiteralConstants.VALUE_NA, 0, false, true);
-                resumeAutomaticSummaryGeneration("No entries available; automatic summary generation remains enabled.");
+                if (!STATE.summaryAutoPausedUntilManualSuccess) {
+                    String noDataMessage = "No chats available for this day. No request was sent to AnythingLLM.";
+                    summaryStore.upsertSummary(day, slot, com.sim.chatserver.util.CommonLiteralConstants.FIELD_SUCCESS,
+                            100, noDataMessage, noDataMessage, CommonLiteralConstants.VALUE_NA,
+                            CommonLiteralConstants.VALUE_NA, CommonLiteralConstants.VALUE_NA, 0, false, false);
+                }
                 return true;
             }
 
+            summaryStore.upsertProgress(day, slot, com.sim.chatserver.util.CommonLiteralConstants.STATUS_RUNNING, 5, startMessage, 0, true, false);
             summaryStore.upsertProgress(day, slot, com.sim.chatserver.util.CommonLiteralConstants.STATUS_RUNNING, 25, "Analyzing entries...", entries.size(), false, false);
 
             SummaryRequestContext requestContext = prepareSummaryRequestContext(day, slot, entryCount);
@@ -1175,15 +1213,6 @@ public class WidgetSyncServlet extends HttpServlet {
                 return handleSummaryNoResponse(day, slot, entryCount, entries, termDefinitions);
             }
 
-            finalResp = maybeRunDirectSummaryFallback(
-                    finalResp,
-                    canonicalTargetUrl,
-                    apiKey,
-                    resolvedSummaryPrompt,
-                    upstreamEntries,
-                    summaryRequestId
-            );
-
             if (finalResp.statusCode() < 200 || finalResp.statusCode() >= 300) {
                 return handleSummaryFailedResponse(
                         day,
@@ -1222,12 +1251,9 @@ public class WidgetSyncServlet extends HttpServlet {
                     summaryRequestId
             );
         } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException ex) {
-            String summary = isUpstreamSummaryRequired()
-                    ? "Single-pass summary request failed while upstream summary is required"
-                    : "Single-pass summary request failed; falling back locally";
             logWarningWithDiagnostics(
                     "summary-single-pass-failed",
-                    summary,
+                    "Summary request failed; no automatic retry will be sent",
                     "requestId=" + summaryRequestId + LS + "entryCountSent=" + entryCountSent,
                     ex
             );
@@ -1241,56 +1267,7 @@ public class WidgetSyncServlet extends HttpServlet {
                     "summary-response-single-pass",
                     com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_STATUS + finalResp.statusCode()
                         + LS + "contentType=" + defaultString(finalResp.contentType())
-                        + LS + "bodySnippet=" + summarizeBodyForDiagnostics(finalResp.body())
-            );
-        }
-
-        return finalResp;
-    }
-
-    private WorkspaceResponse maybeRunDirectSummaryFallback(
-            WorkspaceResponse finalResp,
-            String canonicalTargetUrl,
-            String apiKey,
-            String summaryPrompt,
-            List<SelectedEntry> upstreamEntries,
-            String summaryRequestId
-    ) {
-        if (finalResp == null || !shouldRetryDirectSummaryFallback(finalResp)) {
-            return finalResp;
-        }
-
-        int statusCode = finalResp.statusCode();
-        try {
-            log.log(Level.INFO,
-                    "Retrying summary using direct fallback after single-pass upstream status={0}",
-                    new Object[]{statusCode});
-
-            WorkspaceResponse directFallback = runDirectSummaryChat(
-                    canonicalTargetUrl,
-                    apiKey,
-                    summaryPrompt,
-                    upstreamEntries,
-                    summaryRequestId + "-direct-fallback"
-            );
-
-            if (directFallback != null) {
-                ServerDiagnosticsLog.write(
-                        com.sim.chatserver.util.CommonLiteralConstants.COMPONENT_WIDGET_SYNC,
-                        summaryRequestId,
-                        "summary-response-direct-fallback",
-                        com.sim.chatserver.util.CommonLiteralConstants.LOG_KV_STATUS + directFallback.statusCode()
-                        + LS + "contentType=" + defaultString(directFallback.contentType())
-                        + LS + "bodySnippet=" + summarizeBodyForDiagnostics(directFallback.body())
-                );
-                return directFallback;
-            }
-        } catch (IllegalStateException | IllegalArgumentException | UnsupportedOperationException ex) {
-            logWarningWithDiagnostics(
-                    "summary-direct-fallback-failed",
-                    "Direct summary fallback failed after single-pass upstream failure",
-                    "requestId=" + summaryRequestId + LS + "statusCode=" + statusCode,
-                    ex
+                        + LS + "responseBytes=" + utf8Length(defaultString(finalResp.body()))
             );
         }
 
@@ -1305,14 +1282,9 @@ public class WidgetSyncServlet extends HttpServlet {
             List<TermDefinition> termDefinitions
     ) {
         String reason = "Summary request returned no response.";
-        if (shouldUseLocalSummaryFallback(0)) {
-            String fallbackMarkdown = buildLocalSummaryMarkdown(entries, termDefinitions, 0, reason);
-            persistLocalFallbackSummary(day, slot, entries, fallbackMarkdown, 0, reason);
-            return true;
-        }
         return failDailySummary(day, slot, entryCount,
                 "Summary request failed.",
-                reason + " Upstream summary is required.");
+                reason);
     }
 
     private boolean handleSummaryFailedResponse(
@@ -1326,7 +1298,10 @@ public class WidgetSyncServlet extends HttpServlet {
             String canonicalTargetUrl
     ) {
         int statusCode = finalResp.statusCode();
-        String upstreamText = extractPrimaryText(finalResp.body());
+        String body = defaultString(finalResp.body());
+        boolean htmlResponse = defaultString(finalResp.contentType()).toLowerCase(Locale.ROOT).contains("text/html")
+            || body.stripLeading().startsWith("<");
+        String upstreamText = htmlResponse ? "" : extractPrimaryText(body);
         if (upstreamText.isBlank()) {
             upstreamText = "Workspace returned HTTP " + statusCode + '.';
         }
@@ -1338,12 +1313,6 @@ public class WidgetSyncServlet extends HttpServlet {
                 workspaceSlug,
                 canonicalTargetUrl
         );
-
-        if (shouldUseLocalSummaryFallback(statusCode, truncated)) {
-            String fallbackMarkdown = buildLocalSummaryMarkdown(entries, termDefinitions, statusCode, truncated);
-            persistLocalFallbackSummary(day, slot, entries, fallbackMarkdown, statusCode, truncated);
-            return true;
-        }
 
         return failDailySummary(day, slot, entryCount,
                 friendlyFailure,
@@ -1359,16 +1328,11 @@ public class WidgetSyncServlet extends HttpServlet {
             WorkspaceResponse finalResp
     ) {
         String raw = extractPrimaryText(finalResp.body());
-        if (raw.isBlank()) {
-            String reason = "No summary message returned by upstream service.";
-            if (shouldUseLocalSummaryFallback(finalResp.statusCode())) {
-                String fallbackMarkdown = buildLocalSummaryMarkdown(entries, termDefinitions, finalResp.statusCode(), reason);
-                persistLocalFallbackSummary(day, slot, entries, fallbackMarkdown, finalResp.statusCode(), reason);
-                return true;
-            }
+        if (raw.isBlank() || isAbortResponse(finalResp.body())) {
+            String reason = "No usable summary message returned by upstream service.";
             return failDailySummary(day, slot, entryCount,
                     "Summary response was empty.",
-                    reason + " Upstream summary is required.");
+                    reason);
         }
 
         String overall = section(raw, "Overall");
@@ -1389,10 +1353,19 @@ public class WidgetSyncServlet extends HttpServlet {
             usage = "No specific usage notes generated.";
         }
 
-        STATE.summaryStore.upsertSummary(day, slot, com.sim.chatserver.util.CommonLiteralConstants.FIELD_SUCCESS, 100, "Summary generated.",
-                overall, quality, response, usage, entries.size(), false, true);
+        STATE.summaryStore.upsertSummary(day, slot, com.sim.chatserver.util.CommonLiteralConstants.FIELD_SUCCESS,
+                100, DashboardDailySummaryStore.QUESTION_REVIEW_MESSAGE,
+                overall, quality, response, usage, summaryNextAction(usage), entries.size(), false, true);
         resumeAutomaticSummaryGeneration("Summary generated successfully.");
         return true;
+    }
+
+    private String summaryNextAction(String recommendations) {
+        var matcher = SUMMARY_NEXT_ACTION_PATTERN.matcher(defaultString(recommendations));
+        if (matcher.find()) {
+            return normalizeSummarySnippet(matcher.group(1), 600);
+        }
+        return "No specific next action was returned. Review the detailed recommendations before making changes.";
     }
 
     private SummaryRequestContext prepareSummaryRequestContext(LocalDate day, int slot, int entryCount) {
@@ -1500,8 +1473,10 @@ public class WidgetSyncServlet extends HttpServlet {
             String overall
     ) {
         String pausedMessage = defaultIfBlank(message, "Summary generation failed.")
-            + " Automatic summary generation is paused until an ADMIN runs manual summary generation.";
+            + " No automatic retry was sent. Automatic summary generation is paused."
+            + " Review the SIM and AnythingLLM logs, then manually generate the summary again when the server is ready.";
 
+        pauseAutomaticSummaryGeneration(pausedMessage);
         if (STATE.summaryStore != null) {
             STATE.summaryStore.upsertSummary(
                 day,
@@ -1509,7 +1484,7 @@ public class WidgetSyncServlet extends HttpServlet {
                 com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR,
                 100,
                 pausedMessage,
-                defaultIfBlank(overall, "Summary generation failed. Manual summary generation is required to continue."),
+                "No summary was generated. See the failure status for details.",
                 SUMMARY_FAILURE_QUALITY_PLACEHOLDER,
                 SUMMARY_FAILURE_RESPONSE_PLACEHOLDER,
                 SUMMARY_FAILURE_USAGE_PLACEHOLDER,
@@ -1522,8 +1497,16 @@ public class WidgetSyncServlet extends HttpServlet {
                 "Summary store unavailable while recording summary failure. day={0}, slot={1}, message={2}",
                 new Object[]{String.valueOf(day), String.valueOf(slot), pausedMessage});
         }
-        pauseAutomaticSummaryGeneration(pausedMessage);
         return false;
+    }
+
+    private void restoreSummaryPauseAfterRestart() {
+        if (STATE.summaryStore.requiresManualRetry()) {
+            pauseAutomaticSummaryGeneration("The previous summary failed or was interrupted. No automatic retry will be sent."
+                    + " Review the SIM and AnythingLLM logs, then manually generate the summary again when the server is ready.");
+        } else {
+            resumeAutomaticSummaryGeneration("Saved summary status allows scheduled summary generation.");
+        }
     }
 
     private void pauseAutomaticSummaryGeneration(String reason) {
@@ -1557,7 +1540,7 @@ public class WidgetSyncServlet extends HttpServlet {
                     "day=" + String.valueOf(day) + LS + "maxRows=" + maxRows,
                     ex
             );
-            return List.of();
+            throw new IllegalStateException("Unable to load chats for summary.", ex);
         }
     }
 
@@ -1642,8 +1625,8 @@ public class WidgetSyncServlet extends HttpServlet {
 
         if (statusCode == HttpServletResponse.SC_GATEWAY_TIMEOUT) {
             return "Summary failed: upstream gateway timeout (HTTP 504). "
-                + "The workspace server did not return in time; check reverse-proxy timeout and upstream capacity."
-                + appendReasonSuffix(reason);
+                + "The reverse proxy did not receive an upstream response in time."
+                + " This does not confirm that inference stopped; check the proxy and AnythingLLM/model-provider logs before resending.";
         }
 
         if (statusCode == HttpServletResponse.SC_BAD_REQUEST) {
@@ -3287,84 +3270,6 @@ public class WidgetSyncServlet extends HttpServlet {
         }
     }
 
-    private WorkspaceResponse runDirectSummaryChat(
-            String targetUrl,
-            String apiKey,
-            String summaryPrompt,
-            List<SelectedEntry> entries,
-            String requestId
-        ) {
-        if (STATE.workspaceClient == null) {
-            throw new IllegalStateException("Workspace client unavailable for direct summary fallback.");
-        }
-
-        String directMessage = buildDirectSummaryMessage(summaryPrompt, entries);
-        String directSessionId = "summary-direct-" + UUID.randomUUID();
-        WorkspaceResponse response = sendChatHandled(
-                targetUrl,
-                apiKey,
-                directMessage,
-                com.sim.chatserver.util.CommonLiteralConstants.DEFAULT_MODE_CHAT,
-                directSessionId,
-                false,
-                Json.createArrayBuilder().build(),
-                requestId + "-direct"
-        );
-
-        if (shouldRetryCompactDirectSummary(response)) {
-            String compactMessage = buildDirectSummaryMessage(
-                summaryPrompt,
-                entries,
-                SUMMARY_DIRECT_COMPACT_MAX_MESSAGE_CHARS,
-                SUMMARY_DIRECT_COMPACT_PROMPT_CHARS,
-                SUMMARY_DIRECT_COMPACT_RESPONSE_CHARS
-            );
-
-            log.log(Level.INFO,
-                "Retrying direct summary with compact payload after upstream status={0}",
-                new Object[]{response == null ? -1 : response.statusCode()});
-
-            response = sendChatHandled(
-                targetUrl,
-                apiKey,
-                compactMessage,
-                com.sim.chatserver.util.CommonLiteralConstants.DEFAULT_MODE_CHAT,
-                directSessionId,
-                    false,
-                Json.createArrayBuilder().build(),
-                requestId + "-direct-compact"
-            );
-        }
-
-        if (shouldRetryTinyDirectSummary(response)) {
-            String tinyMessage = buildTinyDirectSummaryMessage(entries);
-
-            log.log(Level.INFO,
-                    "Retrying direct summary with tiny sanitized payload after upstream status={0}",
-                    new Object[]{response == null ? -1 : response.statusCode()});
-
-                response = sendChatHandled(
-                    targetUrl,
-                    apiKey,
-                    tinyMessage,
-                    com.sim.chatserver.util.CommonLiteralConstants.DEFAULT_MODE_CHAT,
-                    directSessionId,
-                    false,
-                    Json.createArrayBuilder().build(),
-                    requestId + "-direct-tiny"
-            );
-        }
-
-        if (shouldRetryIncrementalDirectSummary(response)) {
-            log.log(Level.INFO,
-                    "Retrying summary using incremental API session batches after upstream status={0}",
-                    new Object[]{response == null ? -1 : response.statusCode()});
-            response = runIncrementalSummaryChat(targetUrl, apiKey, entries, requestId);
-        }
-
-        return response;
-    }
-
     private WorkspaceResponse runSinglePassSummaryChat(
             String targetUrl,
             String apiKey,
@@ -3460,7 +3365,7 @@ public class WidgetSyncServlet extends HttpServlet {
             int compactMessageChars = Math.min(clampSummaryMaxMessageChars(STATE.summaryMaxMessageChars), 1400);
             int compactPromptChars = Math.min(SUMMARY_GENTLE_PROMPT_CHARS, 96);
             int compactResponseChars = Math.min(SUMMARY_GENTLE_RESPONSE_CHARS, 140);
-            int compactGuidanceChars = Math.min(SUMMARY_GENTLE_GUIDANCE_CHARS, 220);
+            int compactGuidanceChars = Math.min(SUMMARY_GENTLE_GUIDANCE_CHARS, 120);
 
             message = buildGentleSummaryRequestMessage(
                     promptGuide,
@@ -3515,10 +3420,11 @@ public class WidgetSyncServlet extends HttpServlet {
         int safeGuidanceChars = Math.max(120, guidanceChars);
 
         StringBuilder message = new StringBuilder(safeMaxMessageChars);
-        message.append("Create a concise daily chat summary.").append(LS)
-                .append("Return markdown with exactly these sections: ## Overall, ## Quality, ## Response, ## Usage.").append(LS)
-            .append("Include scoring: Overall effectiveness (0-100) and section scores for Quality, Response, Usage (0.0-5.0).").append(LS)
-                .append("Use only evidence in this request. If uncertain, say so briefly.").append(LS);
+        message.append("Use only shown evidence. Return exactly ## Overall, ## Quality, ## Response, ## Usage.").append(LS)
+            .append("Overall: user needs/themes. Quality: per topic give Asked, Answered, Gap, Evidence E#, Confidence.").append(LS)
+                .append("Response: candidate KB gaps vs missing user context; no missing-KB claims without sources.").append(LS)
+                .append("Usage: start 'Next action:'; specific KB additions with priority, benefit, validation.").append(LS)
+            .append("No scores or unsupported accuracy, satisfaction or resolution claims. Excluded/truncated evidence is a sampling limit, not an unanswered chat.").append(LS);
 
         String safeGuide = normalizeSummarySnippet(promptGuide, safeGuidanceChars);
         if (!safeGuide.isBlank()) {
@@ -3537,9 +3443,9 @@ public class WidgetSyncServlet extends HttpServlet {
                     continue;
                 }
 
-                String prompt = sanitizeTinySummarySnippet(entry.getPrompt(), safePromptChars);
-                String answer = sanitizeTinySummarySnippet(entry.getResponse(), safeResponseChars);
-                String line = "- q=" + defaultIfBlank(prompt, com.sim.chatserver.util.CommonLiteralConstants.MARKER_EMPTY_PARENS)
+                String prompt = summaryEvidenceSnippet(entry.getPrompt(), safePromptChars);
+                String answer = summaryEvidenceSnippet(entry.getResponse(), safeResponseChars);
+                String line = "- E" + (included + 1) + " q=" + defaultIfBlank(prompt, com.sim.chatserver.util.CommonLiteralConstants.MARKER_EMPTY_PARENS)
                         + " | a=" + defaultIfBlank(answer, com.sim.chatserver.util.CommonLiteralConstants.MARKER_EMPTY_PARENS)
                     + com.sim.chatserver.util.LineSeparatorUtil.LINE_FEED;
 
@@ -3559,6 +3465,22 @@ public class WidgetSyncServlet extends HttpServlet {
         }
 
         return message.toString();
+    }
+
+    private String summaryEvidenceSnippet(String value, int maxChars) {
+        String text = sanitizeTinySummarySnippet(value, 32000);
+        int limit = Math.max(0, maxChars);
+        if (text.length() <= limit) {
+            return text;
+        }
+        String marker = " ...[truncated]... ";
+        if (limit <= marker.length()) {
+            return safeSlice(text, 0, limit);
+        }
+        int available = limit - marker.length();
+        int head = available * 2 / 3;
+        int tail = available - head;
+        return safeSlice(text, 0, head) + marker + text.substring(text.length() - tail);
     }
 
     private int extractSummaryIncludedCount(String message) {
@@ -3618,73 +3540,6 @@ public class WidgetSyncServlet extends HttpServlet {
             return 3;
         }
         return 4;
-    }
-
-    private WorkspaceResponse runIncrementalSummaryChat(
-            String targetUrl,
-            String apiKey,
-            List<SelectedEntry> entries,
-            String requestId
-    ) {
-        if (STATE.workspaceClient == null) {
-            throw new IllegalStateException("Workspace client unavailable for incremental summary fallback.");
-        }
-
-        String sessionId = "summary-stream-" + UUID.randomUUID();
-
-        WorkspaceResponse initResp = sendChatHandled(
-                targetUrl,
-                apiKey,
-                "You are preparing a daily chat summary. I will send chat batches. Reply only: OK.",
-                com.sim.chatserver.util.CommonLiteralConstants.DEFAULT_MODE_CHAT,
-                sessionId,
-            false,
-                Json.createArrayBuilder().build(),
-                requestId + "-direct-incremental-init"
-        );
-        if (initResp == null || initResp.statusCode() < 200 || initResp.statusCode() >= 300) {
-            return initResp;
-        }
-
-        List<String> batches = buildIncrementalSummaryBatches(entries);
-        int sendCount = Math.min(batches.size(), SUMMARY_INCREMENTAL_MAX_BATCHES);
-        for (int i = 0; i < sendCount; i++) {
-                String batchMessage = "Batch " + (i + 1) + " of " + sendCount + " for today's chats:" + LS
-                    + batches.get(i)
-                    + LS + "Reply only: OK.";
-
-                WorkspaceResponse batchResp = sendChatHandled(
-                    targetUrl,
-                    apiKey,
-                    batchMessage,
-                    com.sim.chatserver.util.CommonLiteralConstants.DEFAULT_MODE_CHAT,
-                    sessionId,
-                    false,
-                    Json.createArrayBuilder().build(),
-                    requestId + "-direct-incremental-batch-" + (i + 1)
-            );
-
-            if (batchResp == null || batchResp.statusCode() < 200 || batchResp.statusCode() >= 300) {
-                return batchResp;
-            }
-        }
-
-        String finalPrompt = "Now produce the final daily summary in markdown using exactly these sections: "
-            + "## Overall, ## Quality, ## Response, ## Usage. "
-            + "Use only the batches I provided. Provide evidence-based analysis of what is working, "
-            + "how well responses answered user intent, and concrete prioritized improvements and next steps. "
-            + "Include scoring: Overall effectiveness (0-100) and section scores for Quality, Response, and Usage (0.0-5.0).";
-
-        return sendChatHandled(
-                targetUrl,
-                apiKey,
-                finalPrompt,
-                com.sim.chatserver.util.CommonLiteralConstants.DEFAULT_MODE_CHAT,
-                sessionId,
-                false,
-                Json.createArrayBuilder().build(),
-                requestId + "-direct-incremental-final"
-        );
     }
 
     private List<String> buildIncrementalSummaryBatches(List<SelectedEntry> entries) {
@@ -4229,7 +4084,9 @@ public class WidgetSyncServlet extends HttpServlet {
             return true;
         }
         String normalizedPreviousV2 = normalizeLineEndingsToLf(PREVIOUS_DEFAULT_SUMMARY_PROMPT_V2).trim();
-        return normalizedPreviousV2.equals(normalizedPrompt);
+        String normalizedPreviousV3 = normalizeLineEndingsToLf(PREVIOUS_DEFAULT_SUMMARY_PROMPT_V3).trim();
+        return normalizedPreviousV2.equals(normalizedPrompt) || normalizedPreviousV3.equals(normalizedPrompt)
+            || normalizedPreviousV3.replaceAll("\\s+", " ").equals(normalizedPrompt.replaceAll("\\s+", " "));
     }
 
     private String readMultilineParam(HttpServletRequest req, String name, int maxLen) {
@@ -4367,7 +4224,7 @@ public class WidgetSyncServlet extends HttpServlet {
             String requestId
     ) {
         try {
-            return STATE.workspaceClient.sendChatBearerCompat(
+            return STATE.workspaceClient.sendChatBearerCompatOnce(
                     targetUrl,
                     apiKey,
                     message,
@@ -4375,7 +4232,8 @@ public class WidgetSyncServlet extends HttpServlet {
                     sessionId,
                     allowLegacy,
                     priorMessages,
-                    requestId
+                        requestId,
+                        clampSummaryMaxRequestBytes(STATE.summaryMaxRequestBytes)
             );
         } catch (IOException e) {
             throw new IllegalStateException("Workspace chat request failed", e);

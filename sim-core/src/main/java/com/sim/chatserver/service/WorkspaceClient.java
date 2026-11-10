@@ -219,6 +219,71 @@ public class WorkspaceClient {
         return sendChatInternal(targetUrl, apiKey, message, mode, sessionId, reset, attachments, requestId, true);
         }
 
+    public WorkspaceResponse sendChatBearerCompatOnce(
+            String targetUrl,
+            String apiKey,
+            String message,
+            String mode,
+            String sessionId,
+            boolean reset,
+            JsonArray attachments,
+            String requestId,
+            int maxRequestBytes
+    ) throws IOException, InterruptedException {
+        URI targetUri = toSafeHttpUri(targetUrl);
+        ResolvedApiAuth auth = ApiAuthResolver.resolveForServerConfigOutbound(apiKey);
+        if (!auth.hasToken()) {
+            throw new IOException(ERR_WORKSPACE_API_KEY_REQUIRED);
+        }
+        String body = buildBoundedChatBody(message, mode, sessionId, reset, attachments, maxRequestBytes);
+        HttpRequest request = HttpRequest.newBuilder(targetUri)
+                .version(HttpClient.Version.HTTP_1_1)
+                .timeout(requestTimeout)
+                .header(HEADER_CONTENT_TYPE, MIME_APPLICATION_JSON)
+                .header(HEADER_ACCEPT, MIME_APPLICATION_JSON)
+                .header(HEADER_AUTHORIZATION, BEARER_PREFIX + auth.token())
+                .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
+                .build();
+        ServerDiagnosticsLog.write(DIAG_COMPONENT, safe(requestId), "single-attempt-send",
+                LOG_KV_TARGET + safeTarget(targetUrl)
+                    + LINE_SEPARATOR + "requestBytes=" + body.getBytes(StandardCharsets.UTF_8).length
+                    + LINE_SEPARATOR + "maxAttempts=1");
+        HttpResponse<String> response = httpClient.send(request,
+                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        return new WorkspaceResponse(response.statusCode(), response.body(),
+                response.headers().firstValue(HEADER_CONTENT_TYPE).orElse(EMPTY));
+    }
+
+    private String buildBoundedChatBody(String message, String mode, String sessionId,
+            boolean reset, JsonArray attachments, int maxRequestBytes) throws IOException {
+        String safeMessage = message == null ? EMPTY : message;
+        JsonArray safeAttachments = attachments == null ? Json.createArrayBuilder().build() : attachments;
+        boolean includeSessionId = shouldIncludeSessionId(sessionId);
+        String body = buildPayload(safeMessage, mode, sessionId, includeSessionId, reset, safeAttachments).toString();
+        if (body.getBytes(StandardCharsets.UTF_8).length <= maxRequestBytes) {
+            return body;
+        }
+        String boundedBody = buildPayload(EMPTY, mode, sessionId, includeSessionId, reset, safeAttachments).toString();
+        if (boundedBody.getBytes(StandardCharsets.UTF_8).length >= maxRequestBytes) {
+            throw new IOException("Summary request byte limit is too small for its JSON envelope.");
+        }
+        int lower = 0;
+        int upper = safeMessage.codePointCount(0, safeMessage.length());
+        while (lower <= upper) {
+            int middle = lower + (upper - lower) / 2;
+            int end = safeMessage.offsetByCodePoints(0, middle);
+            String candidate = buildPayload(safeMessage.substring(0, end), mode, sessionId,
+                    includeSessionId, reset, safeAttachments).toString();
+            if (candidate.getBytes(StandardCharsets.UTF_8).length <= maxRequestBytes) {
+                boundedBody = candidate;
+                lower = middle + 1;
+            } else {
+                upper = middle - 1;
+            }
+        }
+        return boundedBody;
+    }
+
         private WorkspaceResponse sendChatInternal(
             String targetUrl,
             String apiKey,

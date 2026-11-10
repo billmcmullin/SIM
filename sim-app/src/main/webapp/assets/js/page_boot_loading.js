@@ -1,9 +1,12 @@
 (function () {
     'use strict';
 
-    function ensureOverlay(title, subtitle) {
-        let overlay = document.getElementById('pageBootOverlay');
+    function ensureOverlay(title, subtitle, inlineRoot) {
+        const overlayId = inlineRoot ? 'inlinePageBootOverlay' : 'pageBootOverlay';
+        let overlay = document.getElementById(overlayId);
         if (overlay) {
+            overlay.style.display = '';
+            overlay.setAttribute('aria-hidden', 'false');
             const titleEl = overlay.querySelector('.page-boot-title');
             const subtitleEl = overlay.querySelector('.page-boot-subtitle');
             if (titleEl) {
@@ -16,7 +19,7 @@
         }
 
         overlay = document.createElement('div');
-        overlay.id = 'pageBootOverlay';
+        overlay.id = overlayId;
         overlay.className = 'page-boot-overlay';
         overlay.setAttribute('role', 'status');
         overlay.setAttribute('aria-live', 'polite');
@@ -29,7 +32,9 @@
             '</div>'
         ].join('');
 
-        if (document.body) {
+        if (inlineRoot) {
+            inlineRoot.insertBefore(overlay, inlineRoot.firstChild);
+        } else if (document.body) {
             document.body.insertBefore(overlay, document.body.firstChild);
         }
         return overlay;
@@ -37,10 +42,16 @@
 
     function begin(options) {
         const opts = options || {};
-        const root = document.documentElement;
+        const inlineRoot = document.documentElement.classList.contains('dashboard-inline-active')
+            ? document.getElementById('dashboardInlineContent') : null;
+        const root = inlineRoot || document.documentElement;
 
+        if (inlineRoot) {
+            document.documentElement.classList.remove('page-boot-loading');
+        }
         root.classList.add('page-boot-loading');
-        ensureOverlay(opts.title, opts.subtitle);
+        root.setAttribute('aria-busy', 'true');
+        const overlay = ensureOverlay(opts.title, opts.subtitle, inlineRoot);
 
         let completed = false;
         const timeoutMs = Number.isFinite(Number(opts.timeoutMs)) ? Number(opts.timeoutMs) : 10000;
@@ -52,10 +63,10 @@
             }
             completed = true;
             window.clearTimeout(timer);
-            root.classList.remove('page-boot-loading');
 
-            const overlay = document.getElementById('pageBootOverlay');
-            if (overlay) {
+            if (root.contains(overlay)) {
+                root.classList.remove('page-boot-loading');
+                root.setAttribute('aria-busy', 'false');
                 overlay.style.display = 'none';
                 overlay.setAttribute('aria-hidden', 'true');
             }

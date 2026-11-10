@@ -201,10 +201,10 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
             md.append("- **Message:** ").append(message).append(System.lineSeparator());
         }
 
-        md.append(LS).append("## Overall").append(LS).append(safeBlock(overall)).append(System.lineSeparator());
-        md.append(LS).append("## Quality").append(LS).append(safeBlock(quality)).append(System.lineSeparator());
-        md.append(LS).append("## Response").append(LS).append(safeBlock(response)).append(System.lineSeparator());
-        md.append(LS).append("## Usage").append(LS).append(safeBlock(usage)).append(System.lineSeparator());
+        md.append(LS).append("## ").append(summarySectionTitle(meta, "Overall")).append(LS).append(safeBlock(overall)).append(System.lineSeparator());
+        md.append(LS).append("## ").append(summarySectionTitle(meta, "Quality")).append(LS).append(safeBlock(quality)).append(System.lineSeparator());
+        md.append(LS).append("## ").append(summarySectionTitle(meta, "Response")).append(LS).append(safeBlock(response)).append(System.lineSeparator());
+        md.append(LS).append("## ").append(summarySectionTitle(meta, "Usage")).append(LS).append(safeBlock(usage)).append(System.lineSeparator());
         md.append(LS).append("## Suggested Next Action").append(LS).append(safeBlock(nextAction)).append(System.lineSeparator());
 
         return md.toString();
@@ -239,11 +239,26 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
                     <div><strong>Entries</strong><div>%s</div></div>
                 </div>
                 <hr style="border:none; border-top:1px solid #e5e7eb; margin:12px 0;">
-                <h4 style="margin:0 0 6px 0;">Overall</h4><p style="margin:0 0 10px 0; white-space:pre-wrap;">%s</p>
-                <h4 style="margin:0 0 6px 0;">Quality</h4><p style="margin:0 0 10px 0; white-space:pre-wrap;">%s</p>
-                <h4 style="margin:0 0 6px 0;">Response</h4><p style="margin:0 0 10px 0; white-space:pre-wrap;">%s</p>
-                <h4 style="margin:0 0 6px 0;">Usage</h4><p style="margin:0; white-space:pre-wrap;">%s</p>
-                """.formatted(day, slot, statusText, progressText, generatedAt, entryCountText, overall, quality, response, usage);
+                <h4 style="margin:0 0 6px 0;">%s</h4><p style="margin:0 0 10px 0; white-space:pre-wrap;">%s</p>
+                <h4 style="margin:0 0 6px 0;">%s</h4><p style="margin:0 0 10px 0; white-space:pre-wrap;">%s</p>
+                <h4 style="margin:0 0 6px 0;">%s</h4><p style="margin:0 0 10px 0; white-space:pre-wrap;">%s</p>
+                <h4 style="margin:0 0 6px 0;">%s</h4><p style="margin:0; white-space:pre-wrap;">%s</p>
+                """.formatted(day, slot, statusText, progressText, generatedAt, entryCountText,
+                        summarySectionTitle(meta, "Overall"), overall, summarySectionTitle(meta, "Quality"), quality,
+                        summarySectionTitle(meta, "Response"), response, summarySectionTitle(meta, "Usage"), usage);
+    }
+
+    private String summarySectionTitle(JsonObject meta, String legacyTitle) {
+        if (!DashboardDailySummaryStore.QUESTION_REVIEW_FORMAT.equals(readJsonString(meta, "format", "legacy"))) {
+            return legacyTitle;
+        }
+        return switch (legacyTitle) {
+            case "Overall" -> "What Users Asked";
+            case "Quality" -> "Questions and Answers";
+            case "Response" -> "Candidate Knowledge Gaps";
+            case "Usage" -> "Recommended Improvements";
+            default -> legacyTitle;
+        };
     }
 
     private String suggestNextAction(JsonObject payload) {
@@ -257,6 +272,10 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
 
         if (com.sim.chatserver.util.CommonLiteralConstants.STATUS_RUNNING.equals(status) || "queued".equals(status)) {
             return "Summary is still generating. Wait for completion, then review low-performing areas and rerun checks.";
+        }
+        if (DashboardDailySummaryStore.QUESTION_REVIEW_FORMAT.equals(readJsonString(meta, "format", "legacy"))) {
+            return readJsonString(summary, "suggestedNextAction",
+                    "No specific next action was returned. Review the detailed recommendations before making changes.");
         }
 
         if (containsAny(quality, com.sim.chatserver.util.CommonLiteralConstants.VALUE_LOW, "inconsistent", "hallucination", "incorrect", "poor")) {

@@ -6,5 +6,7 @@ package com.sim.chatserver.service.translation;
 public interface TranslationService {
 
     TranslationResult detectAndTranslate(String text, String targetLang);
+
+    TranslationResult detectAndTranslate(String text, String sourceLang, String targetLang);
 }
 

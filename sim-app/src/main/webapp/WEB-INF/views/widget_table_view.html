@@ -3,6 +3,8 @@
 
 <head>
     <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <script defer src="${contextPath}/assets/js/navigation.js" data-context-path="${contextPath}"></script>
     <title>Widget Chats</title>
     <script>
         (function () {
@@ -23,7 +25,7 @@
             <div class="button-row" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                 <span>Signed in as <strong>${user}</strong></span>
                 <button type="button" class="ghost-btn"
-                    onclick="if (history.length > 1) { history.back(); } else { window.location.href='${contextPath}/dashboard'; }">
+                    data-sim-back onclick="window.SimNavigation.back()">
                     Back
                 </button>
                 <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/dashboard'">

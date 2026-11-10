@@ -3,6 +3,7 @@
 
 <head>
     <meta charset="utf-8">
+    <script defer src="${contextPath}/assets/js/navigation.js" data-context-path="${contextPath}"></script>
     <title>Admin Configuration</title>
     <meta name="viewport" content="width=device-width,initial-scale=1">
     <link rel="stylesheet" href="${contextPath}/assets/css/app.css">
@@ -15,7 +16,7 @@
             <div class="button-row" style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
                 <span>Signed in as <strong>${user}</strong></span>
                 <button type="button" class="ghost-btn"
-                    onclick="if (history.length > 1) { history.back(); } else { window.location.href='${contextPath}/dashboard'; }">
+                    data-sim-back onclick="window.SimNavigation.back()">
                     Back
                 </button>
                 <button type="button" class="ghost-btn" onclick="window.location.href='${contextPath}/dashboard'">
@@ -419,9 +420,11 @@
                 </div>
                 <div class="actions">
                     <button type="button" id="testConnectionBtn">Test Connection</button>
+                    <button type="button" id="testInferenceBtn" title="Sends one real model request. It is never retried automatically.">Test Inference</button>
                     <button type="button" id="saveConfigBtn" disabled>Save Configuration</button>
                 </div>
-                <div id="testResult" style="font-weight:600; color:#047857; margin-top:12px;"></div>
+                <div id="testResult" role="status" aria-live="polite" style="font-weight:600; color:#047857; margin-top:12px;"></div>
+                <div id="inferenceTestResult" role="status" aria-live="polite" style="font-weight:600; margin-top:8px;"></div>
             </form>
         </section>
 
@@ -686,7 +689,7 @@
                 <button type="button" id="summaryAutoToggleBtn">Disable Automatic Summary</button>
                 <span id="summaryAutoModeBadge" class="small-note" aria-live="polite" style="align-self:center; color:#047857;">Auto Summary: Enabled</span>
             </div>
-            <div class="form-grid">
+            <div class="form-grid summary-settings-grid">
                 <div class="form-group">
                     <label for="summaryInterval">Summary Interval (minutes)</label>
                     <input type="number" id="summaryInterval" min="5" placeholder="60">

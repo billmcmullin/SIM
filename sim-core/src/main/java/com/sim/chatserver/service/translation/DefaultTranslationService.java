@@ -171,15 +171,23 @@ public class DefaultTranslationService implements TranslationService {
 
     @Override
     public TranslationResult detectAndTranslate(String text, String targetLang) {
+        return detectAndTranslate(text, LANG_AUTO, targetLang);
+    }
+
+    @Override
+    public TranslationResult detectAndTranslate(String text, String sourceLang, String targetLang) {
         String requestId = UUID.randomUUID().toString();
         try {
-            String safeText = text == null ? EMPTY : text.trim();
+            String safeText = text == null ? EMPTY : text;
             if (safeText.isBlank()) {
                 return TranslationResult.fail(MSG_TEXT_REQUIRED);
             }
 
-            safeText = fixCommonMojibake(safeText);
-
+            String source = sourceLang == null || sourceLang.isBlank()
+                    ? LANG_AUTO : sourceLang.trim().toLowerCase(Locale.ROOT);
+            if (!LANG_AUTO.equals(source) && !SUPPORTED_LANGS.contains(source)) {
+                return TranslationResult.fail("Unsupported source language.");
+            }
             String target = normalizeLang(targetLang);
                 ServerDiagnosticsLog.write(
                     DIAG_COMPONENT,
@@ -190,22 +198,11 @@ public class DefaultTranslationService implements TranslationService {
                         + LINE_SEPARATOR + DIAG_KV_TEXT + safeText
                 );
 
-            // Heuristic fallback
-            String heuristic = detectLanguageHeuristic(safeText);
-
-            // Provider detection preferred
-                String providerDetected = detectLanguageWithProvider(safeText, requestId);
-            String source = (providerDetected == null || providerDetected.isBlank()) ? heuristic : providerDetected;
-
-            // IMPORTANT:
-            // Always attempt translation call (even if source==target), because
-            // detection can be wrong and provider may still produce corrected translation.
             String translated = translateWithLibreTranslate(safeText, source, target, requestId);
             if (translated == null || translated.isBlank()) {
                 return TranslationResult.fail(MSG_TRANSLATION_EMPTY);
             }
 
-            translated = fixCommonMojibake(translated);
             ServerDiagnosticsLog.write(
                     DIAG_COMPONENT,
                     requestId,
@@ -251,6 +248,13 @@ public class DefaultTranslationService implements TranslationService {
     private String detectLanguageHeuristic(String text) {
         String normalized = Normalizer.normalize(text, Normalizer.Form.NFKC).toLowerCase(Locale.ROOT);
 
+        if (normalized.codePoints().anyMatch(codePoint -> {
+            Character.UnicodeScript script = Character.UnicodeScript.of(codePoint);
+            return script == Character.UnicodeScript.HIRAGANA || script == Character.UnicodeScript.KATAKANA;
+        })) {
+            return LANG_JA;
+        }
+
         int es = scoreHints(normalized, SPANISH_HINTS);
         int fr = scoreHints(normalized, FRENCH_HINTS);
         int de = scoreHints(normalized, GERMAN_HINTS);
@@ -275,7 +279,7 @@ public class DefaultTranslationService implements TranslationService {
 
         int max = Math.max(Math.max(es, fr), Math.max(Math.max(de, pt), nl));
         if (max <= 0) {
-            return LANG_EN;
+            return LANG_AUTO;
         }
         if (max == es) {
             return LANG_ES;
@@ -352,6 +356,9 @@ public class DefaultTranslationService implements TranslationService {
                 }
                 JsonObject top = arr.getJsonObject(0);
                 if (top == null) {
+                    return EMPTY;
+                }
+                if (top.containsKey("confidence") && top.getJsonNumber("confidence").doubleValue() <= 0) {
                     return EMPTY;
                 }
                 return top.getString(KEY_LANGUAGE, EMPTY).toLowerCase(Locale.ROOT);
