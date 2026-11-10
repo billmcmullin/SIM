@@ -37,6 +37,9 @@ import jakarta.json.JsonReader;
  * SIM_TRANSLATE_API_KEY=your_key (if your server requires key)
  */
 public class DefaultTranslationService implements TranslationService {
+    private static final String TEXT_UNSUPPORTED_SOURCE_LANGUAGE = "Unsupported source language.";
+    private static final String TEXT_CONFIDENCE = "confidence";
+
 
     private static final Logger log = Logger.getLogger(DefaultTranslationService.class.getCanonicalName());
     private static final String DIAG_COMPONENT = "translation-service";
@@ -186,7 +189,7 @@ public class DefaultTranslationService implements TranslationService {
             String source = sourceLang == null || sourceLang.isBlank()
                     ? LANG_AUTO : sourceLang.trim().toLowerCase(Locale.ROOT);
             if (!LANG_AUTO.equals(source) && !SUPPORTED_LANGS.contains(source)) {
-                return TranslationResult.fail("Unsupported source language.");
+                return TranslationResult.fail(TEXT_UNSUPPORTED_SOURCE_LANGUAGE);
             }
             String target = normalizeLang(targetLang);
                 ServerDiagnosticsLog.write(
@@ -358,7 +361,7 @@ public class DefaultTranslationService implements TranslationService {
                 if (top == null) {
                     return EMPTY;
                 }
-                if (top.containsKey("confidence") && top.getJsonNumber("confidence").doubleValue() <= 0) {
+                if (top.containsKey(TEXT_CONFIDENCE) && top.getJsonNumber(TEXT_CONFIDENCE).doubleValue() <= 0) {
                     return EMPTY;
                 }
                 return top.getString(KEY_LANGUAGE, EMPTY).toLowerCase(Locale.ROOT);

@@ -1300,7 +1300,7 @@ public class WidgetSyncServlet extends HttpServlet {
         int statusCode = finalResp.statusCode();
         String body = defaultString(finalResp.body());
         boolean htmlResponse = defaultString(finalResp.contentType()).toLowerCase(Locale.ROOT).contains("text/html")
-            || body.stripLeading().startsWith("<");
+            || (!body.stripLeading().isEmpty() && body.stripLeading().charAt(0) == '<');
         String upstreamText = htmlResponse ? "" : extractPrimaryText(body);
         if (upstreamText.isBlank()) {
             upstreamText = "Workspace returned HTTP " + statusCode + '.';
@@ -1335,10 +1335,10 @@ public class WidgetSyncServlet extends HttpServlet {
                     reason);
         }
 
-        String overall = section(raw, "Overall");
-        String quality = section(raw, "Quality");
-        String response = section(raw, "Response");
-        String usage = section(raw, "Usage");
+        String overall = section(raw, com.sim.chatserver.util.CommonLiteralConstants.SUMMARY_OVERALL);
+        String quality = section(raw, com.sim.chatserver.util.CommonLiteralConstants.SUMMARY_QUALITY);
+        String response = section(raw, com.sim.chatserver.util.CommonLiteralConstants.SUMMARY_RESPONSE);
+        String usage = section(raw, com.sim.chatserver.util.CommonLiteralConstants.SUMMARY_USAGE);
 
         if (overall.isBlank()) {
             overall = raw.length() > 1200 ? safeSlice(raw, 0, 1200) : raw;
@@ -1561,13 +1561,13 @@ public class WidgetSyncServlet extends HttpServlet {
         if (markdown == null || markdown.isBlank()) {
             return "";
         }
-        String needle = "## " + heading;
+        String needle = com.sim.chatserver.util.CommonLiteralConstants.MARKDOWN_HEADING_PREFIX + heading;
         int start = markdown.indexOf(needle);
         if (start < 0) {
             return "";
         }
         int from = start + needle.length();
-        int next = markdown.indexOf("## ", from);
+        int next = markdown.indexOf(com.sim.chatserver.util.CommonLiteralConstants.MARKDOWN_HEADING_PREFIX, from);
         return (next < 0 ? safeSlice(markdown, from) : safeSlice(markdown, from, next)).trim();
     }
 
@@ -1656,10 +1656,10 @@ public class WidgetSyncServlet extends HttpServlet {
             int upstreamStatus,
             String upstreamReason
     ) {
-        String overall = section(markdown, "Overall");
-        String quality = section(markdown, "Quality");
-        String response = section(markdown, "Response");
-        String usage = section(markdown, "Usage");
+        String overall = section(markdown, com.sim.chatserver.util.CommonLiteralConstants.SUMMARY_OVERALL);
+        String quality = section(markdown, com.sim.chatserver.util.CommonLiteralConstants.SUMMARY_QUALITY);
+        String response = section(markdown, com.sim.chatserver.util.CommonLiteralConstants.SUMMARY_RESPONSE);
+        String usage = section(markdown, com.sim.chatserver.util.CommonLiteralConstants.SUMMARY_USAGE);
 
         STATE.summaryStore.upsertSummary(
                 day,
@@ -3480,7 +3480,7 @@ public class WidgetSyncServlet extends HttpServlet {
         int available = limit - marker.length();
         int head = available * 2 / 3;
         int tail = available - head;
-        return safeSlice(text, 0, head) + marker + text.substring(text.length() - tail);
+        return safeSlice(text, 0, head) + marker + safeSlice(text, text.length() - tail, text.length());
     }
 
     private int extractSummaryIncludedCount(String message) {
@@ -3860,7 +3860,7 @@ public class WidgetSyncServlet extends HttpServlet {
         }
         try (var reader = Json.createReader(new StringReader(body))) {
             JsonObject payload = reader.readObject();
-            String type = safeJsonText(payload, "type", 64);
+            String type = safeJsonText(payload, com.sim.chatserver.util.CommonLiteralConstants.KEY_TYPE, 64);
             if (!"abort".equalsIgnoreCase(type.trim())) {
                 return false;
             }

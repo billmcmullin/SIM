@@ -274,6 +274,7 @@
         safeInit('Sync', () => window.AdminPage.Sync?.init(contextPath));
         safeInit('Widgets', () => window.AdminPage.Widgets?.init({ contextPath, widgetList: initialWidgetList }));
         safeInit('Terms', () => window.AdminPage.Terms?.init({ contextPath, initialTerms: initialTermList }));
+        safeInit('FullAnalysis', () => window.AdminPage.FullAnalysis?.init(contextPath));
         safeInit('AutoEmailAlerts', () => window.AdminPage.AutoEmailAlerts?.init(window.AdminPage.Config));
         safeInit('Workspace', () => window.AdminPage.Workspace?.init(window.AdminPage.Config));
         safeInit('Salesforce', () => window.AdminPage.Salesforce?.init(window.AdminPage.Config));

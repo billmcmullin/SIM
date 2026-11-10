@@ -36,6 +36,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
     private static final int MAX_JSON_PAYLOAD_BYTES = 32 * 1024;
     private static final String JSON_KEY_HOST = "host";
     private static final String JSON_KEY_PORT = "port";
+    private static final String JSON_KEY_ACTION = com.sim.chatserver.util.CommonLiteralConstants.KEY_ACTION;
     private static final String SESSION_USER_KEY = com.sim.chatserver.util.CommonLiteralConstants.VALUE_USER;
     private static final String SESSION_ROLE_KEY = com.sim.chatserver.util.CommonLiteralConstants.ROLE;
     private static final String ADMIN_ROLE = com.sim.chatserver.util.CommonLiteralConstants.ROLE_ADMIN;
@@ -122,7 +123,7 @@ public class AdminEmailConfigServlet extends HttpServlet {
             return;
         }
 
-        String action = payload.getString("action", "save").trim().toLowerCase();
+        String action = payload.getString(JSON_KEY_ACTION, "save").trim().toLowerCase();
         if ("test".equals(action)) {
             handleTest(payload, resp);
             return;

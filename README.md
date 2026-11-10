@@ -126,6 +126,92 @@ cannot independently verify factual accuracy, resolution, customer satisfaction
 or the absence of content from the actual knowledge base. Validate proposed gaps
 against documentation and the existing corpus before adding content.
 
+### Full Analysis
+
+Full Analysis is a separate admin workflow; Quick Summary retains its sampled,
+single-request behavior. Open the Full Analysis admin tab, choose a day, review
+the conservative budgets, and explicitly start a job. Submission returns a job
+ID immediately; polling does not start or resend inference.
+
+The worker captures registered widget chats for the selected day up to the job's
+request time in a read-only repeatable-read database snapshot. Full questions and
+answers are retained, hashed, and divided into lossless Unicode-safe segments.
+Complete source text is fetched only after checking its size. Oversized selections
+fail explicitly before inference rather than being silently sampled or truncated.
+
+Each segment is sent in a fresh reset context and processed once. Results require
+structured question/answer coverage, gap classification, concrete improvements,
+confidence, and a literal source quote verified against the segment. Completed
+results are checkpointed before proceeding. A bounded hierarchy synthesizes the
+saved findings; per-chat evidence remains available independently of the overview.
+
+Defaults are a 4096-byte wire cap, a smaller 2048-byte conservative input budget,
+a 10-second gap, 50 requests per run, and a 15-minute run budget. The effective
+request cap is the smaller byte limit, including JSON escaping and the envelope.
+These are byte budgets, not provider token counts: reserve model capacity for
+AnythingLLM system prompts, retrieval context and output separately. Work budgets
+are checked between requests; an already-running call can outlast a run deadline.
+
+Explicit snapshot caps are 5000 chats, 8 MiB source text, and 20000 map segments.
+Synthesis has level/work-item caps, and results have a 16 MiB work budget checked
+before subsequent requests. Responses above 256 KiB are rejected, never accepted
+as truncated completed findings. If a cap is reached, export saved partial work
+and continue manually where supported or choose a smaller selection. The status
+never marks a partial analysis complete.
+
+SIM inference transports coordinate by canonical upstream host/port using local
+and PostgreSQL locks. Use the same canonical server origin across features; aliases
+and traffic from other applications still require upstream concurrency controls.
+An interrupted request, gateway/capacity error, timeout, or orphaned active marker
+can retain a shared pause. Test Connection's read-only system probe is not gated.
+The explicit Test Inference action does honor the gate.
+
+Pause and Cancel stop subsequent work, not necessarily an already-running model
+request. Completed checkpoints are retained. Resume requires an explicit manual
+action; an uncertain request additionally requires confirmation that upstream is
+idle and authorization to resend it. Do not confirm idle merely because the client
+timed out. The separate Confirm Server Idle control can release a reviewed shared
+pause without sending inference. No jobs or uncertain requests replay on restart.
+
+Full Analysis requires the existing durable workflow runtime and fails closed
+when that storage is unavailable. Records use the existing workflow schema, with
+a common 30-day deadline from job creation. Expired jobs cannot replay pending
+work. Full text and findings are sensitive: apply source-chat database, backup,
+access and retention policies. No API key is stored in job payloads or returned
+to the browser, and payload text is not written to request logs.
+
+The UI reports processed chats, source segments, pending work, uncertain requests
+and attempted calls. Details are paginated, rendered as text, and not clipped to
+the Quick Summary section limits. Export Saved Results streams NDJSON containing
+job status and saved work items; a running or paused job is explicitly partial.
+Successful downloads end with an `exportComplete: true` record and the expected
+work-item count; a missing completion marker means the export is incomplete.
+Completion means all snapshot segments were processed and synthesis finished,
+not that the model independently proved correctness, exhaustive question detection,
+customer satisfaction or absence of existing knowledge-base content.
+
+A received response that fails the structured/evidence validation is saved as
+unvalidated text, not counted as a completed analysis, and never automatically
+retried. Review it in the work-item details before explicitly retrying that invalid
+segment. This is distinct from a transport timeout whose upstream outcome may
+still be uncertain. Cancelled uncertain work stays cancelled; idle confirmation
+does not resume it or resend it.
+
+The configured upstream key is never returned to the browser or copied into job
+metadata. Full original chat text can itself contain sensitive user-provided
+content; review data-handling policy before enabling this workflow. Check proxy
+retry settings and configure provider context, retrieval, output-token and
+concurrency limits before a live run; client-side limits alone cannot guarantee
+that an upstream model instance will not exhaust its resources.
+
+The admin/owner-protected API is `/admin/full-analysis`:
+
+- `POST` JSON with `action: start`, `day`, `requestBytes`, `inputByteBudget`, `paceSeconds`, `requestsPerRun`, `minutesPerRun`.
+- `GET action=list`, `GET action=status&jobId=...`, or `GET action=details&jobId=...&offset=...`.
+- `POST` JSON with `action: pause|resume|cancel`, `jobId`, and explicit `confirmedIdle: true` when authorizing uncertain continuation.
+- `POST` JSON with `action: confirmIdle` and explicit `confirmedIdle: true` to release a reviewed server pause without inference.
+- `GET action=export&jobId=...` for the saved NDJSON report.
+
 ### Translation Support (LibreTranslate)
 
 If translation features are enabled, run a LibreTranslate service and set `SIM_TRANSLATE_URL` so this app can reach it.

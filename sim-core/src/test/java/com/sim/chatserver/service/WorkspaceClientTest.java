@@ -250,7 +250,35 @@ public class WorkspaceClientTest
         }
     }
 
-    private WorkspaceClient createUnderTest()
+        @Test
+        void strictAnalysis_rejectsOversizedInputWithoutSending() throws Exception {
+        HttpClient httpClient = mock(HttpClient.class);
+        WorkspaceClient client = new WorkspaceClient(httpClient, 10, Duration.ofSeconds(5));
+        assertThrows(IOException.class, () -> client.sendChatStrictOnce("https://example.test/chat",
+            "test-token", "Full evidence ".repeat(1000), "analysis-test", "request-test", 1024));
+        org.mockito.Mockito.verifyNoInteractions(httpClient);
+        }
+
+        @Test
+        @SuppressWarnings("unchecked")
+        void strictAnalysis_preservesCompleteTextAndNeverRetries() throws Exception {
+        HttpClient httpClient = mock(HttpClient.class);
+        HttpResponse<java.io.InputStream> response = mock(HttpResponse.class);
+        when(response.statusCode()).thenReturn(504);
+        when(response.body()).thenReturn(new java.io.ByteArrayInputStream("gateway timeout".getBytes(StandardCharsets.UTF_8)));
+        when(response.headers()).thenReturn(HttpHeaders.of(Map.of(), (name, value) -> true));
+        when(httpClient.send(any(HttpRequest.class), any(HttpResponse.BodyHandler.class))).thenReturn(response);
+        WorkspaceClient client = new WorkspaceClient(httpClient, 10, Duration.ofSeconds(5));
+        String message = "Complete question\nComplete answer with \u00e9 and \ud83d\ude00.";
+        assertEquals(504, client.sendChatStrictOnce("https://example.test/chat", "test-token", message,
+            "analysis-test", "request-test", 4096).statusCode());
+        ArgumentCaptor<HttpRequest> request = ArgumentCaptor.forClass(HttpRequest.class);
+        verify(httpClient, times(1)).send(request.capture(), any(HttpResponse.BodyHandler.class));
+        assertEquals(client.strictChatRequestBytes(message, "analysis-test"),
+            request.getValue().bodyPublisher().orElseThrow().contentLength());
+        }
+
+        private WorkspaceClient createUnderTest()
     {
         HttpClient httpClient = mock(HttpClient.class);
         Duration requestTimeout = mock(Duration.class);

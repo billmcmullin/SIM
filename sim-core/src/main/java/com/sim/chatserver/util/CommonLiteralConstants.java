@@ -10,6 +10,17 @@ public final class CommonLiteralConstants {
     private CommonLiteralConstants() {
     }
 
+    public static final String KEY_ACTION = "action";
+    public static final String KEY_PROBE = "probe";
+    public static final String KEY_JOB = "job";
+    public static final String KEY_TYPE = "type";
+    public static final String KEY_TOTAL_CHATS = "totalChats";
+    public static final String SUMMARY_OVERALL = "Overall";
+    public static final String SUMMARY_QUALITY = "Quality";
+    public static final String SUMMARY_RESPONSE = "Response";
+    public static final String SUMMARY_USAGE = "Usage";
+    public static final String MARKDOWN_HEADING_PREFIX = "## ";
+
     public static final String HEADER_AUTHORIZATION = "Authorization";
     public static final String HEADER_ACCEPT = "Accept";
     public static final String HEADER_CONTENT_TYPE = "Content-Type";

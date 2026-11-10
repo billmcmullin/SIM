@@ -189,7 +189,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
                     .add("display", safe(r.display))
                     .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_SESSION_ID, safe(r.rawSessionId))
                     .add("firstSeen", safe(r.firstSeen))
-                    .add("totalChats", r.totalChats)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_TOTAL_CHATS, r.totalChats)
                     .add("chatEntriesUrl", safe(r.chatEntriesUrl)));
         }
 
@@ -227,7 +227,7 @@ public class DashboardNewUsersServlet extends HttpServlet {
                     .add("display", safe(r.display))
                     .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_SESSION_ID, safe(r.rawSessionId))
                     .add("firstSeen", safe(r.firstSeen))
-                    .add("totalChats", r.totalChats)
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_TOTAL_CHATS, r.totalChats)
                     .add("chatEntriesUrl", safe(r.chatEntriesUrl)));
         }
 
