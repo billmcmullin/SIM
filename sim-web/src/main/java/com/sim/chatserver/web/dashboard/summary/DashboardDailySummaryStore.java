@@ -30,6 +30,21 @@ import jakarta.json.JsonObject;
  * payload.
  */
 public class DashboardDailySummaryStore {
+    private static final String TEXT_SELECT_STATUS_FROM_DASHBOARD_DAILY_SUMMARY_ORDER_BY_UPDATED_AT_D = "SELECT status FROM dashboard_daily_summary ORDER BY updated_at DESC, id DESC LIMIT 1";
+    private static final String TEXT_UNABLE_TO_READ_PERSISTED_SUMMARY_STATUS_AUTOMATIC_SUMMARIES_REMA = "Unable to read persisted summary status; automatic summaries remain paused.";
+    private static final String TEXT_REQUESTED_DAY = "requestedDay";
+    private static final String TEXT_REQUESTED_SLOT = "requestedSlot";
+    private static final String TEXT_NO_CHATS_AVAILABLE_FOR_THIS_DAY = "No chats available for this day.";
+    private static final String TEXT_NO_ENTRIES_AVAILABLE_FOR_THIS_DAY_YET = "No entries available for this day yet.";
+    private static final String TEXT_NO_SUMMARY_WAS_GENERATED_SEE_THE_FAILURE_STATUS_FOR_DETAILS = "No summary was generated. See the failure status for details.";
+    private static final String TEXT_REVIEW_THE_SIM_AND_ANYTHING_LLM_LOGS_BEFORE_MANUALLY_GENERATING = "Review the SIM and AnythingLLM logs before manually generating the summary again. No automatic retry was sent.";
+    private static final String TEXT_EMPTY = "<";
+    private static final String TEXT_SUMMARY_GENERATION_FAILED_REVIEW_THE_SIM_AND_ANYTHING_LLM_LOGS_B = "Summary generation failed. Review the SIM and AnythingLLM logs before manually trying again. No automatic retry was sent.";
+    private static final String TEXT_NO_REQUEST_WAS_SENT_TO_ANYTHING_LLM_BECAUSE_NO_CHATS_WERE_AVAILA = "No request was sent to AnythingLLM because no chats were available.";
+    private static final String TEXT_NO_DATA = "noData";
+    private static final String TEXT_FORMAT = "format";
+    private static final String TEXT_LEGACY = "legacy";
+
     private static final Logger log = Logger.getLogger(DashboardDailySummaryStore.class.getCanonicalName());
     private static final DateTimeFormatter UI_TS_FMT = DateTimeFormatter.ofPattern(com.sim.chatserver.util.CommonLiteralConstants.DATETIME_PATTERN_SECONDS);
     private static final String EMPTY = "";
@@ -387,7 +402,7 @@ public class DashboardDailySummaryStore {
     }
 
     public boolean requiresManualRetry() {
-        String sql = "SELECT status FROM dashboard_daily_summary ORDER BY updated_at DESC, id DESC LIMIT 1";
+        String sql = TEXT_SELECT_STATUS_FROM_DASHBOARD_DAILY_SUMMARY_ORDER_BY_UPDATED_AT_D;
         try (Connection conn = dataSource.getConnection();
                 PreparedStatement statement = conn.prepareStatement(sql);
                 ResultSet result = statement.executeQuery()) {
@@ -398,7 +413,7 @@ public class DashboardDailySummaryStore {
             return STATUS_ERROR.equalsIgnoreCase(status) || STATUS_RUNNING.equalsIgnoreCase(status)
                     || STATUS_QUEUED.equalsIgnoreCase(status);
         } catch (SQLException error) {
-            throw new IllegalStateException("Unable to read persisted summary status; automatic summaries remain paused.", error);
+            throw new IllegalStateException(TEXT_UNABLE_TO_READ_PERSISTED_SUMMARY_STATUS_AUTOMATIC_SUMMARIES_REMA, error);
         }
     }
 
@@ -438,8 +453,8 @@ public class DashboardDailySummaryStore {
                     JsonObject payload = toPayload(rs, true);
                     return Json.createObjectBuilder(payload)
                         .add(KEY_META, Json.createObjectBuilder(payload.getJsonObject(KEY_META))
-                            .add("requestedDay", day.toString())
-                            .add("requestedSlot", slot))
+                            .add(TEXT_REQUESTED_DAY, day.toString())
+                            .add(TEXT_REQUESTED_SLOT, slot))
                         .build();
                 }
             }
@@ -493,22 +508,22 @@ public class DashboardDailySummaryStore {
 
         boolean inProgress = STATUS_RUNNING.equals(status) || STATUS_QUEUED.equals(status);
         boolean noData = STATUS_SUCCESS.equals(status) && entryCount == 0
-                && (message.startsWith("No chats available for this day.")
-                    || message.equals("No entries available for this day yet."));
+                && (message.startsWith(TEXT_NO_CHATS_AVAILABLE_FOR_THIS_DAY)
+                    || message.equals(TEXT_NO_ENTRIES_AVAILABLE_FOR_THIS_DAY_YET));
 
         if (STATUS_ERROR.equals(status)) {
-            overall = "No summary was generated. See the failure status for details.";
+            overall = TEXT_NO_SUMMARY_WAS_GENERATED_SEE_THE_FAILURE_STATUS_FOR_DETAILS;
             quality = PLACEHOLDER_DASH;
             response = PLACEHOLDER_DASH;
             usage = PLACEHOLDER_DASH;
-            suggested = "Review the SIM and AnythingLLM logs before manually generating the summary again. No automatic retry was sent.";
-            if (message.contains("<")) {
-                message = "Summary generation failed. Review the SIM and AnythingLLM logs before manually trying again. No automatic retry was sent.";
+            suggested = TEXT_REVIEW_THE_SIM_AND_ANYTHING_LLM_LOGS_BEFORE_MANUALLY_GENERATING;
+            if (message.contains(TEXT_EMPTY)) {
+                message = TEXT_SUMMARY_GENERATION_FAILED_REVIEW_THE_SIM_AND_ANYTHING_LLM_LOGS_B;
             }
         }
         if (noData) {
             generatedAt = null;
-            suggested = "No request was sent to AnythingLLM because no chats were available.";
+            suggested = TEXT_NO_REQUEST_WAS_SENT_TO_ANYTHING_LLM_BECAUSE_NO_CHATS_WERE_AVAILA;
         }
 
         if (overall.isBlank() && !STATUS_SUCCESS.equals(status)) {
@@ -543,9 +558,9 @@ public class DashboardDailySummaryStore {
                         .add(KEY_STARTED_AT, fmtTs(startedAt))
                         .add(KEY_UPDATED_AT, fmtTs(updatedAt))
                         .add(KEY_IN_PROGRESS, inProgress)
-                        .add("noData", noData)
-                        .add("format", STATUS_SUCCESS.equals(status) && QUESTION_REVIEW_MESSAGE.equals(message)
-                            ? QUESTION_REVIEW_FORMAT : "legacy")
+                        .add(TEXT_NO_DATA, noData)
+                        .add(TEXT_FORMAT, STATUS_SUCCESS.equals(status) && QUESTION_REVIEW_MESSAGE.equals(message)
+                            ? QUESTION_REVIEW_FORMAT : TEXT_LEGACY)
                     .add(KEY_PROGRESS_PCT, progress)
                     .add(KEY_STATUS_TEXT, status)
                         .add(KEY_MESSAGE, message)

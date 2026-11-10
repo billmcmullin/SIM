@@ -65,6 +65,11 @@ import jakarta.servlet.http.HttpSession;
 import jakarta.servlet.http.Part;
 
 final class DatabaseImportService {
+    private static final String TEXT_BACKUP_PRECHECK_REJECTED_INVALID_REQUIRED_VALUES = "Backup precheck rejected invalid required values";
+    private static final String TEXT_BACKUP_CONTAINS_A_BLANK_REQUIRED_VALUE_IN_TABLE = "Backup contains a blank required value in table '";
+    private static final String TEXT_CSV_ROW = "', CSV row ";
+    private static final String TEXT_EXPORT_A_NEW_BACKUP_WITH_THE_CORRECTED_EXPORTER_BEFORE_IMPORTING = "'. Export a new backup with the corrected exporter before importing.";
+
 
     private static final Logger log = Logger.getLogger(DatabaseImportServlet.class.getCanonicalName());
     private static final String LS = System.lineSeparator();
@@ -312,7 +317,7 @@ final class DatabaseImportService {
             json(resp, HttpServletResponse.SC_OK, result.build());
 
             } catch (ImportException e) {
-                log.log(Level.FINE, "Backup precheck rejected invalid required values", e);
+                log.log(Level.FINE, TEXT_BACKUP_PRECHECK_REJECTED_INVALID_REQUIRED_VALUES, e);
                 json(resp, HttpServletResponse.SC_BAD_REQUEST, Json.createObjectBuilder()
                     .add(JSON_KEY_STATUS, JSON_STATUS_ERROR)
                     .add(KEY_CONNECTION_OK, true)
@@ -631,9 +636,9 @@ final class DatabaseImportService {
                     if (value == null || value.isBlank()) {
                         int rowNumber = rowIndex + 2;
                         throw new ImportException(
-                                "Backup contains a blank required value in table '" + table
-                                        + "', CSV row " + rowNumber + ", column '" + column
-                                        + "'. Export a new backup with the corrected exporter before importing.",
+                                TEXT_BACKUP_CONTAINS_A_BLANK_REQUIRED_VALUE_IN_TABLE + table
+                                        + TEXT_CSV_ROW + rowNumber + MSG_COLUMN_SEPARATOR + column
+                                        + TEXT_EXPORT_A_NEW_BACKUP_WITH_THE_CORRECTED_EXPORTER_BEFORE_IMPORTING,
                                 table, rowNumber, column, null);
                     }
                 }

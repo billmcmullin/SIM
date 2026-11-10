@@ -47,6 +47,10 @@ public final class WorkflowRecordStore {
         }
     }
 
+    DatabaseTaskLock tryTaskLock(String task) {
+        return DatabaseTaskLock.tryAcquire(dataSource.get(), task);
+    }
+
     public void insert(String kind, String id, String payload, long retentionMillis) {
         try (Connection connection = dataSource.get().getConnection(); PreparedStatement statement = connection.prepareStatement(SQL_INSERT)) {
             long now = clock.getAsLong();

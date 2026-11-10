@@ -260,6 +260,89 @@ public class NavigationIT {
     }
 
     @Test
+    void fullAnalysisControls_requireExplicitUncertaintyConfirmationAndRenderTextSafely() throws IOException {
+        Files.createDirectories(Path.of("target/navigation"));
+        for (int width : new int[] {1440, 390}) {
+            page.setViewportSize(width, 900);
+            page.navigate(ORIGIN + CONTEXT + "/admin");
+            page.evaluate("""
+                    () => {
+                        window.fullAnalysisPosts = [];
+                        window.fullAnalysisJob = null;
+                        const jobId = '00000000-0000-0000-0000-000000000011';
+                        window.AdminPage = {Api:{
+                            fetchJson: async url => {
+                                const query = new URL(url, location.origin).searchParams;
+                                if (query.get('action') === 'list') {
+                                    return {ok:true,payload:{status:'ok',today:'2026-11-10',jobs:window.fullAnalysisJob ? [window.fullAnalysisJob] : []}};
+                                }
+                                if (query.get('action') === 'status') {
+                                    return {ok:true,payload:{status:'ok',job:window.fullAnalysisJob}};
+                                }
+                                const offset = Number(query.get('offset') || 0);
+                                const items = Array.from({length:Math.min(5, 6-offset)}, (_, index) => ({
+                                    id:'step-'+(offset+index),kind:'map',chatId:'widget/chat-1',part:offset+index+1,parts:6,state:'COMPLETE',
+                                    text:'Question: <script>window.analysisInjected = true</script>\\nAnswer: complete stored text without truncation.',
+                                    result:{overview:'User asked about licensing',questions:[{asked:'How is the server configured?',answerSummary:'The answer suggests reviewing configuration',answerCoverage:'partial',sourceQuote:'complete stored text',gapKind:'candidate_kb_gap',gapDescription:'Concrete diagnostic steps are not shown',improvement:'Verify and document diagnostics',confidence:'limited'}]}
+                                }));
+                                return {ok:true,payload:{job:window.fullAnalysisJob,offset,total:6,items}};
+                            },
+                            postJson: async (url, payload) => {
+                                window.fullAnalysisPosts.push(payload);
+                                if (payload.action === 'start') {
+                                    window.fullAnalysisJob = {id:jobId,day:'2026-11-10',createdAt:1,state:'PAUSED',phase:'map',
+                                        message:'Upstream timed out. No automatic retry was sent. Review logs before resending.',
+                                        uncertain:true,totalChats:2,completedChats:1,mapSteps:6,mapCompleted:3,requests:4};
+                                    return {ok:true,payload:{status:'accepted',jobId}};
+                                }
+                                if (payload.action === 'resume') {
+                                    window.fullAnalysisJob = {...window.fullAnalysisJob,state:'RUNNING',uncertain:false,message:'Continuing pending work; completed results are retained.'};
+                                }
+                                return {ok:true,payload:{status:'ok',job:window.fullAnalysisJob}};
+                            }
+                        }};
+                    }
+                    """);
+            page.addScriptTag(new Page.AddScriptTagOptions().setPath(webRoot.resolve("assets/js/admin_utils/full_analysis.js")));
+            page.evaluate("window.AdminPage.FullAnalysis.init('/chat-server')");
+            page.waitForFunction("document.querySelector('#faDay').value === '2026-11-10'");
+            page.locator("#faStart").click();
+            page.waitForFunction("document.querySelector('#faStatus').textContent.startsWith('PAUSED:')");
+            assertEquals(1, ((Number) page.evaluate("window.fullAnalysisPosts.length")).intValue());
+            assertTrue(page.locator("#faCoverage").innerText().contains("Complete chats: 1/2"));
+            assertTrue(page.locator("#faCoverage").innerText().contains("Uncertain requests: 1"));
+            assertTrue(page.locator("#faResume").isDisabled());
+            assertTrue(page.locator("#faConfirmIdle").isDisabled());
+            page.evaluate("document.querySelector('#faResume').dispatchEvent(new Event('click'))");
+            assertEquals(1, ((Number) page.evaluate("window.fullAnalysisPosts.length")).intValue());
+            page.locator("#faDetails details summary").first().click();
+            assertTrue(page.locator("#faDetails pre").first().innerText().contains("<script>"));
+            assertTrue(page.locator("#faDetails").innerText().contains("Response provided: The answer suggests reviewing configuration"));
+            assertEquals(null, page.evaluate("window.analysisInjected || null"));
+            page.locator("#faConfirmedIdle").check();
+            assertTrue(page.locator("#faResume").isEnabled());
+            page.evaluate("document.querySelector('#faResume').dispatchEvent(new Event('click')); document.querySelector('#faResume').dispatchEvent(new Event('click'))");
+            page.waitForFunction("window.fullAnalysisPosts.length === 2 && document.querySelector('#faStatus').textContent.startsWith('RUNNING:')");
+            assertEquals(Boolean.TRUE, page.evaluate("window.fullAnalysisPosts[1].confirmedIdle"));
+            assertFalse(page.locator("#faConfirmedIdle").isChecked());
+            page.evaluate("window.fullAnalysisJob = {...window.fullAnalysisJob,state:'COMPLETED',completedChats:2,mapCompleted:6,message:'All source segments processed.',overview:{overview:'Licensing and reporting questions',themes:['Licensing'],candidateGaps:['Candidate diagnostic checklist; verify existing documentation'],improvements:['Add validated troubleshooting steps']}};");
+            page.locator("#faRefresh").click();
+            page.waitForFunction("document.querySelector('#faStatus').textContent.startsWith('COMPLETED:')");
+            assertTrue(page.locator("#faOverview").innerText().contains("Licensing and reporting questions"));
+            assertTrue(page.locator("#faCoverage").innerText().contains("Complete chats: 2/2"));
+            assertTrue(page.locator("#faExport").getAttribute("href").contains("action=export"));
+            page.locator("#faNext").click();
+            page.waitForFunction("document.querySelector('#faPage').textContent.startsWith('6-6')");
+            assertTrue(page.locator("#faPrevious").isEnabled());
+            assertTrue(page.locator("#faNext").isDisabled());
+            page.locator("#fullAnalysisSection").screenshot(new Locator.ScreenshotOptions()
+                    .setStyle(".top-bar { visibility: hidden !important; }")
+                    .setPath(Path.of("target/navigation", width + "-full-analysis.png")));
+            assertEquals(2, ((Number) page.evaluate("window.fullAnalysisPosts.length")).intValue());
+        }
+    }
+
+    @Test
     void everySignedInView_hasVisibleBackAndReturnsToItsSource() throws IOException {
         for (int width : new int[] { 1440, 390 }) {
             page.setViewportSize(width, 900);

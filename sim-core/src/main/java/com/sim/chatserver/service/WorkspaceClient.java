@@ -52,6 +52,13 @@ import jakarta.json.JsonObject;
  * rebatch/retry with smaller context.
  */
 public class WorkspaceClient {
+    private static final String TEXT_FULL_ANALYSIS_REQUEST_EXCEEDS_ITS_BYTE_BUDGET_NO_REQUEST_WAS_SEN = "Full-analysis request exceeds its byte budget; no request was sent.";
+    private static final String TEXT_SINGLE_ATTEMPT_SEND = "single-attempt-send";
+    private static final String TEXT_REQUEST_BYTES = "requestBytes=";
+    private static final String TEXT_MAX_ATTEMPTS_1 = "maxAttempts=1";
+    private static final String TEXT_FULL_ANALYSIS_RESPONSE_EXCEEDS_256_KI_B_JOB_MUST_PAUSE_WITHOUT_T = "Full-analysis response exceeds 256 KiB; job must pause without treating a partial result as complete.";
+    private static final String TEXT_SUMMARY_REQUEST_BYTE_LIMIT_IS_TOO_SMALL_FOR_ITS_JSON_ENVELOPE = "Summary request byte limit is too small for its JSON envelope.";
+
 
 
     private static final Logger log = Logger.getLogger(WorkspaceClient.class.getCanonicalName());
@@ -230,12 +237,38 @@ public class WorkspaceClient {
             String requestId,
             int maxRequestBytes
     ) throws IOException, InterruptedException {
+            return sendSingleAttempt(targetUrl, apiKey, message, mode, sessionId, reset, attachments,
+                requestId, maxRequestBytes, false);
+            }
+
+            public int strictChatRequestBytes(String message, String sessionId) {
+            return buildPayload(message, MODE_CHAT, sessionId, shouldIncludeSessionId(sessionId), true,
+                Json.createArrayBuilder().build()).toString().getBytes(StandardCharsets.UTF_8).length;
+            }
+
+            public WorkspaceResponse sendChatStrictOnce(String targetUrl, String apiKey, String message,
+                String sessionId, String requestId, int maxRequestBytes) throws IOException, InterruptedException {
+            return sendSingleAttempt(targetUrl, apiKey, message, MODE_CHAT, sessionId, true,
+                Json.createArrayBuilder().build(), requestId, maxRequestBytes, true);
+            }
+
+            private WorkspaceResponse sendSingleAttempt(String targetUrl, String apiKey, String message,
+                String mode, String sessionId, boolean reset, JsonArray attachments, String requestId,
+                int maxRequestBytes, boolean strict) throws IOException, InterruptedException {
         URI targetUri = toSafeHttpUri(targetUrl);
         ResolvedApiAuth auth = ApiAuthResolver.resolveForServerConfigOutbound(apiKey);
         if (!auth.hasToken()) {
             throw new IOException(ERR_WORKSPACE_API_KEY_REQUIRED);
         }
-        String body = buildBoundedChatBody(message, mode, sessionId, reset, attachments, maxRequestBytes);
+        String body;
+        if (strict) {
+            body = buildPayload(message, mode, sessionId, shouldIncludeSessionId(sessionId), reset, attachments).toString();
+            if (body.getBytes(StandardCharsets.UTF_8).length > maxRequestBytes) {
+                throw new IOException(TEXT_FULL_ANALYSIS_REQUEST_EXCEEDS_ITS_BYTE_BUDGET_NO_REQUEST_WAS_SEN);
+            }
+        } else {
+            body = buildBoundedChatBody(message, mode, sessionId, reset, attachments, maxRequestBytes);
+        }
         HttpRequest request = HttpRequest.newBuilder(targetUri)
                 .version(HttpClient.Version.HTTP_1_1)
                 .timeout(requestTimeout)
@@ -244,14 +277,31 @@ public class WorkspaceClient {
                 .header(HEADER_AUTHORIZATION, BEARER_PREFIX + auth.token())
                 .POST(HttpRequest.BodyPublishers.ofString(body, StandardCharsets.UTF_8))
                 .build();
-        ServerDiagnosticsLog.write(DIAG_COMPONENT, safe(requestId), "single-attempt-send",
+        ServerDiagnosticsLog.write(DIAG_COMPONENT, safe(requestId), TEXT_SINGLE_ATTEMPT_SEND,
                 LOG_KV_TARGET + safeTarget(targetUrl)
-                    + LINE_SEPARATOR + "requestBytes=" + body.getBytes(StandardCharsets.UTF_8).length
-                    + LINE_SEPARATOR + "maxAttempts=1");
+                    + LINE_SEPARATOR + TEXT_REQUEST_BYTES + body.getBytes(StandardCharsets.UTF_8).length
+                    + LINE_SEPARATOR + TEXT_MAX_ATTEMPTS_1);
+        try (var lease = InferenceRequestGate.acquire(targetUri)) {
+        if (strict) {
+            HttpResponse<InputStream> response = httpClient.send(request, HttpResponse.BodyHandlers.ofInputStream());
+            try (InputStream stream = response.body()) {
+                byte[] bytes = stream.readNBytes(262145);
+                if (bytes.length > 262144) {
+                    throw new IOException(TEXT_FULL_ANALYSIS_RESPONSE_EXCEEDS_256_KI_B_JOB_MUST_PAUSE_WITHOUT_T);
+                }
+                if (response.statusCode() >= 200 && response.statusCode() < 300) {
+                    lease.complete();
+                }
+                return new WorkspaceResponse(response.statusCode(), new String(bytes, StandardCharsets.UTF_8),
+                        response.headers().firstValue(HEADER_CONTENT_TYPE).orElse(EMPTY));
+            }
+        }
         HttpResponse<String> response = httpClient.send(request,
                 HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+        completeKnownResponse(lease, response.statusCode());
         return new WorkspaceResponse(response.statusCode(), response.body(),
                 response.headers().firstValue(HEADER_CONTENT_TYPE).orElse(EMPTY));
+        }
     }
 
     private String buildBoundedChatBody(String message, String mode, String sessionId,
@@ -265,7 +315,7 @@ public class WorkspaceClient {
         }
         String boundedBody = buildPayload(EMPTY, mode, sessionId, includeSessionId, reset, safeAttachments).toString();
         if (boundedBody.getBytes(StandardCharsets.UTF_8).length >= maxRequestBytes) {
-            throw new IOException("Summary request byte limit is too small for its JSON envelope.");
+            throw new IOException(TEXT_SUMMARY_REQUEST_BYTE_LIMIT_IS_TOO_SMALL_FOR_ITS_JSON_ENVELOPE);
         }
         int lower = 0;
         int upper = safeMessage.codePointCount(0, safeMessage.length());
@@ -388,10 +438,7 @@ public class WorkspaceClient {
                     for (int modeIndex = 0; modeIndex < modeCandidates.size(); modeIndex++) {
                         AuthHeaderMode authModeCandidate = modeCandidates.get(modeIndex);
                         HttpRequest request = buildRequest(targetUri, body, auth, authModeCandidate);
-                        HttpResponse<String> candidate = httpClient.send(
-                                request,
-                                HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8)
-                        );
+                        HttpResponse<String> candidate = sendCoordinated(request);
                         int candidateStatus = candidate.statusCode();
 
                         if (authAttemptTrace.length() > 0) {
@@ -489,6 +536,20 @@ public class WorkspaceClient {
                 }
                 throw ex;
             }
+        }
+    }
+
+    private HttpResponse<String> sendCoordinated(HttpRequest request) throws IOException, InterruptedException {
+        try (var lease = InferenceRequestGate.acquire(request.uri())) {
+            HttpResponse<String> response = httpClient.send(request, HttpResponse.BodyHandlers.ofString(StandardCharsets.UTF_8));
+            completeKnownResponse(lease, response.statusCode());
+            return response;
+        }
+    }
+
+    private void completeKnownResponse(InferenceRequestGate.Lease lease, int status) {
+        if (status < 500 && status != 408 && status != 429 && status != 499) {
+            lease.complete();
         }
     }
 
@@ -769,7 +830,7 @@ public class WorkspaceClient {
             URI targetUri,
             String body,
             ResolvedApiAuth auth
-    ) throws IOException {
+    ) throws IOException, InterruptedException {
         if (targetUri == null) {
             throw new IOException(ERR_WORKSPACE_TARGET_REQUIRED);
         }
@@ -777,18 +838,23 @@ public class WorkspaceClient {
             throw new IOException(ERR_WORKSPACE_API_KEY_REQUIRED);
         }
 
+        try (var lease = InferenceRequestGate.acquire(targetUri)) {
         URLConnection rawConn = targetUri.toURL().openConnection();
         String scheme = targetUri.getScheme() == null ? EMPTY : targetUri.getScheme().toLowerCase(Locale.ROOT);
+        WorkspaceResponse response;
         if (SCHEME_HTTPS.equals(scheme)) {
             if (!(rawConn instanceof HttpsURLConnection httpsConn)) {
                 throw new IOException(ERR_EXPECTED_HTTPS_CONNECTION);
             }
-            return sendViaHttpConnection(httpsConn, body, auth);
+            response = sendViaHttpConnection(httpsConn, body, auth);
         } else {
             if (!(rawConn instanceof HttpURLConnection)) {
                 throw new IOException(ERR_UNSUPPORTED_URL_CONNECTION_TYPE);
             }
-            return sendViaHttpConnection((HttpURLConnection) rawConn, body, auth);
+            response = sendViaHttpConnection((HttpURLConnection) rawConn, body, auth);
+        }
+        completeKnownResponse(lease, response.statusCode());
+        return response;
         }
     }
 
@@ -800,6 +866,7 @@ public class WorkspaceClient {
         byte[] bytes = (body == null ? EMPTY : body).getBytes(StandardCharsets.UTF_8);
         try {
             conn.setRequestMethod(HTTP_METHOD_POST);
+            conn.setInstanceFollowRedirects(false);
             conn.setConnectTimeout(toSafeInt(Duration.ofSeconds(20).toMillis()));
             conn.setReadTimeout(toSafeInt(requestTimeout.toMillis()));
             conn.setDoOutput(true);

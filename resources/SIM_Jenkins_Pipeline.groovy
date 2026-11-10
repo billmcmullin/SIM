@@ -158,7 +158,6 @@ pipeline {
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     sh '''
-                        set -e
                         DEST_DIR="${SHARED_DIR}"
                         MONITOR_DIR="${WORKSPACE}/target/jtest/monitor"
                         MONITOR_ZIP="${MONITOR_DIR}/monitor.zip"
@@ -184,10 +183,10 @@ pipeline {
                             echo 'jtest.agent.enableMultiuserCoverage=true' >> "${AGENT_FILE}"
                         fi
 
-                        if grep -q '^jtest\\.agent\\.session\\.autostart=' "${AGENT_FILE}"; then
-                            sed -i 's/^jtest\\.agent\\.session\\.autostart=.*/jtest.agent.session.autostart=false/' "${AGENT_FILE}"
+                        if grep -q '^jtest\\.agent\\.autoStart=' "${AGENT_FILE}"; then
+                            sed -i 's/^jtest\\.agent\\.autoStart=.*/jtest.agent.autoStart=false/' "${AGENT_FILE}"
                         else
-                            echo 'jtest.agent.session.autostart=false' >> "${AGENT_FILE}"
+                            echo 'jtest.agent.autoStart=false' >> "${AGENT_FILE}"
                         fi
 
                         if grep -q '^jtest\\.agent\\.jbossCompatibilityMode=' "${AGENT_FILE}"; then
@@ -208,7 +207,6 @@ pipeline {
                             echo "ctp.websocket.url=${CTP_WEBSOCKET}" >> "${AGENT_FILE}"
                         fi
 
-                        sed -i '/^ctp\\.subscription\\.url=/d; /^jtest\\.agent\\.autoStart=/d' "${AGENT_FILE}"
                         if grep -q '^ctp\\.subscription\\.queue=' "${AGENT_FILE}"; then
                             sed -i "s|^ctp\\.subscription\\.queue=.*|ctp.subscription.queue=${CTP_QUEUE}|" "${AGENT_FILE}"
                         else
@@ -216,9 +214,9 @@ pipeline {
                         fi
 
                         if grep -q '^jtest\\.agent\\.appLocationIncludes=' "${AGENT_FILE}"; then
-                            sed -i 's|^jtest\\.agent\\.appLocationIncludes=.*|jtest.agent.appLocationIncludes=/opt/jboss/wildfly/standalone/deployments/chat-server.war|' "${AGENT_FILE}"
+                            sed -i 's|^jtest\\.agent\\.appLocationIncludes=.*|jtest.agent.appLocationIncludes=${WORKSPACE}/sim-app/target/chat-server.war|' "${AGENT_FILE}"
                         else
-                            echo 'jtest.agent.appLocationIncludes=/opt/jboss/wildfly/standalone/deployments/chat-server.war' >> "${AGENT_FILE}"
+                            echo 'jtest.agent.appLocationIncludes="${WORKSPACE}/sim-app/target/chat-server.war' >> "${AGENT_FILE}"
                         fi
                         
                         if grep -q 'dtp\\.buildID=' "${AGENT_FILE}"; then
@@ -236,7 +234,7 @@ pipeline {
                         if grep -q 'dtp\\.coverageImages=' "${AGENT_FILE}"; then
                             sed -i "s/^dtp\\.coverageImages=.*/dtp.coverageImages=${JOB_NAME}-ALL;${JOB_NAME}-Play/" "${AGENT_FILE}"
                         else
-                            echo "dtp.coverageImages=${JOB_NAME}-ALL;${JOB_NAME}-Play;${JOB_NAME}-FT" >> "${AGENT_FILE}"
+                            echo "dtp.coverageImages=${JOB_NAME}-ALL;${JOB_NAME}-Play" >> "${AGENT_FILE}"
                         fi
 
                         echo "Updated ${AGENT_FILE}:"
@@ -276,9 +274,9 @@ pipeline {
                             -Dsoatest.environment="${SOA_ENV}"
 
                         if grep -q 'dtp\\.coverageImages=' "${AGENT_FILE}"; then
-                            sed -i "s/^dtp\\.coverageImages=.*/dtp.coverageImages=${JOB_NAME}-ALL;${JOB_NAME}-FT/" "${AGENT_FILE}"
+                            sed -i "s/^dtp\\.coverageImages=.*/dtp.coverageImages=${JOB_NAME}-ALL;${JOB_NAME}-MT/" "${AGENT_FILE}"
                         else
-                            echo "dtp.coverageImages=${JOB_NAME}-ALL;${JOB_NAME}-Play;${JOB_NAME}-FT" >> "${AGENT_FILE}"
+                            echo "dtp.coverageImages=${JOB_NAME}-ALL;${JOB_NAME}-Play;${JOB_NAME}-MT" >> "${AGENT_FILE}"
                         fi
 
                         docker compose -f "${WORKSPACE}/resources/${DOCKER_COMPOSE_FILE}" restart
@@ -295,7 +293,6 @@ pipeline {
             steps {
                 catchError(buildResult: 'SUCCESS', stageResult: 'FAILURE') {
                     sh '''
-                        set +e
                         mkdir -p report/eslint
 
                         if [ ! -f package.json ]; then

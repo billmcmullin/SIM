@@ -201,10 +201,10 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
             md.append("- **Message:** ").append(message).append(System.lineSeparator());
         }
 
-        md.append(LS).append("## ").append(summarySectionTitle(meta, "Overall")).append(LS).append(safeBlock(overall)).append(System.lineSeparator());
-        md.append(LS).append("## ").append(summarySectionTitle(meta, "Quality")).append(LS).append(safeBlock(quality)).append(System.lineSeparator());
-        md.append(LS).append("## ").append(summarySectionTitle(meta, "Response")).append(LS).append(safeBlock(response)).append(System.lineSeparator());
-        md.append(LS).append("## ").append(summarySectionTitle(meta, "Usage")).append(LS).append(safeBlock(usage)).append(System.lineSeparator());
+        md.append(LS).append(com.sim.chatserver.util.CommonLiteralConstants.MARKDOWN_HEADING_PREFIX).append(summarySectionTitle(meta, com.sim.chatserver.util.CommonLiteralConstants.SUMMARY_OVERALL)).append(LS).append(safeBlock(overall)).append(System.lineSeparator());
+        md.append(LS).append(com.sim.chatserver.util.CommonLiteralConstants.MARKDOWN_HEADING_PREFIX).append(summarySectionTitle(meta, com.sim.chatserver.util.CommonLiteralConstants.SUMMARY_QUALITY)).append(LS).append(safeBlock(quality)).append(System.lineSeparator());
+        md.append(LS).append(com.sim.chatserver.util.CommonLiteralConstants.MARKDOWN_HEADING_PREFIX).append(summarySectionTitle(meta, com.sim.chatserver.util.CommonLiteralConstants.SUMMARY_RESPONSE)).append(LS).append(safeBlock(response)).append(System.lineSeparator());
+        md.append(LS).append(com.sim.chatserver.util.CommonLiteralConstants.MARKDOWN_HEADING_PREFIX).append(summarySectionTitle(meta, com.sim.chatserver.util.CommonLiteralConstants.SUMMARY_USAGE)).append(LS).append(safeBlock(usage)).append(System.lineSeparator());
         md.append(LS).append("## Suggested Next Action").append(LS).append(safeBlock(nextAction)).append(System.lineSeparator());
 
         return md.toString();
@@ -244,8 +244,8 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
                 <h4 style="margin:0 0 6px 0;">%s</h4><p style="margin:0 0 10px 0; white-space:pre-wrap;">%s</p>
                 <h4 style="margin:0 0 6px 0;">%s</h4><p style="margin:0; white-space:pre-wrap;">%s</p>
                 """.formatted(day, slot, statusText, progressText, generatedAt, entryCountText,
-                        summarySectionTitle(meta, "Overall"), overall, summarySectionTitle(meta, "Quality"), quality,
-                        summarySectionTitle(meta, "Response"), response, summarySectionTitle(meta, "Usage"), usage);
+                        summarySectionTitle(meta, com.sim.chatserver.util.CommonLiteralConstants.SUMMARY_OVERALL), overall, summarySectionTitle(meta, com.sim.chatserver.util.CommonLiteralConstants.SUMMARY_QUALITY), quality,
+                        summarySectionTitle(meta, com.sim.chatserver.util.CommonLiteralConstants.SUMMARY_RESPONSE), response, summarySectionTitle(meta, com.sim.chatserver.util.CommonLiteralConstants.SUMMARY_USAGE), usage);
     }
 
     private String summarySectionTitle(JsonObject meta, String legacyTitle) {
@@ -253,10 +253,10 @@ public class DashboardSummaryMarkdownServlet extends HttpServlet {
             return legacyTitle;
         }
         return switch (legacyTitle) {
-            case "Overall" -> "What Users Asked";
-            case "Quality" -> "Questions and Answers";
-            case "Response" -> "Candidate Knowledge Gaps";
-            case "Usage" -> "Recommended Improvements";
+            case com.sim.chatserver.util.CommonLiteralConstants.SUMMARY_OVERALL -> "What Users Asked";
+            case com.sim.chatserver.util.CommonLiteralConstants.SUMMARY_QUALITY -> "Questions and Answers";
+            case com.sim.chatserver.util.CommonLiteralConstants.SUMMARY_RESPONSE -> "Candidate Knowledge Gaps";
+            case com.sim.chatserver.util.CommonLiteralConstants.SUMMARY_USAGE -> "Recommended Improvements";
             default -> legacyTitle;
         };
     }

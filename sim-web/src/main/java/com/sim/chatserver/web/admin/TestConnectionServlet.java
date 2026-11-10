@@ -23,6 +23,7 @@ import java.util.regex.Pattern;
 
 import com.sim.chatserver.service.ApiAuthResolver;
 import com.sim.chatserver.service.ResolvedApiAuth;
+import com.sim.chatserver.service.InferenceRequestGate;
 import com.sim.chatserver.config.EncryptedDbConfigStore;
 import com.sim.chatserver.config.ServerConfig;
 import com.sim.chatserver.util.CommonLiteralConstants;
@@ -92,7 +93,7 @@ public class TestConnectionServlet extends HttpServlet {
         String port = ServletRequestParamUtil.firstParam(req, "serverPort", 512, true, true);
         String apiKey = ServletRequestParamUtil.firstParam(req, "apiKey", 512, true, true);
         String workspaceName = ServletRequestParamUtil.firstParam(req, "workspaceName", 512, true, true);
-        boolean testInference = "true".equalsIgnoreCase(
+        boolean testInference = com.sim.chatserver.util.CommonLiteralConstants.VALUE_TRUE.equalsIgnoreCase(
             ServletRequestParamUtil.firstParam(req, "testInference", 16, true, true));
         ServerConfig storedConfig = null;
 
@@ -144,9 +145,9 @@ public class TestConnectionServlet extends HttpServlet {
                 : baseUrl + "/api/v1/workspace/" + URLEncoder.encode(workspaceSlug, StandardCharsets.UTF_8) + "/chat";
         if (testInference && chatEndpoint.isBlank()) {
             writeJson(resp, HttpServletResponse.SC_BAD_REQUEST, Json.createObjectBuilder()
-                .add("status", "error")
-                .add("message", "Configure a workspace before testing inference.")
-                .add("probe", "chat")
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "error")
+                .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Configure a workspace before testing inference.")
+                .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_PROBE, "chat")
                 .build());
             return;
         }
@@ -188,7 +189,7 @@ public class TestConnectionServlet extends HttpServlet {
                 writeJson(resp, systemResponse.status, Json.createObjectBuilder()
                         .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
                     .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, failureMessage)
-                        .add("probe", "system")
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_PROBE, "system")
                         .add("upstreamStatus", systemResponse.status)
                         .add("authMode", systemResponse.mode.name())
                         .add("authSource", safe(systemResponse.authSource))
@@ -202,7 +203,7 @@ public class TestConnectionServlet extends HttpServlet {
                 writeJson(resp, HttpServletResponse.SC_OK, Json.createObjectBuilder()
                         .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
                         .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Connection and API authentication successful. No inference request was sent.")
-                        .add("probe", "system")
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_PROBE, "system")
                         .add("connectivityVerified", true)
                         .add("inferenceTested", false)
                         .add("authSource", safe(systemResponse.authSource))
@@ -228,7 +229,7 @@ public class TestConnectionServlet extends HttpServlet {
                 writeJson(resp, HttpServletResponse.SC_OK, Json.createObjectBuilder()
                         .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, "ok")
                         .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, "Inference test successful.")
-                        .add("probe", "chat")
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_PROBE, "chat")
                         .add("connectivityVerified", true)
                         .add("inferenceTested", true)
                     .add("authSource", safe(chatResponse.authSource))
@@ -247,7 +248,7 @@ public class TestConnectionServlet extends HttpServlet {
                 writeJson(resp, successfulStatus ? HttpServletResponse.SC_BAD_GATEWAY : chatResponse.status, Json.createObjectBuilder()
                         .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
                     .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, failureMessage)
-                        .add("probe", com.sim.chatserver.util.CommonLiteralConstants.DEFAULT_MODE_CHAT)
+                        .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_PROBE, com.sim.chatserver.util.CommonLiteralConstants.DEFAULT_MODE_CHAT)
                         .add("connectivityVerified", true)
                         .add("inferenceTested", true)
                         .add("upstreamStatus", chatResponse.status)
@@ -277,7 +278,7 @@ public class TestConnectionServlet extends HttpServlet {
             writeJson(resp, HttpServletResponse.SC_BAD_GATEWAY, Json.createObjectBuilder()
                     .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_STATUS, com.sim.chatserver.util.CommonLiteralConstants.KEY_ERROR)
                     .add(com.sim.chatserver.util.CommonLiteralConstants.FIELD_MESSAGE, buildTransportFailureMessage(activeProbe, e))
-                    .add("probe", activeProbe == ProbeKind.SYSTEM ? "system" : "chat")
+                    .add(com.sim.chatserver.util.CommonLiteralConstants.KEY_PROBE, activeProbe == ProbeKind.SYSTEM ? "system" : "chat")
                     .add("connectivityVerified", connectivityVerified)
                     .add("errorRef", errorRef)
                     .add("requestId", requestId)
@@ -304,7 +305,7 @@ public class TestConnectionServlet extends HttpServlet {
         }
         try (var reader = Json.createReader(new StringReader(body))) {
             JsonObject payload = reader.readObject();
-            return "abort".equalsIgnoreCase(payload.getString("type", ""))
+            return "abort".equalsIgnoreCase(payload.getString(com.sim.chatserver.util.CommonLiteralConstants.KEY_TYPE, ""))
                     || (payload.containsKey("textResponse") && payload.getString("textResponse", "").isBlank());
         } catch (JsonException | ClassCastException error) {
             return false;
@@ -352,7 +353,17 @@ public class TestConnectionServlet extends HttpServlet {
             HttpRequest request = buildProbeRequest(endpoint, auth, mode, probeKind, chatPayload);
             HttpResponse<String> response;
             try {
-                response = client().send(request, HttpResponse.BodyHandlers.ofString());
+                if (probeKind == ProbeKind.CHAT) {
+                    try (var lease = InferenceRequestGate.acquire(URI.create(endpoint))) {
+                        response = client().send(request, HttpResponse.BodyHandlers.ofString());
+                        if (response.statusCode() >= 200 && response.statusCode() < 300
+                                && !isEmptyOrAbortedInference(response.body())) {
+                            lease.complete();
+                        }
+                    }
+                } else {
+                    response = client().send(request, HttpResponse.BodyHandlers.ofString());
+                }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 throw new IllegalStateException("Connection probe interrupted", e);

@@ -726,6 +726,47 @@
             <div id="summarySettingsMessage" class="widget-message" style="color:#047857; margin-top:8px;"></div>
         </section>
 
+        <section class="section" id="fullAnalysisSection">
+            <h2>Full Analysis</h2>
+            <form id="fullAnalysisForm">
+                <div class="form-grid summary-settings-grid">
+                    <div class="form-group"><label for="faDay">Analysis Day</label><input id="faDay" type="date" required></div>
+                    <div class="form-group"><label for="faRequestBytes">Max Request Bytes</label><input id="faRequestBytes" type="number" min="2048" max="16384" value="4096" required></div>
+                    <div class="form-group"><label for="faInputBytes" title="Conservative client-input limit. AnythingLLM system, retrieval and output context require separate server limits.">Input Byte Budget</label><input id="faInputBytes" type="number" min="1024" max="8192" value="2048" required></div>
+                    <div class="form-group"><label for="faPace">Minimum Gap (seconds)</label><input id="faPace" type="number" min="5" max="300" value="10" required></div>
+                    <div class="form-group"><label for="faRequests">Requests Per Run</label><input id="faRequests" type="number" min="1" max="500" value="50" required></div>
+                    <div class="form-group"><label for="faMinutes">Minutes Per Run</label><input id="faMinutes" type="number" min="1" max="120" value="15" required></div>
+                </div>
+                <div class="actions">
+                    <button type="button" id="faStart">Start Full Analysis</button>
+                    <button type="button" id="faRefresh">Refresh Jobs</button>
+                </div>
+            </form>
+            <div class="form-group"><label for="faJobs">Saved Analysis Jobs</label><select id="faJobs"><option value="">No jobs</option></select></div>
+            <div class="actions">
+                <button type="button" id="faPause" disabled>Pause</button>
+                <button type="button" id="faResume" disabled>Resume Pending Work</button>
+                <button type="button" id="faCancel" disabled>Cancel</button>
+                <a id="faExport" class="ghost-btn" hidden>Export Saved Results</a>
+            </div>
+            <div class="actions">
+                <label style="display:flex; align-items:flex-start; gap:8px; font-weight:400;">
+                    <input type="checkbox" id="faConfirmedIdle" style="width:auto; flex:none; margin-top:4px;">
+                    I reviewed upstream logs and confirm the server is idle; an uncertain request may be resent.
+                </label>
+                <button type="button" id="faConfirmIdle" disabled>Confirm Server Idle</button>
+            </div>
+            <p id="faStatus" role="status" aria-live="polite"></p>
+            <p id="faCoverage" class="small-note"></p>
+            <div id="faOverview" class="full-analysis-results"></div>
+            <div id="faDetails" class="full-analysis-results"></div>
+            <div class="actions">
+                <button type="button" id="faPrevious" disabled>Previous Results</button>
+                <span id="faPage" class="small-note"></span>
+                <button type="button" id="faNext" disabled>Next Results</button>
+            </div>
+        </section>
+
         <section class="section terms-section">
             <h2>Term Definitions</h2>
             <p>Define how prompts/responses should match saved terms. You can specify a regex or a wildcard pattern.</p>
@@ -1020,6 +1061,7 @@
     <script defer src="${contextPath}/assets/js/admin_utils/terms.js"></script>
     <script defer src="${contextPath}/assets/js/admin_utils/workspace.js"></script>
     <script defer src="${contextPath}/assets/js/admin_utils/sync.js"></script>
+    <script defer src="${contextPath}/assets/js/admin_utils/full_analysis.js"></script>
     <script defer src="${contextPath}/assets/js/admin_utils/salesforce.js"></script>
     <script defer src="${contextPath}/assets/js/admin_utils/aws.js"></script>
     <script defer src="${contextPath}/assets/js/admin_utils/db_import.js"></script>
