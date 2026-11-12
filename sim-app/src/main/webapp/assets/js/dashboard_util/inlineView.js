@@ -349,6 +349,7 @@
     }
 
     function showDefaultSections(recordHistory = true) {
+        if (recordHistory) window.SimNavigation?.captureListStates();
         inlineRequestSequence++;
         if (recordHistory && currentUrl) {
             window.history.pushState({ simInline: true }, '', `${contextPath}/dashboard`);
@@ -379,6 +380,7 @@
         if (!abs || abs.origin !== window.location.origin) {
             return false;
         }
+        if (recordHistory) window.SimNavigation?.captureListStates();
 
         if (!isDashboardDetailPath(abs.pathname)) {
             window.location.href = abs.toString();

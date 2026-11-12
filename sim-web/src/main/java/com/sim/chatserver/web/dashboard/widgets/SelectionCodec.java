@@ -19,6 +19,7 @@ final class SelectionCodec {
     private static final String FIELD_HAS_SNAPSHOTS = "hasSnapshots";
     private static final String FIELD_SNAPSHOTS = "snapshots";
     private static final String FIELD_GLOBAL = "global";
+    private static final String FIELD_DISPLAY_CONTEXT = "displayContext";
 
     private SelectionCodec() { }
 
@@ -36,10 +37,12 @@ final class SelectionCodec {
             }
         }
         SearchTerms terms = selection.searchTerms == null ? SearchTerms.EMPTY : selection.searchTerms;
-        return Json.createObjectBuilder().add(CommonLiteralConstants.KEY_WIDGET_ID, safe(selection.widgetId)).add(CommonLiteralConstants.FIELD_DISPLAY_NAME, safe(selection.displayName))
+        var encoded = Json.createObjectBuilder().add(CommonLiteralConstants.KEY_WIDGET_ID, safe(selection.widgetId)).add(CommonLiteralConstants.FIELD_DISPLAY_NAME, safe(selection.displayName))
             .add(FIELD_BACK_URL, safe(selection.backUrl)).add(CommonLiteralConstants.PARAM_DATE, safe(selection.date)).add(FIELD_CHAT_IDS, ids)
             .add(FIELD_HAS_SNAPSHOTS, selection.snapshots != null).add(FIELD_SNAPSHOTS, snapshots)
-            .add(FIELD_GLOBAL, terms.global).add(CommonLiteralConstants.FIELD_PROMPT, terms.prompt).add(CommonLiteralConstants.FIELD_RESPONSE, terms.response).build().toString();
+            .add(FIELD_GLOBAL, terms.global).add(CommonLiteralConstants.FIELD_PROMPT, terms.prompt).add(CommonLiteralConstants.FIELD_RESPONSE, terms.response);
+        if (!selection.getDisplayContext().isEmpty()) encoded.add(FIELD_DISPLAY_CONTEXT, selection.getDisplayContext());
+        return encoded.build().toString();
     }
 
     static Selection decode(String payload) {
@@ -57,7 +60,8 @@ final class SelectionCodec {
                 return new Selection(json.getString(CommonLiteralConstants.KEY_WIDGET_ID), json.getString(CommonLiteralConstants.FIELD_DISPLAY_NAME), json.getString(FIELD_BACK_URL),
                     json.getJsonArray(FIELD_CHAT_IDS).getValuesAs(JsonString.class).stream().map(JsonString::getString).toList(),
                     snapshots, new SearchTerms(json.getString(FIELD_GLOBAL), json.getString(CommonLiteralConstants.FIELD_PROMPT), json.getString(CommonLiteralConstants.FIELD_RESPONSE)),
-                    json.getString(CommonLiteralConstants.PARAM_DATE));
+                    json.getString(CommonLiteralConstants.PARAM_DATE),
+                    json.get(FIELD_DISPLAY_CONTEXT) instanceof JsonString context ? context.getString() : EMPTY);
         }
     }
 

@@ -55,7 +55,7 @@ public class DashboardMetricsService {
         private static final String SQL_SELECT_SESSION_FIRST_SEEN_PREFIX =
             "SELECT session_id, MIN(created_at) AS first_seen FROM ";
         private static final String SQL_SELECT_PROMPT_SESSION_CREATED_PREFIX =
-            "SELECT prompt, session_id, created_at FROM ";
+            "SELECT prompt, session_id, created_at, widget_chat_id FROM ";
         private static final String SQL_ORDER_BY_CREATED_DESC_LIMIT_500 = " ORDER BY created_at DESC LIMIT 500";
 
     public static final String OTHER_PARASOFT_LABEL = TermsStore.OTHER_PARASOFT_LABEL;
@@ -596,6 +596,7 @@ public class DashboardMetricsService {
                 out.add(new OtherParasoftEntry(
                         widgetId,
                         widgetName,
+                        rs.getString(SqlLiteralConstants.COL_WIDGET_CHAT_ID),
                         prompt == null ? EMPTY : prompt,
                         sessionId == null ? EMPTY : sessionId,
                         createdAt

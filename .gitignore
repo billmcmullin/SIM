@@ -1,5 +1,6 @@
 target/
 docs/static-analysis/
+docs/chat-review-consistency
 .idea/
 .jtest/
 .project

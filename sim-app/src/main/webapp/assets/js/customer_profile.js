@@ -15,11 +15,13 @@
     const selectEndpoint = `${contextPath}/dashboard/sessions/select`;
     const reviewDataEndpoint = `${contextPath}/dashboard/widgets/drilldown/view/review-data`;
     const reviewPageEndpoint = `${contextPath}/dashboard/widgets/drilldown/review`;
+    const reviewEmailEndpoint = `${contextPath}/dashboard/widgets/drilldown/review/email`;
     const sessionLabelEndpoint = `${contextPath}/dashboard/session-names/label`;
     const sessionNamesEndpoint = `${contextPath}/dashboard/session-names.json`;
 
     const CHAT_PAGE_SIZE = 10;
     const SESSION_ID_PATTERN = /^[A-Za-z0-9._:-]{1,128}$/;
+    let detailPreview = null;
 
     const state = {
         activeSessionId: '',
@@ -41,6 +43,25 @@
         state.activeSessionId = resolveActiveSessionId();
         bindFriendlyNameForm();
         bindChatsTable();
+        const previewRow = row => Array.from(document.querySelectorAll('#cpSubmittedChatsBody tr[data-chat-id]'))
+            .find(element => element.dataset.chatId === String(row?.chatId || ''));
+        detailPreview = window.SimChatPreview.create({
+            root: document.getElementById('cpDetailCard'),
+            prefix: 'cp',
+            capabilities: { share: true, translate: true },
+            placement: 'anchored-right', minimumHeight: 520, maximumWidth: 500, getAnchor: previewRow,
+            getRows: getCurrentChatPageRows,
+            onNavigate: row => openChatDetail(row.chatId),
+            onClose: () => {
+                detailRequestGeneration++;
+                state.activeDetailChatId = '';
+                clearTranslationUi();
+                renderSubmittedChats();
+            },
+            getReturnFocus: row => previewRow(row)?.querySelector('.chat-preview-open')
+                || document.getElementById('cpChatSearchInput'),
+            onLanguageChange: clearTranslationUi
+        });
         bindDetailCardActions();
         initializeSubmittedChats();
     });
@@ -599,6 +620,7 @@
     }
 
     function renderSubmittedChats() {
+        detailPreview?.refreshNavigation();
         const tbody = document.getElementById('cpSubmittedChatsBody');
         const pageInfo = document.getElementById('cpChatPageInfo');
         const prevBtn = document.getElementById('cpChatPrevBtn');
@@ -641,13 +663,17 @@
                     <td class="select-column">
                         <input type="checkbox" class="cp-chat-checkbox" data-chat-id="${chatId}" ${checked}>
                     </td>
-                    <td class="row-open-cell">${chatId}</td>
+                    <td class="row-open-cell"><button type="button" class="chat-preview-open" aria-label="Preview chat ${chatId}">${chatId}</button></td>
                     <td class="row-open-cell">${escapeHtml(row.sessionId || '')}</td>
                     <td class="row-open-cell" title="${escapeHtml(row.prompt || '')}">${promptSummary}</td>
-                    <td class="row-open-cell">${escapeHtml(formatDateTime(row.createdAt, ''))}</td>
+                    <td class="row-open-cell"><time class="chat-created-at"></time></td>
                 </tr>
             `;
         }).join('');
+
+        tbody.querySelectorAll('time.chat-created-at').forEach((element, index) => {
+            window.SimChatPreview.setTimestamp(element, pageRows[index].createdAt);
+        });
 
         tbody.querySelectorAll('.cp-chat-checkbox').forEach((checkbox) => {
             checkbox.addEventListener('click', (event) => event.stopPropagation());
@@ -716,6 +742,7 @@
     }
 
     function syncSelectAllVisibleState() {
+        detailPreview?.refreshNavigation();
         const selectAllVisible = document.getElementById('cpChatsSelectAllVisible');
         if (!selectAllVisible) {
             return;
@@ -794,6 +821,9 @@
         return payload.selectionId;
     }
 
+    let detailRequestGeneration = 0;
+    const translationRequestGenerations = new Map();
+
     async function openChatDetail(chatId) {
         if (!chatId) {
             return;
@@ -811,8 +841,12 @@
             return;
         }
 
-        detailCard.style.display = 'block';
-        title.textContent = `Selected Chat Details - Chat ${chatId}`;
+        const generation = ++detailRequestGeneration;
+        const isCurrentRequest = () => generation === detailRequestGeneration
+            && state.activeDetailChatId === chatId && detailCard.isConnected
+            && document.getElementById('cpDetailCard') === detailCard && detailCard.style.display !== 'none';
+
+        detailPreview.show({ chatId, prompt: 'Loading prompt...', response: 'Loading response...' }, true);
 
         if (state.detailByChatId.has(chatId)) {
             const cached = state.detailByChatId.get(chatId);
@@ -827,6 +861,9 @@
 
         try {
             const selectionId = await createSelection([chatId]);
+            if (!isCurrentRequest()) {
+                return;
+            }
             const query = new URLSearchParams();
             query.set('selectionId', selectionId);
             query.set('page', '1');
@@ -840,6 +877,9 @@
                 headers: { Accept: 'application/json' }
             });
 
+            if (!isCurrentRequest()) {
+                return;
+            }
             const first = Array.isArray(payload.rows) && payload.rows.length ? payload.rows[0] : null;
             if (!first) {
                 throw new Error('No detail data was returned for that chat.');
@@ -849,25 +889,16 @@
             renderChatDetail(first);
             detailCard.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         } catch (err) {
+            if (!isCurrentRequest()) {
+                return;
+            }
             prompt.textContent = err.message || 'Unable to load prompt.';
             response.textContent = 'Unable to load response.';
         }
     }
 
     function renderChatDetail(row) {
-        const prompt = document.getElementById('cpDetailPrompt');
-        const response = document.getElementById('cpDetailResponse');
-        const title = document.getElementById('cpDetailTitle');
-
-        if (title && row.chatId) {
-            title.textContent = `Selected Chat Details - Chat ${row.chatId}`;
-        }
-        if (prompt) {
-            prompt.textContent = row.prompt || '(empty prompt)';
-        }
-        if (response) {
-            response.textContent = row.response || '(empty response)';
-        }
+        detailPreview.show(row);
         clearTranslationUi();
     }
 
@@ -879,7 +910,8 @@
             promptBtn.addEventListener('click', async () => {
                 const detail = state.detailByChatId.get(state.activeDetailChatId);
                 const targetLang = (document.getElementById('cpTranslateTargetLang')?.value || 'en').trim();
-                await translateText(detail?.prompt || '', targetLang, 'cpPromptTranslationMeta', 'cpPromptTranslationOutput', 'Prompt');
+                const sourceLang = document.getElementById('cpTranslateSourceLang')?.value || 'auto';
+                await translateText(detail?.prompt || '', targetLang, 'cpPromptTranslationMeta', 'cpPromptTranslationOutput', 'Prompt', sourceLang);
             });
         }
 
@@ -887,19 +919,31 @@
             responseBtn.addEventListener('click', async () => {
                 const detail = state.detailByChatId.get(state.activeDetailChatId);
                 const targetLang = (document.getElementById('cpTranslateTargetLang')?.value || 'en').trim();
-                await translateText(detail?.response || '', targetLang, 'cpResponseTranslationMeta', 'cpResponseTranslationOutput', 'Response');
+                const sourceLang = document.getElementById('cpTranslateSourceLang')?.value || 'auto';
+                await translateText(detail?.response || '', targetLang, 'cpResponseTranslationMeta', 'cpResponseTranslationOutput', 'Response', sourceLang);
             });
         }
+        detailPreview.element('shareChatByEmailBtn').addEventListener('click', shareActiveChat);
     }
 
     function clearTranslationUi() {
+        translationRequestGenerations.forEach((generation, id) => translationRequestGenerations.set(id, generation + 1));
         setTextById('cpPromptTranslationMeta', '');
         setTextById('cpResponseTranslationMeta', '');
         setBlockTextById('cpPromptTranslationOutput', '', false);
         setBlockTextById('cpResponseTranslationOutput', '', false);
     }
 
-    async function translateText(sourceText, targetLang, metaId, outputId, label) {
+    async function translateText(sourceText, targetLang, metaId, outputId, label, requestedSourceLang = 'auto') {
+        const detailGeneration = detailRequestGeneration;
+        const generation = (translationRequestGenerations.get(outputId) || 0) + 1;
+        translationRequestGenerations.set(outputId, generation);
+        const output = document.getElementById(outputId);
+        const card = document.getElementById('cpDetailCard');
+        const isCurrentRequest = () => detailGeneration === detailRequestGeneration
+            && generation === translationRequestGenerations.get(outputId)
+            && output?.isConnected && document.getElementById(outputId) === output
+            && card?.isConnected && card.style.display !== 'none';
         if (!sourceText || !sourceText.trim()) {
             setTextById(metaId, `${label} is empty; nothing to translate.`);
             setBlockTextById(outputId, '', false);
@@ -919,23 +963,73 @@
                 },
                 body: JSON.stringify({
                     text: sourceText,
-                    targetLang: targetLang || 'en'
+                    targetLang: targetLang || 'en',
+                    ...(requestedSourceLang === 'auto' ? {} : { sourceLang: requestedSourceLang })
                 })
             });
 
+            if (!isCurrentRequest()) {
+                return;
+            }
             if (payload.status !== 'ok') {
                 throw new Error(payload.message || 'Translation failed.');
             }
 
             const translated = String(payload.translatedText || '');
-            const sourceLang = payload.sourceLang || 'auto';
+            const sourceLang = payload.sourceLang || requestedSourceLang;
             const destinationLang = payload.targetLang || targetLang || 'en';
 
             setTextById(metaId, `${label}: ${sourceLang} -> ${destinationLang}`);
             setBlockTextById(outputId, translated || '(empty translation)', true);
         } catch (err) {
+            if (!isCurrentRequest()) {
+                return;
+            }
             setTextById(metaId, `Translation failed: ${err.message || 'Unknown error'}`);
             setBlockTextById(outputId, '', false);
+        }
+    }
+
+    async function shareActiveChat() {
+        const row = state.detailByChatId.get(state.activeDetailChatId);
+        if (!row) return;
+        const recipient = detailPreview.element('shareEmailTo').value.trim();
+        const status = detailPreview.element('shareChatEmailStatus');
+        if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(recipient)) {
+            status.textContent = 'Enter a valid teammate email address.';
+            return;
+        }
+        const request = detailPreview.beginRequest('share');
+        const button = detailPreview.element('shareChatByEmailBtn');
+        const busy = detailPreview.element('shareChatEmailBusyHint');
+        button.disabled = true;
+        busy.textContent = 'Sending...';
+        status.textContent = 'Sending email...';
+        try {
+            const result = await fetchJson(reviewEmailEndpoint, {
+                method: 'POST', credentials: 'same-origin',
+                headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
+                body: JSON.stringify({
+                    to: recipient, chatId: row.chatId || '', createdAt: row.createdAt || '', sessionId: row.sessionId || '',
+                    prompt: row.prompt || '', response: row.response || '',
+                    customMessage: detailPreview.element('shareCustomMessage').value.trim(),
+                    subjectLabel: displaySessionId || state.activeSessionId, subjectType: 'Session',
+                    translateToEnglish: detailPreview.element('shareTranslateToEnglish').checked
+                })
+            });
+            if (!detailPreview.isCurrent(request)) return;
+            if (result.status !== 'ok') throw new Error(result.message || 'Failed to send email.');
+            const parts = [];
+            if (result.translatedPrompt) parts.push('prompt translated');
+            if (result.translatedResponse) parts.push('response translated');
+            status.textContent = `Email sent to ${recipient}${parts.length ? ` (${parts.join(', ')})` : ''}.`;
+        } catch (error) {
+            if (detailPreview.isCurrent(request)) status.textContent = error.message || 'Failed to send email.';
+        } finally {
+            if (detailPreview.isCurrent(request)) {
+                button.disabled = false;
+                busy.textContent = '';
+            }
         }
     }
 

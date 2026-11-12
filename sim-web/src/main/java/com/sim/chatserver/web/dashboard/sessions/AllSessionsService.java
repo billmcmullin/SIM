@@ -160,6 +160,8 @@ final class AllSessionsService {
     private static final String SQL_WHERE_GROUP_BY_SESSION = com.sim.chatserver.util.CommonLiteralConstants.SQL_SESSION_ID_NOT_NULL_NON_EMPTY_GROUP_BY;
     private static final String PATH_REDIRECT_DASHBOARD_SESSIONS = "/dashboard/sessions";
     private static final String LABEL_SELECTED_SESSION_CHATS = "Selected Session Chats";
+    private static final String LABEL_SESSION_CONTEXT = "Sessions | Session: ";
+    private static final String CONTEXT_SESSION_SEPARATOR = ", ";
     private static final String ACTIVITY_ALL = com.sim.chatserver.util.CommonLiteralConstants.VALUE_ALL;
     private static final String ACTIVITY_ACTIVE = "active";
     private static final String ACTIVITY_INACTIVE = "inactive";
@@ -514,7 +516,10 @@ final class AllSessionsService {
                 req.getSession(false),
                 LABEL_SELECTED_SESSION_CHATS,
                 snapshots,
-            ServletPathUtil.safeContextPathNoEmptyGuard(req.getServletContext().getContextPath()) + PATH_REDIRECT_DASHBOARD_SESSIONS
+            ServletPathUtil.safeContextPathNoEmptyGuard(req.getServletContext().getContextPath()) + PATH_REDIRECT_DASHBOARD_SESSIONS,
+                LABEL_SESSION_CONTEXT + snapshots.stream().map(TermChatSnapshot::getSessionId)
+                        .filter(value -> value != null && !value.isBlank()).distinct().limit(3)
+                    .collect(java.util.stream.Collectors.joining(CONTEXT_SESSION_SEPARATOR))
         );
 
         if (selectionId == null || selectionId.isBlank()) {

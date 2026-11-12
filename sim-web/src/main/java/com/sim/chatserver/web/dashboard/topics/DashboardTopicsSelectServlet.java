@@ -122,7 +122,8 @@ public class DashboardTopicsSelectServlet extends HttpServlet {
                 session,
                 "Popular Topics",
                 snapshots,
-            ServletPathUtil.safeContextPathEnsureLeadingSlash(req.getContextPath()) + "/dashboard/topics"
+            ServletPathUtil.safeContextPathEnsureLeadingSlash(req.getContextPath()) + "/dashboard/topics",
+                payload.get("displayContext") instanceof jakarta.json.JsonString context ? context.getString() : ""
         );
 
         if (selectionId == null || selectionId.isBlank()) {

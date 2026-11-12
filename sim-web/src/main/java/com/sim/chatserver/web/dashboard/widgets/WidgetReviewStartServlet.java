@@ -112,10 +112,15 @@ public class WidgetReviewStartServlet extends HttpServlet {
             String label,
             List<TermChatSnapshot> snapshots,
             String backUrl) {
+        return createSnapshotSelection(session, label, snapshots, backUrl, label);
+    }
+
+    public static String createSnapshotSelection(HttpSession session, String label,
+            List<TermChatSnapshot> snapshots, String backUrl, String displayContext) {
         if (session == null || label == null || label.isBlank() || snapshots == null || snapshots.isEmpty()) {
             return null;
         }
-        Selection selection = Selection.fromTermSnapshots(label, backUrl, snapshots);
+        Selection selection = Selection.fromTermSnapshots(label, backUrl, snapshots).withDisplayContext(displayContext);
         return storeSelection(session, selection);
     }
 

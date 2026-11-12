@@ -2,8 +2,10 @@ package com.sim.ui.tests.profile;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.microsoft.playwright.Page;
+import com.microsoft.playwright.Response;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Assumptions;
@@ -11,9 +13,134 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 
 import com.sim.ui.base.BaseUiIT;
+import com.sim.ui.base.ChatReviewFixture;
 
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class ProfileCustomerDeepLinkJourneyIT extends BaseUiIT {
+
+    @Test
+    void phase2_lateFailureCannotReplaceTheActiveChat() {
+        ChatReviewFixture fixture = new ChatReviewFixture(context);
+        fixture.holdFirstDetail();
+        fixture.openProfile(page);
+        page.locator("tr[data-chat-id='" + ChatReviewFixture.CHAT_A + "'] td:nth-child(4)").click();
+        fixture.awaitHeldDetail(page);
+        page.locator("tr[data-chat-id='" + ChatReviewFixture.CHAT_B + "'] td:nth-child(4)").click();
+        page.waitForFunction("document.querySelector('#cpDetailPrompt').textContent === 'Synthetic question B'");
+        Response late = page.waitForResponse(response -> response.url().contains("selectionId=selection-a"),
+                fixture::releaseFirstDetailFailure);
+        late.finished();
+        page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+        assertEquals(ChatReviewFixture.PROMPT_B, page.locator("#cpDetailPrompt").textContent());
+        assertEquals(ChatReviewFixture.RESPONSE_B, page.locator("#cpDetailResponse").textContent());
+        fixture.assertNoUnexpectedRequests();
+    }
+
+    @Test
+    void phase2_hiddenPreviewStaysHiddenAfterItsRequestCompletes() {
+        ChatReviewFixture fixture = new ChatReviewFixture(context);
+        fixture.holdFirstDetail();
+        fixture.openProfile(page);
+        page.locator("tr[data-chat-id='" + ChatReviewFixture.CHAT_A + "'] td:nth-child(4)").click();
+        fixture.awaitHeldDetail(page);
+        page.evaluate("document.querySelector('#cpDetailCard').style.display = 'none'");
+        Response late = page.waitForResponse(response -> response.url().contains("selectionId=selection-a"),
+                fixture::releaseFirstDetail);
+        late.finished();
+        page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+        assertTrue(page.locator("#cpDetailCard").isHidden());
+        assertEquals("Loading prompt...", page.locator("#cpDetailPrompt").textContent());
+        fixture.assertNoUnexpectedRequests();
+    }
+
+    @Test
+    void phase2_languageChangeInvalidatesPendingTranslation() {
+        ChatReviewFixture fixture = new ChatReviewFixture(context);
+        fixture.openProfile(page);
+        page.locator("tr[data-chat-id='" + ChatReviewFixture.CHAT_A + "'] td:nth-child(4)").click();
+        page.waitForFunction("document.querySelector('#cpDetailPrompt').textContent === 'Synthetic question A'");
+        page.locator("#cpTranslatePromptBtn").click();
+        fixture.awaitHeldTranslation(page);
+        page.selectOption("#cpTranslateTargetLang", "fr");
+        Response late = page.waitForResponse(response -> response.url().endsWith("/review/translate"),
+                fixture::releaseFirstTranslation);
+        late.finished();
+        page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+        assertEquals("", page.locator("#cpPromptTranslationMeta").textContent());
+        assertEquals("", page.locator("#cpPromptTranslationOutput").textContent());
+        fixture.assertNoUnexpectedRequests();
+    }
+
+    @Test
+    void phase2_lateTranslationCannotOverwriteTheActiveChatTranslation() {
+        ChatReviewFixture fixture = new ChatReviewFixture(context);
+        fixture.openProfile(page);
+        page.locator("tr[data-chat-id='" + ChatReviewFixture.CHAT_A + "'] td:nth-child(4)").click();
+        page.waitForFunction("document.querySelector('#cpDetailPrompt').textContent === 'Synthetic question A'");
+        page.locator("#cpTranslatePromptBtn").click();
+        fixture.awaitHeldTranslation(page);
+        page.locator("tr[data-chat-id='" + ChatReviewFixture.CHAT_B + "'] td:nth-child(4)").click();
+        page.waitForFunction("document.querySelector('#cpDetailPrompt').textContent === 'Synthetic question B'");
+        page.locator("#cpTranslatePromptBtn").click();
+        page.waitForFunction("document.querySelector('#cpPromptTranslationOutput').textContent === 'Synthetic translation B'");
+        Response late = page.waitForResponse(response -> response.url().endsWith("/review/translate"),
+                fixture::releaseFirstTranslation);
+        late.finished();
+        page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+        assertEquals("Synthetic translation B", page.locator("#cpPromptTranslationOutput").textContent());
+        assertEquals(ChatReviewFixture.PROMPT_B, page.locator("#cpDetailPrompt").textContent());
+        fixture.assertNoUnexpectedRequests();
+    }
+
+    @Test
+    void phase2_detachedPreviewCannotOverwriteItsReplacement() {
+        ChatReviewFixture fixture = new ChatReviewFixture(context);
+        fixture.holdFirstDetail();
+        fixture.openProfile(page);
+        page.locator("tr[data-chat-id='" + ChatReviewFixture.CHAT_A + "'] td:nth-child(4)").click();
+        fixture.awaitHeldDetail(page);
+        page.evaluate("() => { const old = document.querySelector('#cpDetailCard'); const replacement = old.cloneNode(true); replacement.querySelector('#cpDetailPrompt').textContent = 'Replacement panel'; old.replaceWith(replacement); }");
+        Response late = page.waitForResponse(response -> response.url().contains("selectionId=selection-a"),
+                fixture::releaseFirstDetail);
+        late.finished();
+        page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+        assertEquals("Replacement panel", page.locator("#cpDetailPrompt").textContent());
+        fixture.assertNoUnexpectedRequests();
+    }
+
+    @Test
+    void phase1_lateFirstPreviewCannotOverwriteTheActiveChat() throws Exception {
+        ChatReviewFixture fixture = new ChatReviewFixture(context);
+        fixture.holdFirstDetail();
+        fixture.openProfile(page);
+        page.locator("#cpSubmittedChatsBody tr[data-chat-id='" + ChatReviewFixture.CHAT_A + "'] td:nth-child(4)").click();
+        fixture.awaitHeldDetail(page);
+        page.locator("#cpSubmittedChatsBody tr[data-chat-id='" + ChatReviewFixture.CHAT_B + "'] td:nth-child(4)").click();
+        page.waitForFunction("document.querySelector('#cpDetailPrompt').textContent === 'Synthetic question B'");
+
+        Response lateResponse = page.waitForResponse(response -> response.url().contains("selectionId=selection-a"),
+                fixture::releaseFirstDetail);
+        lateResponse.finished();
+        page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+        fixture.capture(page, "profile-delayed-response");
+        fixture.assertNoUnexpectedRequests();
+        assertEquals(ChatReviewFixture.PROMPT_B, page.locator("#cpDetailPrompt").textContent(),
+                "A late response for chat A must not replace the active chat B.");
+        assertEquals(ChatReviewFixture.RESPONSE_B, page.locator("#cpDetailResponse").textContent());
+    }
+
+    @Test
+    void phase1_profilePreviewPreservesOriginalTextWithoutSelectingChat() throws Exception {
+        ChatReviewFixture fixture = new ChatReviewFixture(context);
+        fixture.openProfile(page);
+        page.locator("#cpSubmittedChatsBody tr[data-chat-id='" + ChatReviewFixture.CHAT_A + "'] td:nth-child(4)").click();
+        page.waitForFunction("document.querySelector('#cpDetailResponse').textContent === 'Synthetic answer A, preserved **verbatim**.'");
+        assertEquals(ChatReviewFixture.PROMPT_A, page.locator("#cpDetailPrompt").textContent());
+        assertEquals(ChatReviewFixture.RESPONSE_A, page.locator("#cpDetailResponse").textContent());
+        assertFalse(page.locator("#cpSubmittedChatsBody input.cp-chat-checkbox").first().isChecked());
+        fixture.capture(page, "profile-original-text");
+        fixture.assertNoUnexpectedRequests();
+    }
 
     private final String userUsername = System.getProperty("userUsername", "user");
     private final String userPassword = System.getProperty("userPassword", "user");
@@ -100,12 +227,11 @@ public class ProfileCustomerDeepLinkJourneyIT extends BaseUiIT {
         page.click("#toggleLabeledOnlyBtn", new Page.ClickOptions().setNoWaitAfter(true));
         page.waitForSelector("#sessionNameList tr");
 
+        page.locator("#sessionNameList a.customer-profile-link").first().waitFor(
+            new com.microsoft.playwright.Locator.WaitForOptions().setState(com.microsoft.playwright.options.WaitForSelectorState.ATTACHED));
         int catalogLinkCount = page.locator("#sessionNameList a.customer-profile-link").count();
-        if (catalogLinkCount <= 0) {
-            assertTrue(page.locator("#sessionNameList tr").count() > 0,
-                "Expected username catalog table rows to render even when no customer-profile links are present.");
-            return;
-        }
+        assertTrue(catalogLinkCount > 0,
+                "A customer-profile link is required to certify the live catalog deep-link journey.");
 
         page.click("#sessionNameList a.customer-profile-link", new Page.ClickOptions().setNoWaitAfter(true));
         waitForPath("/customer-profile");
@@ -128,12 +254,12 @@ public class ProfileCustomerDeepLinkJourneyIT extends BaseUiIT {
 
     private String readDashboardButtonTarget(String buttonText, String expectedPathFragment) {
         String selector = "button.dashboard-switch-btn:has-text('" + buttonText + "')";
-        Assumptions.assumeTrue(page.locator(selector).count() > 0,
-            "Skipping: dashboard switch button is unavailable in this environment: " + buttonText);
+        page.locator(selector).first().waitFor(new com.microsoft.playwright.Locator.WaitForOptions()
+                .setState(com.microsoft.playwright.options.WaitForSelectorState.ATTACHED));
 
         String dataTarget = page.locator(selector).first().getAttribute("data-target");
-        Assumptions.assumeTrue(dataTarget != null && dataTarget.contains(expectedPathFragment),
-            "Skipping: expected dashboard switch target containing " + expectedPathFragment + " for " + buttonText);
+        assertTrue(dataTarget != null && dataTarget.contains(expectedPathFragment),
+            "Expected dashboard switch target containing " + expectedPathFragment + " for " + buttonText);
         return dataTarget;
     }
 

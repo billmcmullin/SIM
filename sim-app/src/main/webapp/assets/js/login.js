@@ -27,7 +27,16 @@ function resolveContextPath() {
 const contextPath = resolveContextPath();
 const loginUrl = `${window.location.origin}${contextPath}/api/auth/login`;
 
+function clearNavigationScope() {
+    try {
+        sessionStorage.removeItem(`${contextPath}:sim.navigation.scope`);
+    } catch {
+        return;
+    }
+}
+
 if (form && result) {
+    clearNavigationScope();
     form.addEventListener("submit", async (evt) => {
         evt.preventDefault();
         result.textContent = "Authenticating…";

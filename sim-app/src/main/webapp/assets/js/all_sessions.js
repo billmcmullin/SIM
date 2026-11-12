@@ -12,6 +12,65 @@
     let pageSize = 10;
     let widgetNamesMap = {};
     const selectedChatIds = new Set();
+    const previewRows = new Map();
+    const previewCache = new Map();
+    let preview = null;
+    let previewApi = null;
+    let activePreviewSession = '';
+    const previewKey = row => JSON.stringify([row.sessionId || '', String(row.chatId || '')]);
+
+    function visiblePreviewRows() {
+        const root = sessionsTableBody || sessionsContainerDiv;
+        return root ? Array.from(root.querySelectorAll('[data-preview-key]'))
+            .filter(element => element.getClientRects().length > 0)
+            .map(element => previewRows.get(element.dataset.previewKey)).filter(Boolean) : [];
+    }
+
+    async function openPreview(row) {
+        if (!row.chatId) return;
+        activePreviewSession = row.sessionId;
+        const key = previewKey(row);
+        if (previewCache.has(key)) {
+            preview.show(previewCache.get(key));
+            return;
+        }
+        preview.show({ ...row, response: 'Loading response...' }, true);
+        const request = preview.beginRequest('detail');
+        const isCurrent = () => preview.isCurrent(request);
+        try {
+            previewApi ||= import(`${APP}/assets/js/widget_review_util/api_client.js`);
+            const api = await previewApi;
+            if (!isCurrent()) return;
+            const detail = await api.resolvePreviewRow({
+                selectUrl: SELECT_URL, detailUrl: `${APP}/dashboard/widgets/drilldown/view/review-data`,
+                payload: { selectedChatIds: [String(row.chatId)] }, chatId: row.chatId, isCurrent
+            });
+            if (!detail || !isCurrent()) return;
+            if (detail.sessionId && detail.sessionId !== row.sessionId) throw new Error('Chat details did not match the requested session.');
+            const complete = { ...detail, sessionId: row.sessionId };
+            previewCache.set(key, complete);
+            preview.show(complete);
+        } catch (error) {
+            if (isCurrent()) preview.show({ ...row, response: `Unable to load response: ${error.message}`, translationAvailable: false });
+        }
+    }
+
+    function bindChatPreview(element, row, sessionId, idElement) {
+        const chat = { ...row, chatId: String(row.chatId || ''), sessionId };
+        const key = previewKey(chat);
+        previewRows.set(key, chat);
+        element.dataset.previewKey = key;
+        const button = document.createElement('button');
+        button.type = 'button';
+        button.className = 'chat-preview-open';
+        button.textContent = chat.chatId;
+        button.setAttribute('aria-label', `Preview chat ${chat.chatId}`);
+        button.disabled = !chat.chatId;
+        idElement.replaceChildren(button);
+        element.addEventListener('click', event => {
+            if (event.target instanceof Element && !event.target.closest('input, a')) void openPreview(chat);
+        });
+    }
 
     const urlParams = new URLSearchParams(window.location.search);
     let activityFilter = (urlParams.get('activity') || 'all').toLowerCase();
@@ -241,7 +300,8 @@
             u.searchParams.delete('labeledOnly');
         }
 
-        window.history.replaceState({}, '', u.toString());
+        const current = window.history.state || {};
+        window.history.replaceState({ ...current, ...(current.simInline ? { url: u.toString() } : {}) }, '', u.toString());
     }
 
     function setActivityFilter(next) {
@@ -267,6 +327,9 @@
         if (!sessionsTableBody && !sessionsContainerDiv) {
             return;
         }
+        preview?.hide(false);
+        previewRows.clear();
+        previewCache.clear();
         if (sessionsTableBody) {
             sessionsTableBody.innerHTML = '<tr><td colspan="5" class="small-note">Loading sessions…</td></tr>';
         }
@@ -319,6 +382,7 @@
             list.forEach(s => {
                 const label = s.sessionIdDisplay || s.displayLabel || s.sessionId || '';
                 const tr = document.createElement('tr');
+                tr.dataset.sessionId = s.sessionId || '';
 
                 const tdId = document.createElement('td');
                 tdId.className = 'session-id-col';
@@ -381,6 +445,7 @@
                 const label = s.sessionIdDisplay || s.displayLabel || s.sessionId || '';
                 const card = document.createElement('div');
                 card.className = 'session-card';
+                card.dataset.sessionId = s.sessionId || '';
 
                 const header = document.createElement('div');
                 header.className = 'session-header';
@@ -450,8 +515,10 @@
     function toggleChatsRow(sessionRow, sessionId, btn) {
         const next = sessionRow.nextElementSibling;
         if (next && next.classList.contains('session-chats-row') && next.dataset.for === sessionId) {
+            if (activePreviewSession === sessionId) preview?.hide(false);
             next.remove();
             btn.textContent = 'Expand';
+            preview?.refreshNavigation();
             return;
         }
 
@@ -473,8 +540,8 @@
         sessionRow.parentNode.insertBefore(loadingRow, sessionRow.nextSibling);
         btn.textContent = 'Collapse';
 
-        safeFetchJson(`${CHATS_URL}?sessionId=${encodeURIComponent(sessionId)}`, { credentials: 'same-origin' })
-            .then(json => renderChatsIntoTd(tdMain, json.rows || []))
+        return safeFetchJson(`${CHATS_URL}?sessionId=${encodeURIComponent(sessionId)}`, { credentials: 'same-origin' })
+            .then(json => renderChatsIntoTd(tdMain, json.rows || [], sessionId))
             .catch(err => {
                 tdMain.innerHTML = `<div class="empty-row">Failed to load chats: ${esc(err.message)}</div>`;
             });
@@ -486,21 +553,23 @@
             return;
         }
         if (chatsEl.style.display === 'block') {
+            if (activePreviewSession === sessionId) preview?.hide(false);
             chatsEl.style.display = 'none';
             btn.textContent = 'Expand';
+            preview?.refreshNavigation();
             return;
         }
         chatsEl.innerHTML = '<div class="small-note">Loading chats…</div>';
         chatsEl.style.display = 'block';
         btn.textContent = 'Collapse';
-        safeFetchJson(`${CHATS_URL}?sessionId=${encodeURIComponent(sessionId)}`, { credentials: 'same-origin' })
-            .then(json => renderChatsIntoDiv(chatsEl, json.rows || []))
+        return safeFetchJson(`${CHATS_URL}?sessionId=${encodeURIComponent(sessionId)}`, { credentials: 'same-origin' })
+            .then(json => renderChatsIntoDiv(chatsEl, json.rows || [], sessionId))
             .catch(err => {
                 chatsEl.innerHTML = `<div class="empty-row">Failed to load chats: ${esc(err.message)}</div>`;
             });
     }
 
-    function renderChatsIntoTd(td, rows) {
+    function renderChatsIntoTd(td, rows, sessionId) {
         td.innerHTML = '';
 
         const table = document.createElement('table');
@@ -558,9 +627,13 @@
                 r.appendChild(tdPrompt);
 
                 const tdCreated = document.createElement('td');
-                tdCreated.textContent = row.createdAt ? fmt(row.createdAt) : '';
+                const createdAt = document.createElement('time');
+                createdAt.className = 'chat-created-at';
+                window.SimChatPreview.setTimestamp(createdAt, row.createdAt);
+                tdCreated.appendChild(createdAt);
                 r.appendChild(tdCreated);
 
+                bindChatPreview(r, row, sessionId, tdId);
                 tbody.appendChild(r);
             });
         }
@@ -572,9 +645,10 @@
         wrapper.appendChild(table);
 
         td.appendChild(wrapper);
+        preview?.refreshNavigation();
     }
 
-    function renderChatsIntoDiv(container, rows) {
+    function renderChatsIntoDiv(container, rows, sessionId) {
         container.innerHTML = '';
         if (!rows.length) {
             container.innerHTML = '<div class="empty-row">No chats in this session.</div>';
@@ -628,11 +702,16 @@
             const right = document.createElement('div');
             right.style.flex = '0 0 160px';
             right.style.color = '#6b7280';
-            right.textContent = row.createdAt ? fmt(row.createdAt) : '';
+            const createdAt = document.createElement('time');
+            createdAt.className = 'chat-created-at';
+            window.SimChatPreview.setTimestamp(createdAt, row.createdAt);
+            right.appendChild(createdAt);
             wrap.appendChild(right);
 
+            bindChatPreview(wrap, row, sessionId, idDiv);
             container.appendChild(wrap);
         });
+        preview?.refreshNavigation();
     }
 
     async function selectAllInSession(sessionId, contextElement) {
@@ -837,6 +916,33 @@
         // expected in HTML as a single toggle button
         toggleLabeledOnlyBtn = document.getElementById('toggleLabeledOnlyBtn');
 
+        const previewRow = row => Array.from((sessionsTableBody || sessionsContainerDiv).querySelectorAll('[data-preview-key]'))
+            .find(element => element.dataset.previewKey === previewKey(row));
+        preview = window.SimChatPreview.create({
+            root: document.getElementById('detailCard'), prefix: 'session',
+            capabilities: { share: false, translate: true },
+            placement: 'anchored-right', minimumHeight: 520, getAnchor: previewRow,
+            getVerticalBounds: row => {
+                const source = previewRow(row);
+                const bounds = source?.getBoundingClientRect();
+                if (!bounds || bounds.top >= window.innerHeight || bounds.bottom <= 0) return;
+                const header = source.closest('.session-chats-row')?.previousElementSibling
+                    || source.closest('.session-card')?.querySelector('.session-header');
+                const headerBounds = header?.getBoundingClientRect();
+                if (!headerBounds || headerBounds.bottom <= 0 || headerBounds.top >= window.innerHeight) return;
+                const top = Math.max(12, (document.querySelector('.top-bar')?.getBoundingClientRect().bottom || 0) + 12);
+                const bottom = window.innerHeight - 12;
+                const above = Math.max(top, headerBounds.top - 8);
+                const below = Math.min(bottom, Math.max(top, headerBounds.bottom + 8));
+                return above - top >= bottom - below ? { top, bottom: above } : { top: below, bottom };
+            },
+            onTranslate: payload => import(`${APP}/assets/js/widget_review_util/api_client.js`)
+                .then(api => api.postJson(`${APP}/dashboard/widgets/drilldown/review/translate`, payload)),
+            getRows: visiblePreviewRows, getKey: previewKey, onNavigate: row => { void openPreview(row); },
+            onClose: () => { activePreviewSession = ''; },
+            getReturnFocus: row => previewRow(row)?.querySelector('.chat-preview-open') || searchInput
+        });
+
         if (showAllUsersBtn) {
             showAllUsersBtn.addEventListener('click', () => setActivityFilter('all'));
         }
@@ -907,7 +1013,10 @@
                         }
                         const json = await res.json();
                         if (json.status === 'ok' && json.selectionId) {
-                            window.location.href = `${APP}/dashboard/widgets/drilldown/review?selectionId=${encodeURIComponent(json.selectionId)}`;
+                            const destination = `${APP}/dashboard/widgets/drilldown/review?selectionId=${encodeURIComponent(json.selectionId)}`;
+                            if (!window.SimNavigation?.navigate(destination, 'Review Selected Chats')) {
+                                window.location.href = destination;
+                            }
                         } else {
                             throw new Error(json.message || 'Unable to create selection');
                         }
@@ -931,10 +1040,42 @@
             labeledOnly = initial.labeledOnly;
         }
 
+        const navigation = window.SimNavigation;
+        const saved = navigation?.readListState('sessions');
+        if (saved) {
+            page = Number.isInteger(saved.page) && saved.page > 0 ? saved.page : page;
+            pageSize = PAGE_SIZE_OPTIONS.includes(saved.pageSize) ? saved.pageSize : pageSize;
+            activityFilter = ['all', 'active'].includes(saved.activity) ? saved.activity : activityFilter;
+            activeDaysFilter = Number.isInteger(saved.activeDays) && saved.activeDays > 0 ? saved.activeDays : activeDaysFilter;
+            labeledOnly = typeof saved.labeledOnly === 'boolean' ? saved.labeledOnly : labeledOnly;
+            if (searchInput) searchInput.value = typeof saved.search === 'string' ? saved.search : '';
+            (Array.isArray(saved.selectedIds) ? saved.selectedIds : []).filter(id => typeof id === 'string')
+                .forEach(id => selectedChatIds.add(id));
+        }
+        navigation?.registerListState('sessions', sessionsTableBody || sessionsContainerDiv, () => ({
+            page, pageSize, activity: activityFilter, activeDays: activeDaysFilter, labeledOnly,
+            search: searchInput?.value || '', selectedIds: Array.from(selectedChatIds), position: navigation.captureScroll(),
+            expandedIds: sessionsTableBody
+                ? Array.from(sessionsTableBody.querySelectorAll('.session-chats-row'), row => row.dataset.for)
+                : Array.from(sessionsContainerDiv?.children || []).filter(card => card.querySelector('.chats-list')?.style.display === 'block')
+                    .map(card => card.dataset.sessionId)
+        }));
         syncFiltersToUrl();
         refreshActivityUi();
         try {
-            await loadSessions(page, '');
+            await loadSessions(page, saved && searchInput ? searchInput.value : '');
+            updateSelectionInfo();
+            if (saved) {
+                const expanded = new Set(Array.isArray(saved.expandedIds) ? saved.expandedIds : []);
+                const root = sessionsTableBody || sessionsContainerDiv;
+                await Promise.all(Array.from(root.children).filter(row => expanded.has(row.dataset.sessionId)).map(row => {
+                    const button = row.querySelector('button');
+                    return button && (sessionsTableBody
+                        ? toggleChatsRow(row, row.dataset.sessionId, button)
+                        : toggleChatsCard(row, row.dataset.sessionId, button));
+                }));
+                navigation?.restoreScroll(saved.position);
+            }
         } finally {
             if (bootLoading && typeof bootLoading.finish === 'function') {
                 bootLoading.finish();

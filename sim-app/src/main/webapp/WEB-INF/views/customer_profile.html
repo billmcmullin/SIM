@@ -147,6 +147,7 @@
 
             <div id="cpChatsStatus" class="helper-note" style="margin-bottom:10px;" aria-live="polite">Loading chats...</div>
 
+            <div class="widget-review-selection-region">
             <div class="widget-review-table">
                 <table class="session-table" aria-label="Submitted chats table">
                     <colgroup>
@@ -183,40 +184,7 @@
                 </div>
             </div>
 
-            <div class="detail-card" id="cpDetailCard" style="display:none; margin-top:14px;" aria-live="polite">
-                <div class="summary-label" id="cpDetailTitle">Selected Chat Details</div>
-                <div>
-                    <strong>Prompt</strong>
-                    <pre id="cpDetailPrompt"></pre>
-                </div>
-
-                <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                    <label for="cpTranslateTargetLang" style="margin:0;">Translate To:</label>
-                    <select id="cpTranslateTargetLang" style="width:auto;">
-                        <option value="en" selected>English</option>
-                        <option value="es">Spanish</option>
-                        <option value="fr">French</option>
-                        <option value="de">German</option>
-                        <option value="pt">Portuguese</option>
-                    </select>
-                </div>
-
-                <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                    <button type="button" id="cpTranslatePromptBtn" class="ghost-btn">Detect and Translate Prompt</button>
-                </div>
-                <div id="cpPromptTranslationMeta" class="helper-note" style="margin-top:8px;"></div>
-                <pre id="cpPromptTranslationOutput" style="display:none; margin-top:8px;"></pre>
-
-                <div style="margin-top:12px;">
-                    <strong>Response</strong>
-                    <pre id="cpDetailResponse"></pre>
-                </div>
-
-                <div style="margin-top:10px; display:flex; gap:8px; align-items:center; flex-wrap:wrap;">
-                    <button type="button" id="cpTranslateResponseBtn" class="ghost-btn">Detect and Translate Response</button>
-                </div>
-                <div id="cpResponseTranslationMeta" class="helper-note" style="margin-top:8px;"></div>
-                <pre id="cpResponseTranslationOutput" style="display:none; margin-top:8px;"></pre>
+            <div class="detail-card detail-overlay-card" id="cpDetailCard" style="display:none;"></div>
             </div>
         </section>
     </div>
@@ -229,6 +197,7 @@
             friendlyName: '${friendlyName}'
         };
     </script>
+    <script src="${contextPath}/assets/js/chat_preview.js"></script>
     <script src="${contextPath}/assets/js/customer_profile.js"></script>
 </body>
 

@@ -9,10 +9,16 @@ public final class OtherParasoftEntry {
     private final String prompt;
     private final String sessionId;
     private final Timestamp createdAt;
+    private final String chatId;
 
     public OtherParasoftEntry(String widgetId, String widgetName, String prompt, String sessionId, Timestamp createdAt) {
+        this(widgetId, widgetName, null, prompt, sessionId, createdAt);
+    }
+
+    public OtherParasoftEntry(String widgetId, String widgetName, String chatId, String prompt, String sessionId, Timestamp createdAt) {
         this.widgetId = widgetId;
         this.widgetName = widgetName;
+        this.chatId = chatId;
         this.prompt = prompt;
         this.sessionId = sessionId;
         this.createdAt = createdAt;
@@ -20,6 +26,14 @@ public final class OtherParasoftEntry {
 
     String getWidgetId() {
         return widgetId;
+    }
+
+    public String getPreviewWidgetId() {
+        return widgetId;
+    }
+
+    public String getChatId() {
+        return chatId;
     }
 
     public String getWidgetName() {

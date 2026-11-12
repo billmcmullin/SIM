@@ -91,6 +91,19 @@ export async function postJson(url, payload = {}, options = {}) {
 /**
  * Generic DELETE JSON helper.
  */
+export async function resolvePreviewRow({ selectUrl, detailUrl, payload, chatId, isCurrent }) {
+    if (!isCurrent()) return null;
+    const selection = await postJson(selectUrl, payload);
+    if (!isCurrent()) return null;
+    if (selection.status !== 'ok' || !selection.selectionId) throw new Error(selection.message || 'Unable to open chat details.');
+    const query = new URLSearchParams({ selectionId: selection.selectionId, page: '1', limit: '1', sortColumn: 'created_at', sortDir: 'DESC' });
+    const data = await getJson(`${detailUrl}?${query.toString()}`);
+    if (!isCurrent()) return null;
+    const row = Array.isArray(data.rows) ? data.rows.find(value => String(value.chatId) === String(chatId)) : null;
+    if (!row || !Object.prototype.hasOwnProperty.call(row, 'response')) throw new Error('Complete chat details were not returned.');
+    return row;
+}
+
 export async function deleteJson(url, options = {}) {
     const res = await fetch(url, {
         method: "DELETE",

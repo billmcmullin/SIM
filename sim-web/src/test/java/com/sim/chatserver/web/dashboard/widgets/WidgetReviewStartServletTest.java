@@ -34,6 +34,39 @@ import static org.junit.jupiter.api.Assertions.assertAll;
  */
 public class WidgetReviewStartServletTest
 {
+    @Test
+    public void displayContextRoundTripsWithoutChangingSelectionAndOldRecordsRemainCompatible() {
+        Selection original = Selection.fromWidget("widget-a", List.of("chat-b", "chat-a"),
+                new SearchTerms("all", "question", "answer"), "2026-11-10");
+        String legacyRecord = SelectionCodec.encode(original.withDisplayContext(""));
+        Selection legacy = SelectionCodec.decode(legacyRecord);
+        assertEquals("", legacy.getDisplayContext());
+        Selection enriched = SelectionCodec.decode(SelectionCodec.encode(original.withDisplayContext("Topic <one> | Day 2026-11-10")));
+        assertAll(() -> assertEquals(original.widgetId, enriched.widgetId),
+                () -> assertEquals(original.displayName, enriched.displayName),
+                () -> assertEquals(original.chatIds, enriched.chatIds),
+                () -> assertEquals(original.date, enriched.date),
+                () -> assertEquals(original.searchTerms.global, enriched.searchTerms.global),
+                () -> assertEquals(original.searchTerms.prompt, enriched.searchTerms.prompt),
+                () -> assertEquals(original.searchTerms.response, enriched.searchTerms.response),
+                () -> assertEquals("Topic <one> | Day 2026-11-10", enriched.getDisplayContext()));
+        assertEquals(legacyRecord, SelectionCodec.encode(enriched.withDisplayContext("")));
+        var snapshot = new TermChatSnapshot("Topic", "widget-a", "chat-a", "prompt", "response",
+            java.sql.Timestamp.from(java.time.Instant.parse("2026-11-10T12:00:00Z")), "session-a");
+        Selection snapshots = Selection.fromTermSnapshots("Topic", "/chat-server/dashboard/topics", List.of(snapshot));
+        Selection decodedSnapshots = SelectionCodec.decode(SelectionCodec.encode(snapshots.withDisplayContext("Topic | Day: 2026-11-10")));
+        assertEquals(SelectionCodec.encode(snapshots), SelectionCodec.encode(decodedSnapshots.withDisplayContext("")));
+        for (String invalid : List.of("x".repeat(513), "bad\ncontext")) {
+            Selection ignored = original.withDisplayContext(invalid);
+            assertEquals("", ignored.getDisplayContext());
+            assertEquals(legacyRecord, SelectionCodec.encode(ignored));
+        }
+        try (var reader = jakarta.json.Json.createReader(new java.io.StringReader(legacyRecord))) {
+            var invalidType = jakarta.json.Json.createObjectBuilder(reader.readObject()).add("displayContext", 17).build();
+            assertEquals(legacyRecord, SelectionCodec.encode(SelectionCodec.decode(invalidType.toString())));
+        }
+    }
+
 
     /**
      * Parasoft Jtest UTA: Test for createSelectionFromGlobalChatIds(HttpSession, List, String, String)

@@ -21,6 +21,7 @@ import com.sim.chatserver.service.dashboard.DashboardProgressMetrics;
 import com.sim.chatserver.startup.AppDataSourceHolder;
 import com.sim.chatserver.term.TermDefinition;
 import com.sim.chatserver.term.TermsStore;
+import com.sim.chatserver.util.DashboardDbUtil;
 import com.sim.chatserver.widget.WidgetEntry;
 
 import static org.mockito.ArgumentMatchers.anyInt;
@@ -41,6 +42,43 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  */
 public class DashboardMetricsServiceTest
 {
+    @Test
+    public void previewProjectionRetainsOriginalFilteringOrderAndLimit() throws Exception {
+    Connection connection = mock(Connection.class);
+    PreparedStatement statement = mock(PreparedStatement.class);
+    ResultSet rows = mock(ResultSet.class);
+    WidgetEntry widget = mock(WidgetEntry.class);
+    when(widget.getWidgetId()).thenReturn("phase4_widget");
+    when(widget.getDisplayName()).thenReturn("Phase 4 widget");
+    String table = DashboardDbUtil.sanitizeWidgetTableName("phase4_widget");
+    when(connection.prepareStatement(nullable(String.class))).thenAnswer(invocation -> {
+        assertEquals("SELECT prompt, session_id, created_at, widget_chat_id FROM "
+            + DashboardDbUtil.quoteIdentifier(table) + " ORDER BY created_at DESC LIMIT 500", invocation.getArgument(0));
+        return statement;
+    });
+    when(statement.executeQuery()).thenReturn(rows);
+    when(rows.next()).thenReturn(true, true, true, true, false);
+    when(rows.getString("prompt")).thenReturn("first", "missing date", "excluded", "last");
+    when(rows.getString("widget_chat_id")).thenReturn("chat-first", "chat-last");
+    when(rows.getString("session_id")).thenReturn("session-first", "session-last");
+    Timestamp timestamp = Timestamp.valueOf("2026-11-10 12:00:00");
+    DashboardMetricsService service = DashboardMetricsService.createForDashboard(
+        mock(AppDataSourceHolder.class), mock(TermsStore.class), 3);
+    var method = DashboardMetricsService.class.getDeclaredMethod("collectOtherParasoftForWidget",
+        Connection.class, WidgetEntry.class, java.util.Map.class, List.class, List.class);
+    method.setAccessible(true);
+    List<OtherParasoftEntry> collected = new ArrayList<>();
+    try (var times = org.mockito.Mockito.mockStatic(com.sim.chatserver.util.SqlTimeUtil.class)) {
+        times.when(() -> com.sim.chatserver.util.SqlTimeUtil.safeTimestamp(rows, "created_at"))
+            .thenReturn(timestamp, null, timestamp, timestamp);
+        method.invoke(service, connection, widget, new java.util.HashMap<>(java.util.Map.of(table, true)),
+            List.of(java.util.regex.Pattern.compile("excluded")), collected);
+    }
+    assertEquals(List.of("chat-first", "chat-last"), collected.stream().map(OtherParasoftEntry::getChatId).toList());
+    assertEquals(List.of("first", "last"), collected.stream().map(OtherParasoftEntry::getPrompt).toList());
+    assertEquals(List.of("session-first", "session-last"), collected.stream().map(OtherParasoftEntry::getSessionId).toList());
+    }
+
     @Test
     public void sharedDatePredicateSupportsTextAndNativeTimestampColumns() throws Exception {
         try (Connection connection = java.sql.DriverManager.getConnection(

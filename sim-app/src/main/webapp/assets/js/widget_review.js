@@ -630,15 +630,25 @@ function wireManualMessageUi() {
 }
 
 function wireDetailCardUi() {
+    const previewRow = row => Array.from(byId('widgetReviewBody').querySelectorAll('tr[data-row-key]'))
+        .find(element => element.dataset.rowKey === rowKey(row));
+    detailPreview = window.SimChatPreview.create({
+        root: byId('detailCard'),
+        capabilities: { share: true, translate: true },
+        placement: 'anchored-right', minimumHeight: 520, getAnchor: previewRow,
+        getRows: getCurrentPageRows,
+        getKey: rowKey,
+        onNavigate: row => { openDetailCard(row); renderTable(); },
+        onClose: () => { state.activeDetailKey = ''; clearTranslationUi(); renderTable(); },
+        getReturnFocus: row => previewRow(row)?.querySelector('.chat-preview-open') || byId('reviewSearchInput'),
+        onLanguageChange: clearTranslationUi
+    });
     const promptBtn = byId("translatePromptBtn");
     const responseBtn = byId("translateResponseBtn");
     const langSel = byId("translateTargetLang");
     const sourceSel = byId("translateSourceLang");
-    const revealBtn = byId("shareChatRevealBtn");
-    const sharePanel = byId("shareChatPanel");
     const shareBtn = byId("shareChatByEmailBtn");
     const shareBusy = byId("shareChatEmailBusyHint");
-    const closeBtn = byId("detailCardCloseBtn");
 
     if (promptBtn) {
         promptBtn.addEventListener("click", async () => {
@@ -660,39 +670,24 @@ function wireDetailCardUi() {
         });
     }
 
-    if (revealBtn && sharePanel) {
-        revealBtn.addEventListener("click", () => {
-            const opening = sharePanel.hidden || sharePanel.getAttribute("aria-hidden") === "true";
-            sharePanel.hidden = !opening;
-            sharePanel.setAttribute("aria-hidden", opening ? "false" : "true");
-            revealBtn.textContent = opening ? "Hide Email Form" : "Send To Teammate";
-            if (opening) {
-                const toInput = byId("shareEmailTo");
-                toInput?.focus();
-            }
-        });
-    }
-
     if (shareBtn) {
         shareBtn.addEventListener("click", async () => {
+            const request = detailPreview.beginRequest('share');
             shareBtn.disabled = true;
             if (shareBusy) {
                 shareBusy.textContent = "Sending...";
             }
             try {
-                await sendActiveChatByEmail();
+                await sendActiveChatByEmail(request);
             } finally {
-                shareBtn.disabled = false;
-                if (shareBusy) {
-                    shareBusy.textContent = "";
+                if (detailPreview.isCurrent(request)) {
+                    shareBtn.disabled = false;
+                    if (shareBusy) shareBusy.textContent = "";
                 }
             }
         });
     }
 
-    if (closeBtn) {
-        closeBtn.addEventListener("click", closeDetailCard);
-    }
 }
 
 async function onManualMessageSend() {
@@ -1178,6 +1173,7 @@ function applyFilterAndRender() {
 }
 
 function renderTable() {
+    detailPreview?.refreshNavigation();
     const tbody = byId("widgetReviewBody");
     const pageInfo = byId("pageInfo");
     const selectAllVisible = byId("reviewSelectAll");
@@ -1215,13 +1211,17 @@ function renderTable() {
         <td class="select-column">
           <input type="checkbox" class="row-select" data-key="${escapeHtml(key)}" ${checked}>
         </td>
-        <td class="row-open-cell">${escapeHtml(r.chatId || "")}</td>
+        <td class="row-open-cell"><button type="button" class="chat-preview-open" aria-label="Preview chat ${escapeHtml(r.chatId || "")}">${escapeHtml(r.chatId || "")}</button></td>
         <td class="row-open-cell" title="${escapeHtml(r.prompt || "")}">${escapeHtml((r.prompt || "").slice(0, 220))}</td>
-        <td class="row-open-cell">${escapeHtml(r.createdAt || "")}</td>
+        <td class="row-open-cell"><time class="chat-created-at"></time></td>
         <td class="row-open-cell">${escapeHtml(r.sessionIdDisplay || r.sessionId || "")}</td>
       </tr>
     `;
     }).join("");
+
+    tbody.querySelectorAll('time.chat-created-at').forEach((element, index) => {
+        window.SimChatPreview.setTimestamp(element, pageRows[index].createdAt);
+    });
 
     tbody.querySelectorAll("input.row-select").forEach((cb) => {
         cb.addEventListener("click", (ev) => ev.stopPropagation());
@@ -1280,6 +1280,8 @@ function renderTable() {
     }
 }
 
+let detailPreview = null;
+
 function openDetailCard(row) {
     const card = byId("detailCard");
     const title = byId("detailTitle");
@@ -1292,39 +1294,7 @@ function openDetailCard(row) {
 
     state.activeDetailKey = rowKey(row);
 
-    title.textContent = `Selected Chat Details${row.chatId ? ` • Chat ${row.chatId}` : ""}`;
-    prompt.textContent = row.prompt || "(empty prompt)";
-    response.textContent = row.response || "(empty response)";
-
-    clearTranslationUi();
-    const sharePanel = byId("shareChatPanel");
-    const revealBtn = byId("shareChatRevealBtn");
-    if (sharePanel) {
-        sharePanel.hidden = true;
-        sharePanel.setAttribute("aria-hidden", "true");
-    }
-    if (revealBtn) {
-        revealBtn.textContent = "Send To Teammate";
-    }
-    setTextById("shareChatEmailStatus", "");
-    setTextById("shareChatEmailBusyHint", "");
-    const customMessageInput = byId("shareCustomMessage");
-    if (customMessageInput) {
-        customMessageInput.value = "";
-    }
-
-    card.style.display = "block";
-}
-
-function closeDetailCard() {
-    const card = byId("detailCard");
-    if (!card) {
-        return;
-    }
-
-    state.activeDetailKey = "";
-    card.style.display = "none";
-    renderTable();
+    detailPreview.show(row);
 }
 
 function getActiveDetailRow() {
@@ -1344,6 +1314,7 @@ function clearTranslationUi() {
 async function translateText(sourceText, targetLang, metaId, outId, label, sourceLang = "auto") {
     const meta = byId(metaId);
     const out = byId(outId);
+    const request = detailPreview.beginRequest(outId, true);
 
     if (!sourceText || !sourceText.trim()) {
         if (meta) {
@@ -1374,6 +1345,7 @@ async function translateText(sourceText, targetLang, metaId, outId, label, sourc
         let data = {};
         try { data = text ? JSON.parse(text) : {}; } catch { data = {}; }
 
+        if (!detailPreview.isCurrent(request)) return;
         if (!res.ok || data.status !== "ok") {
             throw new Error(data.message || `Translate failed (HTTP ${res.status})`);
         }
@@ -1390,6 +1362,7 @@ async function translateText(sourceText, targetLang, metaId, outId, label, sourc
             out.style.display = "block";
         }
     } catch (e) {
+        if (!detailPreview.isCurrent(request)) return;
         warn("translation failed", e);
         if (meta) {
             meta.textContent = `Translation failed: ${e?.message || "Unknown error"}`;
@@ -1398,7 +1371,7 @@ async function translateText(sourceText, targetLang, metaId, outId, label, sourc
     }
 }
 
-async function sendActiveChatByEmail() {
+async function sendActiveChatByEmail(request) {
     const statusEl = byId("shareChatEmailStatus");
     const toInput = byId("shareEmailTo");
     const customMessageInput = byId("shareCustomMessage");
@@ -1442,6 +1415,7 @@ async function sendActiveChatByEmail() {
             headers: buildHeaders()
         });
 
+        if (!detailPreview.isCurrent(request)) return;
         const translatedParts = [];
         if (result?.translatedPrompt) {
             translatedParts.push("prompt translated");
@@ -1455,6 +1429,7 @@ async function sendActiveChatByEmail() {
             statusEl.textContent = `Email sent to ${recipient}${detail}.`;
         }
     } catch (e) {
+        if (!detailPreview.isCurrent(request)) return;
         warn("share by email failed", e);
         const requestId = e?.requestId || e?.data?.requestId || "";
         const msg = e?.data?.message || e?.message || "Failed to send email.";
@@ -1465,6 +1440,7 @@ async function sendActiveChatByEmail() {
 }
 
 function syncVisibleSelectAll() {
+    detailPreview?.refreshNavigation();
     const selectAllVisible = byId("reviewSelectAll");
     if (!selectAllVisible) {
         return;

@@ -147,7 +147,9 @@
 
         const qs = params.toString();
         const newUrl = `${window.location.pathname}${qs ? `?${qs}` : ''}${window.location.hash || ''}`;
-        window.history.replaceState({}, '', newUrl);
+        const current = window.history.state || {};
+        const destination = new URL(newUrl, window.location.href).href;
+        window.history.replaceState({ ...current, ...(current.simInline ? { url: destination } : {}) }, '', newUrl);
     }
 
     function getDateParams() {
@@ -185,7 +187,9 @@
         return params;
     }
 
-    async function openReviewForChatIds(chatIds) {
+    let reviewScope = '';
+
+    async function openReviewForChatIds(chatIds, topic = '', widget = '') {
         if (!Array.isArray(chatIds) || !chatIds.length) {
             return;
         }
@@ -194,7 +198,9 @@
                 method: 'POST',
                 credentials: 'same-origin',
                 headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ selectedChatIds: chatIds })
+                body: JSON.stringify({ selectedChatIds: chatIds,
+                    displayContext: ['Popular Topics', widget ? `Widget: ${widget}` : '',
+                        topic ? `Topic: ${topic}` : '', reviewScope].filter(Boolean).join(' | ').slice(0, 512) })
             });
 
             const text = await res.text();
@@ -208,7 +214,10 @@
                 throw new Error(data.message || 'No selectionId returned');
             }
 
-            window.location.href = `${contextPath}/dashboard/widgets/drilldown/review?selectionId=${encodeURIComponent(data.selectionId)}`;
+            const destination = `${contextPath}/dashboard/widgets/drilldown/review?selectionId=${encodeURIComponent(data.selectionId)}`;
+            if (!window.SimNavigation?.navigate(destination, 'Review Selected Chats')) {
+                window.location.href = destination;
+            }
         } catch (err) {
             console.error(err);
             console.warn(`Unable to open review: ${err.message}`);
@@ -224,9 +233,9 @@
         }
     }
 
-    function mentionButton(mentions, chatIds) {
+    function mentionButton(mentions, chatIds, topic, widget = '') {
         const idsJson = esc(JSON.stringify(Array.isArray(chatIds) ? chatIds : []));
-        return `<button type="button" class="ghost-btn small topic-mentions-btn" data-chat-ids='${idsJson}'>${mentions ?? 0}</button>`;
+        return `<button type="button" class="ghost-btn small topic-mentions-btn" data-chat-ids='${idsJson}' data-review-topic="${esc(topic || '')}" data-review-widget="${esc(widget)}">${mentions ?? 0}</button>`;
     }
 
     function renderGlobal(rows) {
@@ -241,7 +250,7 @@
             <tr>
                 <td>${r.rank ?? ''}</td>
                 <td>${esc(r.topic)}</td>
-                <td>${mentionButton(r.mentions, r.selectedChatIds)}</td>
+                <td>${mentionButton(r.mentions, r.selectedChatIds, r.topic)}</td>
             </tr>
         `).join('');
     }
@@ -264,7 +273,7 @@
                 <tr>
                     <td>${t.rank ?? ''}</td>
                     <td>${esc(t.topic)}</td>
-                    <td>${mentionButton(t.mentions, t.selectedChatIds)}</td>
+                    <td>${mentionButton(t.mentions, t.selectedChatIds, t.topic, widgetName)}</td>
                 </tr>
             `).join('') : '<tr><td colspan="3" class="empty-row">No topics found.</td></tr>';
 
@@ -330,7 +339,7 @@
                     }
                     const row = rows[elements[0].index];
                     if (row) {
-                        openReviewForChatIds(row.selectedChatIds || []);
+                        openReviewForChatIds(row.selectedChatIds || [], row.topic);
                     }
                 }
             }
@@ -371,7 +380,7 @@
                         }
                         const topic = topics[elements[0].index];
                         if (topic) {
-                            openReviewForChatIds(topic.selectedChatIds || []);
+                            openReviewForChatIds(topic.selectedChatIds || [], topic.topic, widgetName);
                         }
                     }
                 }
@@ -386,7 +395,7 @@
             btn.addEventListener('click', () => {
                 let ids = [];
                 try { ids = JSON.parse(btn.dataset.chatIds || '[]'); } catch { ids = []; }
-                openReviewForChatIds(ids);
+                openReviewForChatIds(ids, btn.dataset.reviewTopic || '', btn.dataset.reviewWidget || '');
             });
         });
     }
@@ -395,6 +404,9 @@
         if (!data || typeof data !== 'object') {
             return;
         }
+        reviewScope = data.rangeStart && data.rangeEnd
+            ? data.rangeStart === data.rangeEnd ? `Day: ${data.rangeStart}` : `Range: ${data.rangeStart} to ${data.rangeEnd}`
+            : data.day ? `Day: ${data.day}` : 'All time';
         if (summaryDayEl) {
             summaryDayEl.textContent = data.day || '—';
         }

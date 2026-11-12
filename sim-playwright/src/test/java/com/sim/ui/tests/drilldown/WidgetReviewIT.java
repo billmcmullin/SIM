@@ -6,6 +6,7 @@ import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
@@ -14,11 +15,246 @@ import org.junit.jupiter.api.TestMethodOrder;
 
 import com.microsoft.playwright.APIResponse;
 import com.microsoft.playwright.Page;
+import com.microsoft.playwright.Response;
 import com.microsoft.playwright.options.RequestOptions;
 import com.sim.ui.base.BaseUiIT;
+import com.sim.ui.base.ChatReviewFixture;
 
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class WidgetReviewIT extends BaseUiIT {
+
+    @Test
+    void phase6_liveWidgetPreviewReviewAndBackPreserveSourceAndSelection() {
+        if (!tryLoginViaApi(System.getProperty("userUsername", "user"), System.getProperty("userPassword", "user"))) {
+            loginViaApi(adminUsername, adminPassword);
+        }
+        String sessionId = findAnySessionId();
+        assertTrue(sessionId != null && !sessionId.isBlank(), "An authenticated live session with chats is required.");
+        List<String> chatIds = findChatIdsForSession(sessionId, 1);
+        assertFalse(chatIds.isEmpty(), "Live chat data is required for this acceptance case.");
+        String selectionId = createSelectionFromChatIds(chatIds);
+        assertTrue(selectionId != null && !selectionId.isBlank(), "An authorized selection must resolve the live chat.");
+        APIResponse detail = page.request().get(baseUrl + "/dashboard/widgets/drilldown/view/review-data?selectionId=" + urlEncode(selectionId));
+        assertEquals(200, detail.status(), "Authorized review data must be available.");
+        var rows = com.google.gson.JsonParser.parseString(detail.text()).getAsJsonObject().getAsJsonArray("rows");
+        assertTrue(rows != null && !rows.isEmpty(), "The authorized selection must contain a resolved row.");
+        String widgetId = rows.get(0).getAsJsonObject().get("widgetId").getAsString();
+        assertFalse(widgetId.isBlank(), "Widget identity must come from authorized metadata.");
+        String widgetUrl = baseUrl + "/dashboard/widgets/view?widgetId=" + urlEncode(widgetId);
+        List<String> unexpectedWrites = new ArrayList<>();
+        context.route("**/*", route -> {
+            String method = route.request().method();
+            String path = java.net.URI.create(route.request().url()).getPath();
+            if (!List.of("GET", "HEAD", "OPTIONS").contains(method)
+                    && !path.endsWith("/dashboard/widgets/review/start")) {
+                unexpectedWrites.add(method + " " + path);
+                route.abort();
+            } else {
+                route.fallback();
+            }
+        });
+        navigateWithCommit(widgetUrl);
+        page.locator("#widgetTableBody .chat-preview-open").first().waitFor();
+        String chatId = page.locator("#widgetTableBody input.row-select").first().getAttribute("data-chat-id");
+        assertTrue(chatId != null && !chatId.isBlank(), "Live row identity must be supplied as metadata.");
+        String date = page.locator("#widgetTableBody time.chat-created-at").first().textContent();
+        page.locator("#widgetTableBody input.row-select").first().check();
+        page.locator("#widgetTableBody .chat-preview-open").first().press("Enter");
+        String prompt = page.locator("#widgetDetailPrompt").textContent();
+        String response = page.locator("#widgetDetailResponse").textContent();
+        assertTrue(date.equals(page.locator("#widgetDetailCreatedAt").textContent()), "Row and preview dates must agree.");
+        assertEquals(1, page.locator("#widgetTableBody input.row-select:checked").count());
+        page.locator("#widgetDetailCardCloseBtn").click();
+        page.locator("#reviewSelectedBtn").click();
+        page.locator("#widgetReviewBody .chat-preview-open").first().waitFor();
+        assertEquals(1, page.locator("#widgetReviewBody .chat-preview-open").count());
+        assertTrue(chatId.equals(page.locator("#widgetReviewBody .chat-preview-open").first().textContent()), "Review must retain the selected chat identity.");
+        page.locator("#widgetReviewBody .chat-preview-open").first().press("Enter");
+        assertTrue(prompt.equals(page.locator("#detailPrompt").textContent()), "Original prompt must match across live previews.");
+        assertTrue(response.equals(page.locator("#detailResponse").textContent()), "Original response must match across live previews.");
+        assertTrue(date.equals(page.locator("#detailCreatedAt").textContent()), "Live date display must agree across views.");
+        page.locator("[data-sim-back]").first().click();
+        page.waitForURL(widgetUrl);
+        page.locator("#widgetTableBody .chat-preview-open").first().waitFor();
+        assertTrue(page.locator("#widgetTableBody input.row-select").first().isChecked(), "Back must retain the selected live chat.");
+        assertTrue(unexpectedWrites.isEmpty(), "Preview/navigation must not start analysis, translation, email or other writes.");
+    }
+
+    @Test
+    void phase3_longResponseIsKeyboardScrollableWithoutChangingItsSource() {
+        ChatReviewFixture fixture = new ChatReviewFixture(context);
+        fixture.openReview(page);
+        String source = "Long preserved source line.\n".repeat(100);
+        page.evaluate("row => window.SimChatPreview.create({root: document.querySelector('#detailCard')}).show(row)",
+                java.util.Map.of("chatId", ChatReviewFixture.CHAT_A, "prompt", ChatReviewFixture.PROMPT_A, "response", source));
+        assertEquals("0", page.locator("#detailResponse").getAttribute("tabindex"));
+        page.locator("#detailResponse").focus();
+        page.keyboard().press("End");
+        page.waitForFunction("document.querySelector('#detailResponse').scrollTop > 0");
+        assertEquals(source, page.locator("#detailResponse").textContent());
+        assertEquals(0, page.locator("#widgetReviewBody input.row-select:checked").count());
+        fixture.assertNoUnexpectedRequests();
+    }
+
+    @Test
+    void phase3_longPreviewTitleAndControlsStayInsideTheViewport() throws Exception {
+        ChatReviewFixture fixture = new ChatReviewFixture(context);
+        for (int width : new int[] {1440, 390, 320}) {
+            page.setViewportSize(width, 900);
+            fixture.openReview(page);
+            page.evaluate("row => window.SimChatPreview.create({root: document.querySelector('#detailCard')}).show(row)",
+                    java.util.Map.of("chatId", "phase3-" + "x".repeat(120), "prompt", ChatReviewFixture.PROMPT_A, "response", ChatReviewFixture.RESPONSE_A));
+            var panel = page.locator("#detailCard").boundingBox();
+            var close = page.locator("#detailCardCloseBtn").boundingBox();
+            assertTrue(panel.x >= -1 && panel.x + panel.width <= width + 1, "Preview must fit at width " + width);
+            assertTrue(close.x >= panel.x && close.x + close.width <= panel.x + panel.width + 1);
+            assertTrue((Boolean) page.locator("#detailTitle").evaluate("element => element.scrollWidth <= element.clientWidth + 1"));
+            fixture.capture(page, "long-preview-title-" + width);
+        }
+        fixture.assertNoUnexpectedRequests();
+    }
+
+    @Test
+    void phase3_filteredPreviewCannotNavigateOutsideTheVisibleRows() {
+        ChatReviewFixture fixture = new ChatReviewFixture(context);
+        fixture.openReview(page);
+        page.locator("#widgetReviewBody .chat-preview-open").first().click();
+        page.fill("#reviewSearchInput", "no-matching-synthetic-chat");
+        assertTrue(page.locator("#detailPreviousBtn").isDisabled());
+        assertTrue(page.locator("#detailNextBtn").isDisabled());
+        page.locator("#detailCardCloseBtn").click();
+        assertTrue(page.locator("#detailCard").isHidden());
+        assertEquals("reviewSearchInput", page.evaluate("document.activeElement.id"));
+        fixture.assertNoUnexpectedRequests();
+    }
+
+    @Test
+    void phase3_reviewSharingRetainsTheOriginalExplicitPayload() {
+        ChatReviewFixture fixture = new ChatReviewFixture(context);
+        fixture.enableSharingFixture();
+        fixture.openReview(page);
+        page.locator("#widgetReviewBody .chat-preview-open").first().click();
+        assertTrue(fixture.sharedMessages().isEmpty());
+        page.locator("#shareChatRevealBtn").click();
+        assertTrue(fixture.sharedMessages().isEmpty());
+        page.fill("#shareEmailTo", "teammate@example.test");
+        page.fill("#shareCustomMessage", "Synthetic context");
+        page.locator("#shareTranslateToEnglish").uncheck();
+        page.locator("#shareChatByEmailBtn").click();
+        page.waitForFunction("document.querySelector('#shareChatEmailStatus').textContent.startsWith('Email sent to')");
+        assertEquals(1, fixture.sharedMessages().size());
+        var payload = fixture.sharedMessages().get(0);
+        assertEquals(10, payload.size());
+        assertEquals("teammate@example.test", payload.get("to").getAsString());
+        assertEquals(ChatReviewFixture.CHAT_A, payload.get("chatId").getAsString());
+        assertEquals(ChatReviewFixture.PROMPT_A, payload.get("prompt").getAsString());
+        assertEquals(ChatReviewFixture.RESPONSE_A, payload.get("response").getAsString());
+        assertEquals("Synthetic context", payload.get("customMessage").getAsString());
+        assertFalse(payload.get("translateToEnglish").getAsBoolean());
+        assertEquals(0, page.locator("#widgetReviewBody input.row-select:checked").count());
+        fixture.assertNoUnexpectedRequests();
+    }
+
+    @Test
+    void phase3_sharedPreviewShowsHostileSourceAsText() {
+        ChatReviewFixture fixture = new ChatReviewFixture(context);
+        fixture.openReview(page);
+        String source = "</pre><img src=x onerror='window.previewInjected=true'><script>window.previewInjected=true</script>";
+        page.evaluate("row => window.SimChatPreview.create({root: document.querySelector('#detailCard')}).show(row)",
+                java.util.Map.of("chatId", ChatReviewFixture.CHAT_A, "prompt", source, "response", source));
+        assertEquals(source, page.locator("#detailPrompt").textContent());
+        assertEquals(source, page.locator("#detailResponse").textContent());
+        assertEquals(0, page.locator("#detailCard script, #detailCard img").count());
+        assertTrue(page.locator("#shareChatRevealBtn").isHidden(), "Unconfigured action capabilities must not be exposed.");
+        assertEquals(null, page.evaluate("window.previewInjected || null"));
+        fixture.assertNoUnexpectedRequests();
+    }
+
+    @Test
+    void phase3_keyboardPreviewNavigationAndEscapePreserveSelection() {
+        ChatReviewFixture fixture = new ChatReviewFixture(context);
+        fixture.openReview(page);
+        page.locator("#widgetReviewBody .chat-preview-open").first().focus();
+        page.keyboard().press("Enter");
+        assertTrue(page.locator("#detailCard").isVisible());
+        assertEquals("polite", page.locator("#detailCard").getAttribute("aria-live"));
+        assertTrue((Boolean) page.evaluate("document.activeElement.id === 'detailCardCloseBtn'"));
+        assertTrue(page.locator("#detailPreviousBtn").isDisabled());
+        page.locator("#detailNextBtn").click();
+        assertEquals(ChatReviewFixture.PROMPT_B, page.locator("#detailPrompt").textContent());
+        assertTrue(page.locator("#detailNextBtn").isDisabled());
+        assertEquals(0, page.locator("#widgetReviewBody input.row-select:checked").count());
+        page.keyboard().press("Escape");
+        assertTrue(page.locator("#detailCard").isHidden());
+        assertEquals("Preview chat " + ChatReviewFixture.CHAT_B, page.evaluate("document.activeElement.getAttribute('aria-label')"));
+        page.keyboard().press("Space");
+        assertTrue(page.locator("#detailCard").isVisible());
+        fixture.assertNoUnexpectedRequests();
+    }
+
+    @Test
+    void phase3_reviewTranslationCannotOverwriteTheNextChat() {
+        ChatReviewFixture fixture = new ChatReviewFixture(context);
+        fixture.openReview(page);
+        page.locator("#widgetReviewBody .chat-preview-open").first().click();
+        page.locator("#translatePromptBtn").click();
+        fixture.awaitHeldTranslation(page);
+        page.locator("#detailNextBtn").click();
+        page.locator("#translatePromptBtn").click();
+        page.waitForFunction("document.querySelector('#promptTranslationOutput').textContent === 'Synthetic translation B'");
+        Response late = page.waitForResponse(response -> response.url().endsWith("/review/translate"), fixture::releaseFirstTranslation);
+        late.finished();
+        page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+        assertEquals(ChatReviewFixture.PROMPT_B, page.locator("#detailPrompt").textContent());
+        assertEquals("Synthetic translation B", page.locator("#promptTranslationOutput").textContent());
+        fixture.assertNoUnexpectedRequests();
+    }
+
+    @Test
+    void phase1_rowPreviewPreservesOriginalTextAndBulkSelection() throws Exception {
+        ChatReviewFixture fixture = new ChatReviewFixture(context);
+        for (int width : new int[] {1440, 390}) {
+            page.setViewportSize(width, 900);
+            fixture.openReview(page);
+            page.locator("#widgetReviewBody tr[data-row-key]").first().locator("td").nth(2).click();
+            assertEquals(ChatReviewFixture.PROMPT_A, page.locator("#detailPrompt").textContent());
+            assertEquals(ChatReviewFixture.RESPONSE_A, page.locator("#detailResponse").textContent());
+            assertFalse(page.locator("#widgetReviewBody input.row-select").first().isChecked());
+            fixture.capture(page, "review-original-text-" + width);
+            page.locator("#detailCardCloseBtn").click();
+            assertTrue(page.locator("#detailCard").isHidden());
+        }
+        fixture.assertNoUnexpectedRequests();
+    }
+
+    @Test
+    void phase1_reviewPreservesTheSuppliedWidgetScope() {
+        ChatReviewFixture fixture = new ChatReviewFixture(context);
+        fixture.openReview(page);
+        assertTrue(page.locator(".container").innerText().contains("Currently reviewing Widget:"));
+        assertTrue(page.locator(".container").innerText().contains("Phase 1 widget"));
+        assertEquals(2, page.locator("#widgetReviewBody tr[data-row-key]").count());
+        fixture.assertNoUnexpectedRequests();
+    }
+
+    @Test
+    void phase1_instructionsDoNotPromiseCheckboxPreview() {
+        ChatReviewFixture fixture = new ChatReviewFixture(context);
+        fixture.openReview(page);
+        fixture.assertNoUnexpectedRequests();
+        assertFalse(page.locator(".container").innerText().contains("Check a row OR click a row"),
+                "Instructions must match checkbox-only bulk selection behavior.");
+    }
+
+    @Test
+    void phase1_checkboxOnlyChangesSelectionWithoutOpeningPreview() {
+        ChatReviewFixture fixture = new ChatReviewFixture(context);
+        fixture.openReview(page);
+        page.locator("#widgetReviewBody input.row-select").first().check();
+        assertTrue(page.locator("#widgetReviewBody input.row-select").first().isChecked());
+        assertTrue(page.locator("#detailCard").isHidden(), "Checkboxes are bulk selection, not preview activation.");
+        fixture.assertNoUnexpectedRequests();
+    }
 
     private final String adminUsername = System.getProperty("adminUsername", "admin");
     private final String adminPassword = System.getProperty("adminPassword", "admin");
@@ -242,7 +478,10 @@ public class WidgetReviewIT extends BaseUiIT {
 
         page.waitForSelector("#detailCard", new Page.WaitForSelectorOptions().setState(com.microsoft.playwright.options.WaitForSelectorState.VISIBLE));
         assertTrue(page.locator("#detailCard").isVisible(), "Expected detail overlay to be visible after row click");
-        assertEquals("absolute", page.evaluate("() => getComputedStyle(document.getElementById('detailCard')).position"));
+        var bounds = page.locator("#detailCard").boundingBox();
+        assertTrue(bounds.width > 0 && bounds.x >= 0 && bounds.x + bounds.width <= page.viewportSize().width + 1,
+            "Preview must fit within the viewport without hiding its close action.");
+        assertTrue(page.locator("#detailCardCloseBtn").isVisible());
 
         page.click("#detailCardCloseBtn");
         assertTrue(page.evaluate("() => document.getElementById('detailCard').style.display === 'none'").equals(Boolean.TRUE),

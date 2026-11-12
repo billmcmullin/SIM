@@ -71,6 +71,12 @@ public class WidgetReviewServlet extends HttpServlet {
         String displayName = trimToNull(selection.displayName);
         String subjectLabel = displayName != null ? displayName : (widgetId != null ? widgetId : "Selected Chats");
         String subjectType = selection.hasSnapshots() ? "Term" : "Widget";
+        String displayContext = selection.getDisplayContext();
+        String displaySubjectType = subjectType;
+        if (selection.hasSnapshots() && displayContext != null && !displayContext.isEmpty()) {
+            displaySubjectType = displayContext.startsWith("Session") || displayContext.startsWith("Selected Session Chats")
+                ? "Session" : displayContext.startsWith("Popular Topics") ? "Topic" : "Selection";
+        }
 
         String backLink = trimToNull(selection.getBackUrl());
         if (backLink == null) {
@@ -96,7 +102,9 @@ public class WidgetReviewServlet extends HttpServlet {
                 .replace("${widgetId}", escapeHtml(widgetId == null ? "" : widgetId))
                 .replace("${selectionId}", escapeHtml(selectionId))
                 .replace("${subjectType}", escapeHtml(subjectType))
+                .replace("${displaySubjectType}", escapeHtml(displaySubjectType))
                 .replace("${subjectLabel}", escapeHtml(subjectLabel))
+                .replace("${displayContext}", escapeHtml(selection.getDisplayContext()))
                 .replace("${backLink}", escapeHtml(backLink));
 
         // JS string literal safety (for placeholders used in inline script config)

@@ -352,7 +352,8 @@ class AllSessionsServiceTest {
                     Mockito.eq(session),
                     Mockito.eq("Selected Session Chats"),
                     Mockito.anyList(),
-                    Mockito.eq("/chat-server/dashboard/sessions")))
+                    Mockito.eq("/chat-server/dashboard/sessions"),
+                    Mockito.eq("Sessions | Session: session-1")))
                     .thenReturn("selection-123");
 
             service.handlePost(req, resp);

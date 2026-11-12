@@ -21,6 +21,16 @@
 
     let latestRows = [];
     const selectedChats = new Map();
+    let preview = null;
+    let activePreviewId = '';
+    let activePreviewColumn = 1;
+
+    function openPreview(row, anchor) {
+        if (anchor) activePreviewColumn = anchor.cellIndex;
+        activePreviewId = String(row.chatId || '');
+        preview.show(row);
+        renderRows(latestRows);
+    }
 
     let tableBody, globalSearchInput, filterPrompt, filterResponse;
     let prevBtn, nextBtn, pageInfo;
@@ -34,32 +44,6 @@
         : null;
 
     const esc = s => ((s === null || s === undefined) ? '' : String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;'));
-    const fmtDate = v => {
-        const sharedFormatter = window.DashboardCore?.formatHumanReadableTimestamp;
-        if (typeof sharedFormatter === 'function') {
-            return sharedFormatter(v, '');
-        }
-        if (!v) {
-            return '';
-        }
-        try {
-            const d = new Date(v);
-            if (Number.isNaN(d.getTime())) {
-                return v;
-            }
-            const formatted = d.toLocaleString(undefined, {
-                year: 'numeric',
-                month: 'short',
-                day: 'numeric',
-                hour: 'numeric',
-                minute: '2-digit',
-                hour12: true
-            });
-            return formatted.endsWith('.') ? formatted : `${formatted}.`;
-        } catch {
-            return v;
-        }
-    };
     const truncateResponse = (text) => {
         if (!text) {
             return '';
@@ -144,12 +128,18 @@
         tableBody.innerHTML = '';
         if (!rows || rows.length === 0) {
             tableBody.innerHTML = '<tr><td colspan="6" class="empty-row">No entries found.</td></tr>';
+            preview?.refreshNavigation();
             return;
         }
 
         const fragment = document.createDocumentFragment();
         rows.forEach(row => {
             const tr = document.createElement('tr');
+            tr.dataset.chatId = String(row.chatId || '');
+            tr.classList.toggle('row-active', tr.dataset.chatId === activePreviewId);
+            tr.addEventListener('click', event => {
+                if (event.target instanceof Element && !event.target.closest('input, a')) openPreview(row, event.target.closest('td'));
+            });
             const tdSelect = document.createElement('td');
             tdSelect.className = 'select-column';
             const input = document.createElement('input');
@@ -163,8 +153,10 @@
             tr.appendChild(tdSelect);
 
             const tdId = document.createElement('td');
-            const idDiv = document.createElement('div');
-            idDiv.className = 'text-summary';
+            const idDiv = document.createElement('button');
+            idDiv.type = 'button';
+            idDiv.className = 'text-summary chat-preview-open';
+            idDiv.setAttribute('aria-label', `Preview chat ${row.chatId || ''}`);
             idDiv.textContent = `${row.widgetName || widgetDisplayName || row.widgetId || widgetId || ''} · ${row.chatId ?? ''}`;
             tdId.appendChild(idDiv);
             tr.appendChild(tdId);
@@ -186,9 +178,9 @@
             tr.appendChild(tdResponse);
 
             const tdCreated = document.createElement('td');
-            const createdDiv = document.createElement('div');
-            createdDiv.className = 'text-summary';
-            createdDiv.textContent = fmtDate(row.createdAt);
+            const createdDiv = document.createElement('time');
+            createdDiv.className = 'text-summary chat-created-at';
+            window.SimChatPreview.setTimestamp(createdDiv, row.createdAt);
             tdCreated.appendChild(createdDiv);
             tr.appendChild(tdCreated);
 
@@ -225,6 +217,7 @@
         });
 
         tableBody.appendChild(fragment);
+        preview?.refreshNavigation();
     }
 
     function updateSelectionUI() {
@@ -455,7 +448,10 @@
                     if (selectedDate) {
                         nav.append('date', selectedDate);
                     }
-                    window.location.href = `${contextPath}/dashboard/widgets/drilldown/review?${nav.toString()}`;
+                    const destination = `${contextPath}/dashboard/widgets/drilldown/review?${nav.toString()}`;
+                    if (!window.SimNavigation?.navigate(destination, 'Review Selected Chats')) {
+                        window.location.href = destination;
+                    }
                 } catch (err) {
                     showError(err.message || String(err));
                     reviewBtn.disabled = false;
@@ -517,9 +513,49 @@
         deselectAllMatchesBtn = document.getElementById('deselectAllMatchesBtn');
         selectedInfo = document.getElementById('selectedInfo');
 
+        const previewRow = row => Array.from(tableBody.querySelectorAll('tr[data-chat-id]'))
+            .find(element => element.dataset.chatId === String(row?.chatId || ''));
+        preview = window.SimChatPreview.create({
+            root: document.getElementById('detailCard'),
+            prefix: 'widget',
+            capabilities: { share: false, translate: true },
+            placement: 'anchored-right', minimumHeight: 520,
+            getAnchor: row => previewRow(row)?.cells[activePreviewColumn],
+            onTranslate: payload => import(`${contextPath}/assets/js/widget_review_util/api_client.js`)
+                .then(api => api.postJson(`${contextPath}/dashboard/widgets/drilldown/review/translate`, payload)),
+            getRows: () => tableBody.querySelector('.empty-row') ? [] : latestRows,
+            onNavigate: openPreview,
+            onClose: () => { activePreviewId = ''; renderRows(latestRows); },
+            getReturnFocus: row => previewRow(row)?.querySelector('.chat-preview-open') || globalSearchInput
+        });
+        const navigation = window.SimNavigation;
+        const stateKey = `widget:${widgetId}:${selectedDate}`;
+        const saved = navigation?.readListState(stateKey);
+        if (saved) {
+            state.limit = [10, 20, 50, 100].includes(saved.limit) ? saved.limit : 10;
+            state.page = Number.isInteger(saved.page) && saved.page > 0 ? saved.page : 1;
+            state.search = typeof saved.search === 'string' ? saved.search : '';
+            state.filters.prompt = typeof saved.prompt === 'string' ? saved.prompt : '';
+            state.filters.response = typeof saved.response === 'string' ? saved.response : '';
+            state.sortColumn = typeof saved.sortColumn === 'string' ? saved.sortColumn : state.sortColumn;
+            state.sortDir = saved.sortDir === 'ASC' ? 'ASC' : 'DESC';
+            (Array.isArray(saved.selectedIds) ? saved.selectedIds : []).filter(id => typeof id === 'string')
+                .forEach(chatId => selectedChats.set(chatId, { chatId, widgetName: widgetDisplayName || widgetId }));
+            if (globalSearchInput) globalSearchInput.value = state.search;
+            if (filterPrompt) filterPrompt.value = state.filters.prompt;
+            if (filterResponse) filterResponse.value = state.filters.response;
+            const sizeSelect = document.getElementById('widgetTablePageSize');
+            if (sizeSelect) sizeSelect.value = String(state.limit);
+        }
+        navigation?.registerListState(stateKey, tableBody, () => ({
+            limit: state.limit, page: state.page, search: state.search, prompt: state.filters.prompt,
+            response: state.filters.response, sortColumn: state.sortColumn, sortDir: state.sortDir,
+            selectedIds: Array.from(selectedChats.keys()), position: navigation.captureScroll()
+        }));
         bindControls();
         try {
             await loadTable();
+            if (saved) navigation?.restoreScroll(saved.position);
         } finally {
             if (bootLoading && typeof bootLoading.finish === 'function') {
                 bootLoading.finish();

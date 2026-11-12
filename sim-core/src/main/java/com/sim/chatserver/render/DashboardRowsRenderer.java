@@ -45,6 +45,9 @@ public final class DashboardRowsRenderer {
     static final String ATTR_HREF = "href";
     private static final String ATTR_TITLE = "title";
     private static final String ATTR_COLSPAN = "colspan";
+    private static final String ATTR_DATA_CHAT_ID = "data-chat-id";
+    private static final String ATTR_DATA_WIDGET_ID = "data-widget-id";
+    private static final String ATTR_DATA_CREATED_AT = "data-created-at";
     private static final String CLASS_METRIC_LINK = "metric-link";
     private static final String CLASS_CUSTOMER_PROFILE_LINK = "customer-profile-link";
     private static final String CLASS_TRUNCATE = "truncate";
@@ -195,9 +198,11 @@ public final class DashboardRowsRenderer {
                 String widget = nullSafe(row.getWidgetName());
                 String prompt = nullSafe(row.getPrompt());
                 String sessionId = nullSafe(row.getSessionId());
-                String createdAt = formatTs(row.getCreatedAt());
+                Timestamp timestamp = row.getCreatedAt();
+                String createdAt = formatTs(timestamp);
 
-                w.start(TAG_TR);
+                w.start(TAG_TR, ATTR_DATA_CHAT_ID, nullSafe(row.getChatId()),
+                    ATTR_DATA_WIDGET_ID, nullSafe(row.getPreviewWidgetId()), ATTR_DATA_CREATED_AT, previewTimestamp(timestamp));
                 w.element(TAG_TD, String.valueOf(rank++));
                 w.element(TAG_TD, widget);
 
@@ -293,6 +298,17 @@ public final class DashboardRowsRenderer {
 
     private static String nullSafe(String s) {
         return s == null ? EMPTY : s;
+    }
+
+    private static String previewTimestamp(Timestamp timestamp) {
+        if (timestamp == null) return EMPTY;
+        try {
+            java.time.Instant instant = timestamp.toInstant();
+            return instant == null ? EMPTY : instant.toString();
+        } catch (DateTimeException | ArithmeticException exception) {
+            LOG.log(Level.FINE, MSG_UNABLE_FORMAT_TIMESTAMP, exception);
+            return EMPTY;
+        }
     }
 
     private static String emptyRow(int colspan, String message) {

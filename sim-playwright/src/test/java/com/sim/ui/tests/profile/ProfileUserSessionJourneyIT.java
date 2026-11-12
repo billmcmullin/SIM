@@ -2,8 +2,13 @@ package com.sim.ui.tests.profile;
 
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
+import static org.junit.jupiter.api.Assertions.assertAll;
+import static org.junit.jupiter.api.Assertions.assertEquals;
 
 import com.microsoft.playwright.Page;
+import com.microsoft.playwright.Locator;
+import com.microsoft.playwright.Response;
+import com.microsoft.playwright.options.AriaRole;
 import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Order;
 import org.junit.jupiter.api.Assumptions;
@@ -11,9 +16,142 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 
 import com.sim.ui.base.BaseUiIT;
+import com.sim.ui.base.ChatReviewFixture;
 
 @TestMethodOrder(MethodOrderer.OrderAnnotation.class)
 public class ProfileUserSessionJourneyIT extends BaseUiIT {
+
+        @Test
+        void phase3_invalidRecipientsAndDeliveryFailuresDoNotRetry() {
+                ChatReviewFixture fixture = new ChatReviewFixture(context);
+                fixture.enableSharingFailureFixture();
+                for (boolean profile : new boolean[] {false, true}) {
+                        if (profile) {
+                                fixture.openProfile(page);
+                                page.locator("#cpSubmittedChatsBody .chat-preview-open").first().click();
+                                page.waitForFunction("document.querySelector('#cpDetailResponse').textContent === 'Synthetic answer A, preserved **verbatim**.'");
+                        } else {
+                                fixture.openReview(page);
+                                page.locator("#widgetReviewBody .chat-preview-open").first().click();
+                        }
+                        int sentBefore = fixture.sharedMessages().size();
+                        page.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("Send To Teammate").setExact(true)).click();
+                        page.getByLabel("Teammate Email").fill("not-an-email");
+                        var send = page.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("Send Email").setExact(true));
+                        send.click();
+                        String statusId = profile ? "cpShareChatEmailStatus" : "shareChatEmailStatus";
+                        assertTrue(page.locator("#" + statusId).textContent().contains("valid teammate email"));
+                        assertEquals(sentBefore, fixture.sharedMessages().size());
+                        page.getByLabel("Teammate Email").fill("teammate@example.test");
+                        send.click();
+                        page.waitForFunction("id => document.getElementById(id).textContent.includes('Synthetic delivery unavailable')", statusId);
+                        assertTrue(send.isEnabled());
+                        assertEquals(sentBefore + 1, fixture.sharedMessages().size(), "A failed explicit send must not be automatically retried.");
+                }
+                fixture.assertNoUnexpectedRequests();
+        }
+
+        @Test
+        void phase3_profileAutoDetectPayloadIsPreservedAndExplicitSourceIsHonored() {
+                ChatReviewFixture fixture = new ChatReviewFixture(context);
+                fixture.openProfile(page);
+                page.locator("#cpSubmittedChatsBody .chat-preview-open").first().click();
+                page.waitForFunction("document.querySelector('#cpDetailPrompt').textContent === 'Synthetic question A'");
+                page.locator("#cpTranslatePromptBtn").click();
+                fixture.awaitHeldTranslation(page);
+                assertEquals(2, fixture.heldTranslationPayload().size());
+                assertFalse(fixture.heldTranslationPayload().has("sourceLang"));
+                Response automatic = page.waitForResponse(response -> response.url().endsWith("/review/translate"), fixture::releaseFirstTranslation);
+                automatic.finished();
+                page.waitForFunction("document.querySelector('#cpPromptTranslationOutput').textContent === 'Synthetic translation A'");
+                page.selectOption("#cpTranslateSourceLang", "ja");
+                page.locator("#cpTranslatePromptBtn").click();
+                fixture.awaitHeldTranslation(page);
+                assertEquals("ja", fixture.heldTranslationPayload().get("sourceLang").getAsString());
+                assertEquals(ChatReviewFixture.PROMPT_A, fixture.heldTranslationPayload().get("text").getAsString());
+                Response explicit = page.waitForResponse(response -> response.url().endsWith("/review/translate"), fixture::releaseFirstTranslation);
+                explicit.finished();
+                fixture.assertNoUnexpectedRequests();
+        }
+
+        @Test
+        void phase3_profileSharingUsesOnlyTheLoadedScopedChat() {
+                ChatReviewFixture fixture = new ChatReviewFixture(context);
+                fixture.enableSharingFixture();
+                fixture.openProfile(page);
+                page.locator("#cpSubmittedChatsBody .chat-preview-open").first().click();
+                page.waitForFunction("document.querySelector('#cpDetailResponse').textContent === 'Synthetic answer A, preserved **verbatim**.'");
+                assertTrue(fixture.sharedMessages().isEmpty());
+                page.locator("#cpShareChatRevealBtn").click();
+                page.fill("#cpShareEmailTo", "teammate@example.test");
+                page.fill("#cpShareCustomMessage", "Synthetic context");
+                page.locator("#cpShareTranslateToEnglish").uncheck();
+                page.locator("#cpShareChatByEmailBtn").click();
+                page.waitForFunction("document.querySelector('#cpShareChatEmailStatus').textContent.startsWith('Email sent to')");
+                assertEquals(1, fixture.sharedMessages().size());
+                var payload = fixture.sharedMessages().get(0);
+                assertEquals(10, payload.size());
+                assertEquals("teammate@example.test", payload.get("to").getAsString());
+                assertEquals(ChatReviewFixture.CHAT_A, payload.get("chatId").getAsString());
+                assertEquals("phase1-session", payload.get("sessionId").getAsString());
+                assertEquals(ChatReviewFixture.PROMPT_A, payload.get("prompt").getAsString());
+                assertEquals(ChatReviewFixture.RESPONSE_A, payload.get("response").getAsString());
+                assertEquals("Session", payload.get("subjectType").getAsString());
+                assertFalse(payload.get("translateToEnglish").getAsBoolean());
+                assertEquals(0, page.locator("#cpSubmittedChatsBody input.cp-chat-checkbox:checked").count());
+                fixture.assertNoUnexpectedRequests();
+        }
+
+        @Test
+        void phase3_profileKeyboardCloseKeepsPendingDetailsClosed() throws Exception {
+                ChatReviewFixture fixture = new ChatReviewFixture(context);
+                fixture.holdFirstDetail();
+                for (int width : new int[] {1440, 390}) {
+                        page.setViewportSize(width, 900);
+                        fixture.openProfile(page);
+                        page.locator("#cpSubmittedChatsBody .chat-preview-open").first().focus();
+                        page.keyboard().press("Enter");
+                        fixture.awaitHeldDetail(page);
+                        assertTrue(page.locator("#cpShareChatRevealBtn").isDisabled());
+                        page.locator("#cpDetailNextBtn").click();
+                        page.waitForFunction("document.querySelector('#cpDetailPrompt').textContent === 'Synthetic question B'");
+                        assertFalse(page.locator("#cpShareChatRevealBtn").isDisabled());
+                        assertTrue(page.locator("#cpDetailNextBtn").isDisabled());
+                        fixture.capture(page, "profile-shared-preview-" + width);
+                        page.keyboard().press("Escape");
+                        assertTrue(page.locator("#cpDetailCard").isHidden());
+                        assertEquals("Preview chat " + ChatReviewFixture.CHAT_B, page.evaluate("document.activeElement.getAttribute('aria-label')"));
+                        Response late = page.waitForResponse(response -> response.url().contains("selectionId=selection-a"), fixture::releaseFirstDetail);
+                        late.finished();
+                        page.evaluate("() => new Promise(resolve => requestAnimationFrame(() => requestAnimationFrame(resolve)))");
+                        assertTrue(page.locator("#cpDetailCard").isHidden());
+                        assertEquals(ChatReviewFixture.PROMPT_B, page.locator("#cpDetailPrompt").textContent());
+                }
+                fixture.assertNoUnexpectedRequests();
+        }
+
+    @Test
+    void phase1_profilePreviewProvidesTheSameReviewControls() throws Exception {
+        ChatReviewFixture fixture = new ChatReviewFixture(context);
+        fixture.openReview(page);
+        page.locator("#widgetReviewBody tr[data-row-key]").first().locator("td").nth(2).click();
+        assertTrue(page.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("Close Preview")).isVisible());
+        assertTrue(page.getByRole(AriaRole.BUTTON, new Page.GetByRoleOptions().setName("Send To Teammate")).isVisible());
+
+        fixture.openProfile(page);
+        page.locator("#cpSubmittedChatsBody tr[data-chat-id='" + ChatReviewFixture.CHAT_A + "'] td:nth-child(4)").click();
+        page.waitForFunction("document.querySelector('#cpDetailResponse').textContent === 'Synthetic answer A, preserved **verbatim**.'");
+        Locator panel = page.locator("#cpDetailCard:visible, #detailCard:visible");
+        fixture.capture(page, "profile-preview-controls");
+        fixture.assertNoUnexpectedRequests();
+        assertAll("Profile and Review must provide consistent preview controls",
+                () -> assertTrue(panel.getByRole(AriaRole.BUTTON,
+                        new Locator.GetByRoleOptions().setName("Close Preview")).count() == 1, "Missing Close Preview"),
+                () -> assertTrue(panel.getByRole(AriaRole.BUTTON,
+                        new Locator.GetByRoleOptions().setName("Send To Teammate")).count() == 1, "Missing teammate action"),
+                () -> assertTrue(panel.locator("label").allTextContents().stream()
+                        .anyMatch(label -> label.contains("Translate From")), "Missing source-language control"));
+    }
 
     private final String userUsername = System.getProperty("userUsername", "user");
     private final String userPassword = System.getProperty("userPassword", "user");

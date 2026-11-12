@@ -30,6 +30,29 @@ import static org.mockito.Mockito.when;
  */
 public class DashboardRowsRendererTest
 {
+    @Test
+    public void previewIdentityIsEscapedWithoutChangingCellsOrProfileLinks() throws Exception {
+    Timestamp timestamp = Timestamp.from(Instant.parse("2026-11-10T12:00:00Z"));
+    String widgetId = "widget-\"<&";
+    String chatId = "chat-\"<&";
+    OtherParasoftEntry legacy = new OtherParasoftEntry(widgetId, "Widget <one>", "Prompt <one>", "session&one", timestamp);
+    OtherParasoftEntry identified = new OtherParasoftEntry(widgetId, "Widget <one>", chatId, "Prompt <one>", "session&one", timestamp);
+    var factory = javax.xml.parsers.DocumentBuilderFactory.newInstance();
+    var oldRow = factory.newDocumentBuilder().parse(new org.xml.sax.InputSource(new java.io.StringReader(
+        DashboardRowsRenderer.renderOtherParasoftLatestRows(List.of(legacy), "/chat-server")))).getDocumentElement();
+    var newRow = factory.newDocumentBuilder().parse(new org.xml.sax.InputSource(new java.io.StringReader(
+        DashboardRowsRenderer.renderOtherParasoftLatestRows(List.of(identified), "/chat-server")))).getDocumentElement();
+    org.junit.jupiter.api.Assertions.assertEquals(chatId, newRow.getAttribute("data-chat-id"));
+    org.junit.jupiter.api.Assertions.assertEquals("2026-11-10T12:00:00Z", newRow.getAttribute("data-created-at"));
+    org.junit.jupiter.api.Assertions.assertEquals(widgetId, newRow.getAttribute("data-widget-id"));
+    org.junit.jupiter.api.Assertions.assertEquals("", oldRow.getAttribute("data-chat-id"));
+    org.junit.jupiter.api.Assertions.assertEquals(oldRow.getTextContent(), newRow.getTextContent());
+    org.junit.jupiter.api.Assertions.assertEquals(5, newRow.getElementsByTagName("td").getLength());
+    org.junit.jupiter.api.Assertions.assertEquals(
+        ((org.w3c.dom.Element) oldRow.getElementsByTagName("a").item(0)).getAttribute("href"),
+        ((org.w3c.dom.Element) newRow.getElementsByTagName("a").item(0)).getAttribute("href"));
+    }
+
 
     /**
      * Parasoft Jtest UTA: Test for renderDailyTopTermsRows(List, String)

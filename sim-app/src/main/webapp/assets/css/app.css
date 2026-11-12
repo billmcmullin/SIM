@@ -342,6 +342,103 @@ html.page-boot-loading:not(.dashboard-inline-active) .page-boot-overlay {
     overflow-wrap: anywhere;
 }
 
+.chat-preview-header,
+.chat-preview-controls,
+.chat-preview-actions {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.chat-preview.detail-overlay-card {
+    position: relative;
+    top: auto;
+    right: auto;
+    width: 100%;
+    margin-top: 14px;
+}
+
+.chat-preview.chat-preview-anchored-right.detail-overlay-card {
+    position: fixed;
+    width: min(560px, calc(100vw - 32px));
+    margin: 0;
+    box-sizing: border-box;
+    overflow-y: auto;
+    border-radius: 8px;
+    z-index: 80;
+}
+
+.chat-preview-header {
+    justify-content: space-between;
+    position: sticky;
+    top: -18px;
+    padding: 12px 0;
+    background: #f8fafc;
+    z-index: 1;
+}
+
+.chat-preview-header .summary-label,
+.chat-preview-actions label {
+    margin: 0;
+}
+
+.chat-preview-header .summary-label {
+    min-width: 0;
+    max-width: 100%;
+    overflow-wrap: anywhere;
+}
+
+.chat-preview-actions {
+    margin: 10px 0;
+}
+
+.chat-preview-actions select {
+    width: auto;
+    max-width: 100%;
+}
+
+.chat-preview-step {
+    width: 40px;
+    height: 40px;
+    padding: 4px;
+}
+
+.chat-preview-checkbox {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.chat-preview-checkbox input {
+    width: auto;
+}
+
+.chat-preview-open {
+    appearance: none;
+    background: none;
+    color: inherit;
+    border: 0;
+    padding: 0;
+    font: inherit;
+    text-align: left;
+    text-decoration: underline;
+    overflow-wrap: anywhere;
+}
+
+.chat-preview-open:focus-visible {
+    outline: 2px solid #0369a1;
+    outline-offset: 3px;
+}
+
+#reviewOrigin {
+    overflow-wrap: anywhere;
+}
+
+#reviewOrigin:empty {
+    display: none;
+}
+
 /* ----------------------------------
    Typography / Form Controls
 ----------------------------------- */
@@ -503,9 +600,32 @@ button:disabled {
 /* ----------------------------------
    Dashboard: Other Parasoft latest table
 ----------------------------------- */
+.other-parasoft-scroll {
+    max-width: 100%;
+    overflow-x: auto;
+}
+
 .other-parasoft-table {
     width: 100%;
+    min-width: 640px;
     table-layout: fixed;
+}
+
+.other-parasoft-table .chat-preview-open {
+    display: block;
+    width: 100%;
+    max-width: 100%;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.chat-preview-open:hover:enabled,
+.chat-preview-open:active:enabled,
+.chat-preview-open:focus {
+    background: transparent;
+    color: inherit;
+    box-shadow: none;
 }
 
 .other-parasoft-table th,
@@ -533,7 +653,7 @@ button:disabled {
 .other-parasoft-table th:nth-child(5),
 .other-parasoft-table td:nth-child(5) {
     width: 180px;
-    white-space: nowrap;
+    white-space: normal;
 }
 
 .other-parasoft-table td.truncate {
